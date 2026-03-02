@@ -1,0 +1,171 @@
+{
+  "orgId": "org-demo-001",
+  "name": "Complex WhatsApp Onboarding Flow",
+  "description": "Demonstrates messaging, branching, variable assignment, and integrations.",
+  "status": "published",
+  "version": 1,
+  "triggerType": "keyword",
+  "triggerConfig": {
+    "keywords": ["hello", "start", "demo"]
+  },
+  "settings": {
+    "timeoutSeconds": 300,
+    "maxSteps": 50,
+    "maxConsecutiveLogicSteps": 10,
+    "fallbackMessage": "Sorry, something went wrong."
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "label": "Start",
+      "position": {"x": 0, "y": 0},
+      "data": {},
+      "branches": [
+        {"key": "default", "label": "Default"}
+      ]
+    },
+    {
+      "id": "welcome",
+      "type": "send_text",
+      "label": "Welcome Message",
+      "position": {"x": 200, "y": 0},
+      "data": {
+        "message": "Hello {{contact.name || 'there'}}! I'm FlowBot."
+      },
+      "branches": [
+        {"key": "default", "label": "Next"}
+      ]
+    },
+    {
+      "id": "ask-intent",
+      "type": "ask_question",
+      "label": "Capture Intent",
+      "position": {"x": 400, "y": 0},
+      "data": {
+        "message": "What are you looking for today? Reply with SALES, SUPPORT, or STATUS.",
+        "variableName": "intent",
+        "variableScope": "session",
+        "inputType": "text",
+        "timeoutSeconds": 120
+      },
+      "branches": [
+        {"key": "default", "label": "Await"}
+      ]
+    },
+    {
+      "id": "condition-intent",
+      "type": "condition",
+      "label": "Route Intent",
+      "position": {"x": 600, "y": 0},
+      "data": {
+        "expression": {
+          "operator": "OR",
+          "rules": [
+            {
+              "operator": "AND",
+              "rules": [
+                {"variable": "session.intent", "comparator": "eq", "value": "SALES"}
+              ]
+            },
+            {
+              "operator": "AND",
+              "rules": [
+                {"variable": "session.intent", "comparator": "eq", "value": "SUPPORT"}
+              ]
+            }
+          ]
+        }
+      },
+      "branches": [
+        {"key": "yes", "label": "Sales/Support"},
+        {"key": "no", "label": "Status"}
+      ]
+    },
+    {
+      "id": "set-followup",
+      "type": "set_variable",
+      "label": "Set Follow-up",
+      "position": {"x": 600, "y": 200},
+      "data": {
+        "assignments": [
+          {"variable": "lastIntent", "value": "{{session.intent}}", "scope": "contact"}
+        ]
+      },
+      "branches": [
+        {"key": "default", "label": "Next"}
+      ]
+    },
+    {
+      "id": "send-sales",
+      "type": "send_buttons",
+      "label": "Sales Buttons",
+      "position": {"x": 800, "y": -100},
+      "data": {
+        "body": "Great! Are you interested in pricing or a live demo?",
+        "buttons": [
+          {"id": "pricing", "title": "Pricing"},
+          {"id": "demo", "title": "Live Demo"}
+        ],
+        "timeoutSeconds": 60
+      },
+      "branches": [
+        {"key": "default", "label": "Next"}
+      ]
+    },
+    {
+      "id": "webhook-status",
+      "type": "webhook",
+      "label": "Check Status",
+      "position": {"x": 800, "y": 100},
+      "data": {
+        "url": "https://httpbin.org/post",
+        "method": "POST",
+        "timeoutMs": 8000,
+        "body": "{\"waId\": \"{{session.waId}}\"}",
+        "responseMapping": [
+          {"jsonPath": "$.data.status", "variableName": "ticketStatus", "scope": "session"}
+        ]
+      },
+      "branches": [
+        {"key": "default", "label": "Next"}
+      ]
+    },
+    {
+      "id": "random-followup",
+      "type": "random_split",
+      "label": "Random Follow-up",
+      "position": {"x": 1000, "y": 0},
+      "data": {
+        "branches": [
+          {"key": "variant-a", "label": "Variant A", "percentage": 50},
+          {"key": "variant-b", "label": "Variant B", "percentage": 50}
+        ]
+      },
+      "branches": [
+        {"key": "variant-a", "label": "Variant A"},
+        {"key": "variant-b", "label": "Variant B"}
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "label": "End",
+      "position": {"x": 1200, "y": 0},
+      "data": {},
+      "branches": []
+    }
+  ],
+  "edges": [
+    {"id": "e1", "sourceNodeId": "start", "sourceBranchKey": "default", "targetNodeId": "welcome"},
+    {"id": "e2", "sourceNodeId": "welcome", "sourceBranchKey": "default", "targetNodeId": "ask-intent"},
+    {"id": "e3", "sourceNodeId": "ask-intent", "sourceBranchKey": "default", "targetNodeId": "condition-intent"},
+    {"id": "e4", "sourceNodeId": "condition-intent", "sourceBranchKey": "yes", "targetNodeId": "send-sales"},
+    {"id": "e5", "sourceNodeId": "condition-intent", "sourceBranchKey": "no", "targetNodeId": "webhook-status"},
+    {"id": "e6", "sourceNodeId": "send-sales", "sourceBranchKey": "default", "targetNodeId": "random-followup"},
+    {"id": "e7", "sourceNodeId": "webhook-status", "sourceBranchKey": "default", "targetNodeId": "set-followup"},
+    {"id": "e8", "sourceNodeId": "set-followup", "sourceBranchKey": "default", "targetNodeId": "random-followup"},
+    {"id": "e9", "sourceNodeId": "random-followup", "sourceBranchKey": "variant-a", "targetNodeId": "end"},
+    {"id": "e10", "sourceNodeId": "random-followup", "sourceBranchKey": "variant-b", "targetNodeId": "end"}
+  ]
+}

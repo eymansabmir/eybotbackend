@@ -1,0 +1,174 @@
+{
+  "info": {
+    "_postman_id": "1f4f52a1-9a6f-43d1-8c71-32d4a7b55123",
+    "name": "WhatsApp Orchestrator",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection for testing flow creation, contact onboarding, chat session orchestration, and WhatsApp webhook handling."
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Create Flow",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const data = pm.response.json();",
+              "pm.collectionVariables.set('flowId', data._id || data.id || pm.collectionVariables.get('flowId'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{{complexFlowPayload}}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/flows",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "flows"]
+        }
+      }
+    },
+    {
+      "name": "Create Contact",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const data = pm.response.json();",
+              "pm.collectionVariables.set('contactId', data._id || data.id || pm.collectionVariables.get('contactId'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orgId\": \"{{orgId}}\",\n  \"waId\": \"{{waId}}\",\n  \"name\": \"Demo Contact\",\n  \"tags\": [],\n  \"customFields\": {},\n  \"optIn\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/contacts",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "contacts"]
+        }
+      }
+    },
+    {
+      "name": "Start Flow via Chat Session API",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const data = pm.response.json();",
+              "if (data.session && data.session._id) { pm.collectionVariables.set('sessionId', data.session._id); }"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orgId\": \"{{orgId}}\",\n  \"flowId\": \"{{flowId}}\",\n  \"contactId\": \"{{contactId}}\",\n  \"waId\": \"{{waId}}\",\n  \"waBusinessNumber\": \"{{waBusinessNumber}}\",\n  \"initialVariables\": {\n    \"session\": {\n      \"source\": \"postman\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/chat-sessions",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chat-sessions"]
+        }
+      }
+    },
+    {
+      "name": "Resume Session via Chat Session API",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userInput\": \"SALES\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/chat-sessions/{{sessionId}}/resume",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chat-sessions", "{{sessionId}}", "resume"]
+        }
+      }
+    },
+    {
+      "name": "Trigger WhatsApp Webhook (Resume)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"entry\": [\n    {\n      \"changes\": [\n        {\n          \"value\": {\n            \"metadata\": {\n              \"display_phone_number\": \"{{waBusinessNumber}}\"\n            },\n            \"contacts\": [\n              {\n                \"wa_id\": \"{{waId}}\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"{{waId}}\",\n                \"id\": \"wamid.HBgMMOCKID::demo\",\n                \"timestamp\": \"{{timestamp}}\",\n                \"type\": \"text\",\n                \"text\": {\n                  \"body\": \"STATUS\"\n                }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/webhooks/whatsapp/{{orgId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "webhooks", "whatsapp", "{{orgId}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:3000"},
+    {"key": "orgId", "value": "org-demo-001"},
+    {"key": "waId", "value": "15551234567"},
+    {"key": "waBusinessNumber", "value": "15559876543"},
+    {"key": "flowId", "value": ""},
+    {"key": "contactId", "value": ""},
+    {"key": "sessionId", "value": ""},
+    {"key": "timestamp", "value": "${{timestamp}}"},
+    {"key": "complexFlowPayload", "value": "{{flowTemplate}}"}
+  ]
+}
