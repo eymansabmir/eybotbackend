@@ -14,6 +14,11 @@ import { NodeExecutor } from './chat-session/node-executor';
 import { FlowOrchestrator } from './chat-session/flow-orchestrator';
 import { IFlowOrchestrator } from './chat-session/flow-orchestrator.interface';
 import { ChatSessionController } from './chat-session/chat-session.controller';
+import { IStorageService } from 'lib/storage/storage-service.interface';
+import { IStorageProvider } from 'lib/storage/storage-provider.interface';
+import { createStorageProvider } from 'lib/storage/storage-provider.factory';
+import { StorageService } from 'services/storage.services';
+import { StorageController } from './controllers/storage.controller';
 
 export class Container {
   private static instance: Container;
@@ -37,6 +42,10 @@ export class Container {
   public readonly flowOrchestrator: IFlowOrchestrator;
   public readonly whatsappSender: IWhatsAppSender;
 
+  public readonly storageService: IStorageService;
+  public readonly storageProvider: IStorageProvider;
+  public readonly storageController: StorageController;
+
   private constructor() {
     this.flowRepository = new FlowRepository();
     this.sessionRepository = new SessionRepository();
@@ -44,6 +53,10 @@ export class Container {
 
     this.flowService = new FlowService(this.flowRepository);
     this.contactService = new ContactService(this.contactRepository);
+
+    this.storageProvider = createStorageProvider();
+    this.storageService = new StorageService(this.storageProvider);
+    this.storageController = new StorageController(this.storageService);
 
     this.flowController = new FlowController(this.flowService);
     this.contactController = new ContactController(this.contactService);

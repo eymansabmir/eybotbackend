@@ -34,3 +34,6 @@ coverage/
 # Temp files
 *.tmp
 .cache/
+
+# GCP Key
+gcp-key.json

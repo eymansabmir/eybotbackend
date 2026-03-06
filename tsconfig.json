@@ -4,8 +4,13 @@
     "outDir": "./dist",
     "module": "commonjs",
     "target": "ES2022",
-    "lib": ["ES2022"],
-    "types": ["node"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node",
+      "multer"
+    ],
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
@@ -23,11 +28,24 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": "./src",
     "paths": {
-      "@core/*": ["core/*"],
-      "@plugin-sdk/*": ["plugin-sdk/*"],
-      "@plugins/*": ["plugins/*"]
+      "@core/*": [
+        "core/*"
+      ],
+      "@plugin-sdk/*": [
+        "plugin-sdk/*"
+      ],
+      "@plugins/*": [
+        "plugins/*"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/core"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "src/core"
+  ]
 }

@@ -8,6 +8,7 @@ import { createContactRouter } from './routes/contacts.route';
 import { createNodeTypesRouter } from './routes/node-types.route';
 import { createWhatsAppWebhookRouter } from './routes/whatsapp-webhook.route';
 import { createChatSessionRouter } from './routes/chat-sessions.route';
+import { createStorageRouter } from './routes/storage.route';
 import { errorHandler } from './middleware/error.middleware';
 
 export function createApp(): Application {
@@ -27,9 +28,10 @@ export function createApp(): Application {
   app.use('/api/flows', createFlowRouter(container.flowController));
   app.use('/api/contacts', createContactRouter(container.contactController));
   app.use('/api/node-types', createNodeTypesRouter(container.nodeTypesController));
-  app.use('/api/v1/workspaces/cmiy8k8yr0000rw1frp6qpanp/whatsapp/ilovpz489tconmmc9ju956oh/',createWhatsAppWebhookRouter(container.whatsappWebhookController));
+  app.use('/api/v1/workspaces/cmiy8k8yr0000rw1frp6qpanp/whatsapp/ilovpz489tconmmc9ju956oh/', createWhatsAppWebhookRouter(container.whatsappWebhookController));
   app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(container.whatsappWebhookController));
   app.use('/api/chat-sessions', createChatSessionRouter(container.chatSessionController));
+  app.use('/api/storage', createStorageRouter(container.storageController));
 
   app.use(errorHandler);
 

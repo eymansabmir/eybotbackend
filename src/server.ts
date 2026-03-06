@@ -1,27 +1,26 @@
+// ⚠️ dotenv MUST be loaded before any other imports that read process.env
 import dotenv from 'dotenv';
+dotenv.config();
+
 import { createApp } from './app';
-import { validateEnv } from './config/env';
+import { env } from './config/env';
 import { connectDatabase } from './config/database';
 import { createInboundWorker } from './whatsapp/workers/inbound.worker';
 import { createOutboundWorker } from './whatsapp/workers/outbound.worker';
 import type { Worker } from 'bullmq';
 import type { WhatsAppConfig } from './whatsapp/whatsapp-api.service';
 
-dotenv.config();
-
 let inboundWorker: Worker | null = null;
 let outboundWorker: Worker | null = null;
 
 async function startServer() {
-  const env = validateEnv();
-
   await connectDatabase(env.MONGODB_URI);
 
   // Start workers if Redis is configured
   if (env.REDIS_URL) {
     console.log('✓ Starting WhatsApp workers...');
     inboundWorker = createInboundWorker();
-    
+
     // Configure outbound worker if WhatsApp API is configured
     if (env.WHATSAPP_API_URL && env.WHATSAPP_API_TOKEN) {
       const waConfig: WhatsAppConfig = {
@@ -64,17 +63,17 @@ async function startServer() {
 
 async function shutdown() {
   console.log('\nShutting down gracefully...');
-  
+
   if (inboundWorker) {
     await inboundWorker.close();
     console.log('✓ Inbound worker stopped');
   }
-  
+
   if (outboundWorker) {
     await outboundWorker.close();
     console.log('✓ Outbound worker stopped');
   }
-  
+
   process.exit(0);
 }
 
