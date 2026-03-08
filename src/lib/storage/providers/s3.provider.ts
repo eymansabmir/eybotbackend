@@ -1,18 +1,20 @@
-import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { IStorageProvider, UploadParams } from "../storage-provider.interface";
-import { getS3Client, getS3Bucket } from "../clients/s3.client";
+import { env } from "../../../config/env";
 
-export const createS3Provider = (): IStorageProvider => {
+export class S3Provider implements IStorageProvider {
+  constructor(
+    private readonly client: S3Client,
+    private readonly bucket: string
+  ) { }
 
-  const upload = async ({ buffer, fileName, mimeType, folder }: UploadParams) => {
-    const client = getS3Client();
-    const bucket = getS3Bucket();
+  public async upload({ buffer, fileName, mimeType, folder }: UploadParams) {
     const key = folder ? `${folder}/${fileName}` : fileName;
 
-    await client.send(
+    await this.client.send(
       new PutObjectCommand({
-        Bucket: bucket,
+        Bucket: this.bucket,
         Key: key,
         Body: buffer,
         ContentType: mimeType,
@@ -21,48 +23,41 @@ export const createS3Provider = (): IStorageProvider => {
 
     return {
       path: key,
-      url: `https://${bucket}.s3.amazonaws.com/${key}`,
+      url: env.BASE_MEDIA_URL
+        ? `${env.BASE_MEDIA_URL}/${key}`
+        : `https://${this.bucket}.s3.amazonaws.com/${key}`,
     };
-  };
+  }
 
-  const deleteFile = async (filePath: string) => {
-    const client = getS3Client();
-    const bucket = getS3Bucket();
-
-    await client.send(
+  public async delete(filePath: string) {
+    await this.client.send(
       new DeleteObjectCommand({
-        Bucket: bucket,
+        Bucket: this.bucket,
         Key: filePath,
       }),
     );
-  };
+  }
 
-  const getSignedUrl = async (filePath: string) => {
-    const client = getS3Client();
-    const bucket = getS3Bucket();
-
+  public async getSignedUrl(filePath: string) {
     return awsGetSignedUrl(
-      client,
-      new GetObjectCommand({ Bucket: bucket, Key: filePath }),
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: filePath }),
       { expiresIn: 3600 },
     );
-  };
+  }
 
-  const getSignedUploadUrl = async (filePath: string, contentType: string) => {
-    const client = getS3Client();
-    const bucket = getS3Bucket();
-
+  public async getSignedUploadUrl(filePath: string, contentType: string) {
     const uploadUrl = await awsGetSignedUrl(
-      client,
-      new PutObjectCommand({ Bucket: bucket, Key: filePath, ContentType: contentType }),
+      this.client,
+      new PutObjectCommand({ Bucket: this.bucket, Key: filePath, ContentType: contentType }),
       { expiresIn: 900 }, // 15 minutes
     );
 
     return {
       uploadUrl,
-      fileUrl: `https://${bucket}.s3.amazonaws.com/${filePath}`,
+      fileUrl: env.BASE_MEDIA_URL
+        ? `${env.BASE_MEDIA_URL}/${filePath}`
+        : `https://${this.bucket}.s3.amazonaws.com/${filePath}`,
     };
-  };
-
-  return { upload, delete: deleteFile, getSignedUrl, getSignedUploadUrl };
-};
+  }
+}

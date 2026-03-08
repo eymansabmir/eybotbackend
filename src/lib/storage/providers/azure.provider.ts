@@ -2,17 +2,17 @@ import {
   BlobSASPermissions,
   generateBlobSASQueryParameters,
   StorageSharedKeyCredential,
+  ContainerClient
 } from "@azure/storage-blob";
 import { IStorageProvider, UploadParams } from "../storage-provider.interface";
-import { getAzureContainerClient } from "../clients/azure.client";
 import { env } from "../../../config/env";
 
-export const createAzureProvider = (): IStorageProvider => {
+export class AzureProvider implements IStorageProvider {
+  constructor(private readonly containerClient: ContainerClient) { }
 
-  const upload = async ({ buffer, fileName, mimeType, folder }: UploadParams) => {
-    const containerClient = getAzureContainerClient();
+  public async upload({ buffer, fileName, mimeType, folder }: UploadParams) {
     const blobName = folder ? `${folder}/${fileName}` : fileName;
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
 
     await blockBlobClient.upload(buffer, buffer.length, {
       blobHTTPHeaders: { blobContentType: mimeType },
@@ -20,18 +20,18 @@ export const createAzureProvider = (): IStorageProvider => {
 
     return {
       path: blobName,
-      url: blockBlobClient.url,
+      url: env.BASE_MEDIA_URL
+        ? `${env.BASE_MEDIA_URL}/${blobName}`
+        : blockBlobClient.url,
     };
-  };
+  }
 
-  const deleteFile = async (filePath: string) => {
-    const containerClient = getAzureContainerClient();
-    const blockBlobClient = containerClient.getBlockBlobClient(filePath);
+  public async delete(filePath: string) {
+    const blockBlobClient = this.containerClient.getBlockBlobClient(filePath);
     await blockBlobClient.delete();
-  };
+  }
 
-  const generateSasUrl = (filePath: string, permissions: BlobSASPermissions, expiresMinutes: number) => {
-    const containerClient = getAzureContainerClient();
+  private generateSasUrl(filePath: string, permissions: BlobSASPermissions, expiresMinutes: number) {
     const sharedKeyCredential = new StorageSharedKeyCredential(
       env.AZURE_STORAGE_ACCOUNT!,
       env.AZURE_STORAGE_ACCESS_KEY!,
@@ -41,7 +41,7 @@ export const createAzureProvider = (): IStorageProvider => {
 
     const sasToken = generateBlobSASQueryParameters(
       {
-        containerName: containerClient.containerName,
+        containerName: this.containerClient.containerName,
         blobName: filePath,
         permissions,
         expiresOn,
@@ -49,21 +49,20 @@ export const createAzureProvider = (): IStorageProvider => {
       sharedKeyCredential,
     ).toString();
 
-    const blobClient = containerClient.getBlockBlobClient(filePath);
+    const blobClient = this.containerClient.getBlockBlobClient(filePath);
     return `${blobClient.url}?${sasToken}`;
-  };
+  }
 
-  const getSignedUrl = async (filePath: string) => {
-    return generateSasUrl(filePath, BlobSASPermissions.parse("r"), 60); // 1 hour read
-  };
+  public async getSignedUrl(filePath: string) {
+    return this.generateSasUrl(filePath, BlobSASPermissions.parse("r"), 60); // 1 hour read
+  }
 
-  const getSignedUploadUrl = async (filePath: string, _contentType: string) => {
-    const uploadUrl = generateSasUrl(filePath, BlobSASPermissions.parse("cw"), 15); // 15 min write
-    const containerClient = getAzureContainerClient();
-    const fileUrl = containerClient.getBlockBlobClient(filePath).url;
+  public async getSignedUploadUrl(filePath: string, _contentType: string) {
+    const uploadUrl = this.generateSasUrl(filePath, BlobSASPermissions.parse("cw"), 15); // 15 min write
+    const fileUrl = env.BASE_MEDIA_URL
+      ? `${env.BASE_MEDIA_URL}/${filePath}`
+      : this.containerClient.getBlockBlobClient(filePath).url;
 
     return { uploadUrl, fileUrl };
-  };
-
-  return { upload, delete: deleteFile, getSignedUrl, getSignedUploadUrl };
-};
+  }
+}

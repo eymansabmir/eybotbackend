@@ -28,6 +28,9 @@ const envSchema = z.object({
 
   /** Storage provider selection */
   STORAGE_PROVIDER: z.enum(["gcs", "s3", "azure"]).default("gcs"),
+
+  /** Base CDN/Media URL */
+  BASE_MEDIA_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
