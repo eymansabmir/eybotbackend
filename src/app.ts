@@ -14,6 +14,7 @@ import { errorHandler } from './middleware/error.middleware';
 export function createApp(): Application {
   const app = express();
   const container = Container.getInstance();
+  const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
   app.use(helmet());
   app.use(cors());
@@ -28,7 +29,7 @@ export function createApp(): Application {
   app.use('/api/flows', createFlowRouter(container.flowController));
   app.use('/api/contacts', createContactRouter(container.contactController));
   app.use('/api/node-types', createNodeTypesRouter(container.nodeTypesController));
-  app.use('/api/v1/workspaces/cmiy8k8yr0000rw1frp6qpanp/whatsapp/ilovpz489tconmmc9ju956oh/', createWhatsAppWebhookRouter(container.whatsappWebhookController));
+  app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(container.whatsappWebhookController));
   app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(container.whatsappWebhookController));
   app.use('/api/chat-sessions', createChatSessionRouter(container.chatSessionController));
   app.use('/api/storage', createStorageRouter(container.storageController));
