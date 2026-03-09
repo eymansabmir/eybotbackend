@@ -1,24 +1,17 @@
-import mongoose from 'mongoose';
+import { prisma } from '../repositories/prisma/client';
 
-export async function connectDatabase(uri: string): Promise<void> {
+export async function connectDatabase(): Promise<void> {
   try {
-    await mongoose.connect(uri);
-    console.log('✓ MongoDB connected successfully');
+    await prisma.$connect();
+    console.log('✓ Database (Prisma) connected successfully');
   } catch (error) {
-    console.error('✗ MongoDB connection error:', error);
+    console.error('✗ Database (Prisma) connection error:', error);
     throw error;
   }
 }
 
 export async function disconnectDatabase(): Promise<void> {
-  await mongoose.disconnect();
-  console.log('✓ MongoDB disconnected');
+  await prisma.$disconnect();
+  console.log('✓ Database (Prisma) disconnected');
 }
 
-mongoose.connection.on('error', (error) => {
-  console.error('MongoDB connection error:', error);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
-});
