@@ -3,6 +3,7 @@ import { FlowDocument } from '../models/flow.model';
 import { Flow, FlowStatus } from '../schemas/flow.schema';
 import { NodeType } from '../schemas/node-types.enum';
 import { ValidationError } from '../utils/errors';
+import { env } from 'config/env';
 
 export interface IFlowService {
   createFlow(flow: Flow): Promise<FlowDocument>;
@@ -16,9 +17,10 @@ export interface IFlowService {
 }
 
 export class FlowService implements IFlowService {
-  constructor(private readonly flowRepository: IFlowRepository) {}
+  constructor(private readonly flowRepository: IFlowRepository) { }
 
   async createFlow(flow: Flow): Promise<FlowDocument> {
+    this.normalizeNodeUrls(flow);
     this.validateGraph(flow);
     return await this.flowRepository.create(flow);
   }
@@ -39,6 +41,7 @@ export class FlowService implements IFlowService {
     }
 
     const updatedFlow = { ...existingFlow.toObject(), ...updates };
+    this.normalizeNodeUrls(updatedFlow);
     this.validateGraph(updatedFlow);
 
     return await this.flowRepository.update(id, updates);
@@ -51,6 +54,7 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Flow is already published');
     }
 
+    this.normalizeNodeUrls(flow.toObject());
     this.validateGraph(flow.toObject());
 
     return await this.flowRepository.update(id, {
@@ -133,6 +137,40 @@ export class FlowService implements IFlowService {
 
     if (duplicateEdgeIds.length > 0) {
       throw new ValidationError(`Duplicate edge IDs found: ${duplicateEdgeIds.join(', ')}`);
+    }
+  }
+
+  normalizeStoragePath(value: string | undefined): string | undefined {
+    if (!value) return value;
+
+    const base = env.BASE_MEDIA_URL;
+
+    if (value.startsWith("http")) {
+      const url = new URL(value);
+      return url.pathname.replace(/^\/+/, "");
+    }
+
+    if (base && value.startsWith(base)) {
+      return value.replace(`${base}/`, "");
+    }
+
+    return value;
+  }
+
+  private normalizeNodeUrls(flow: Flow): void {
+    for (const node of flow.nodes) {
+      if (!node.data) continue;
+
+      switch (node.type) {
+        case NodeType.SEND_IMAGE:
+        case NodeType.SEND_VIDEO:
+        case NodeType.SEND_AUDIO:
+        case NodeType.SEND_DOCUMENT:
+          if (node.data.url) {
+            node.data.url = this.normalizeStoragePath(node.data.url);
+          }
+          break;
+      }
     }
   }
 }

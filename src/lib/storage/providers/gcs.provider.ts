@@ -18,7 +18,7 @@ export class GcsProvider implements IStorageProvider {
       const url = env.BASE_MEDIA_URL
         ? `${env.BASE_MEDIA_URL}/${path}`
         : `https://storage.googleapis.com/${this.bucket.name}/${path}`;
-      return { path, url };
+      return { path: url, url };
     } catch (err) {
       console.error('[GCS] upload error:', err);
       throw err;
