@@ -14,7 +14,7 @@ let inboundWorker: Worker | null = null;
 let outboundWorker: Worker | null = null;
 
 async function startServer() {
-  await connectDatabase(env.MONGODB_URI);
+  await connectDatabase();
 
   // Start workers if Redis is configured
   if (env.REDIS_URL) {

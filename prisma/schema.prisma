@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+
+model Flow {
+  id            String     @id @default(uuid())
+  orgId         String
+  name          String
+  description   String?
+  status        FlowStatus @default(draft)
+  version       Int        @default(1)
+
+  triggerType   String
+  triggerConfig Json
+
+  nodes         Json
+  edges         Json
+  settings      Json
+
+  publishedAt   DateTime?
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([orgId, status])
+}
+
+model Session {
+  id                String        @id @default(uuid())
+
+  flowId            String
+  flowVersion       Int
+
+  contactId         String
+  waId              String
+  waBusinessNumber  String
+
+  status            SessionStatus @default(active)
+
+  currentNodeId     String
+
+  variables         Json?
+  history           Json?
+
+  waitingFor        Json?
+
+  isCurrent         Boolean       @default(true)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([waId, status])
+  @@index([flowId, status])
+  @@index([waBusinessNumber, waId, isCurrent])
+}
+
+model Contact {
+  id           String   @id @default(uuid())
+
+  orgId        String
+  waId         String
+  name         String
+
+  tags         String[]
+  customFields Json?
+
+  optIn        Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([orgId, waId])
+  @@index([orgId])
+}
+
+enum FlowStatus {
+  draft
+  published
+  archived
+}
+
+enum SessionStatus {
+  active
+  waiting
+  completed
+  timed_out
+  error
+}

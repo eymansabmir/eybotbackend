@@ -3,7 +3,8 @@ import { z } from 'zod';
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3000'),
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  MONGODB_URI: z.string().optional(),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().url().optional(),
   WHATSAPP_API_URL: z.string().url().optional(),
   WHATSAPP_API_TOKEN: z.string().optional(),
