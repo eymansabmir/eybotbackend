@@ -14,7 +14,10 @@ let inboundWorker: Worker | null = null;
 let outboundWorker: Worker | null = null;
 
 async function startServer() {
-  await connectDatabase();
+  if (!process.env.MONGODB_URI) {
+    throw new Error('MONGO_URI is not defined');
+  }
+  await connectDatabase(process.env.MONGODB_URI);
 
   // Start workers if Redis is configured
   if (env.REDIS_URL) {
