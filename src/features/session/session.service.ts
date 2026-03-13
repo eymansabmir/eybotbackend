@@ -33,8 +33,11 @@ export class SessionService implements ISessionService {
     const { orgId, flowId, waBusinessNumber, contactName, initialVariables = {} } = input;
     const waId = normalizeWaId(input.waId);
 
+    logger.info({ orgId, flowId, waId }, 'SessionService: starting session');
+
     const flow = await this.flowRepo.findByIdOrFail(flowId);
     if (flow.status !== 'published') {
+      logger.warn({ flowId, status: flow.status }, 'SessionService: flow not published');
       throw new ValidationError(`Flow '${flowId}' is not published`);
     }
 
@@ -53,6 +56,7 @@ export class SessionService implements ISessionService {
     );
 
     const saved = await this.sessionRepo.create(result.session);
+    logger.info({ sessionId: saved.id, flowId, isFinished: result.isFinished }, 'SessionService: session started');
 
     if (result.outboundMessages.length > 0) {
       await this.whatsappPlugin.sender.sendMessages(waId, result.outboundMessages, saved.id!);
@@ -62,6 +66,8 @@ export class SessionService implements ISessionService {
   }
 
   async resumeSession(sessionId: string, userInput: string): Promise<{ session: SessionEntity; result: OrchestratorResult }> {
+    logger.info({ sessionId }, 'SessionService: resuming session');
+
     const session = await this.sessionRepo.findByIdOrFail(sessionId);
     const flow = await this.flowRepo.findByIdOrFail(session.flowId);
 
@@ -91,6 +97,7 @@ export class SessionService implements ISessionService {
       await this.whatsappPlugin.sender.sendMessages(session.waId, result.outboundMessages, sessionId);
     }
 
+    logger.info({ sessionId, isFinished: result.isFinished }, 'SessionService: session resumed');
     return { session: updated, result };
   }
 

@@ -37,10 +37,10 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
     if (apiUrl && apiToken && phoneNumberId) {
       const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
       this._sender = new DirectWhatsAppSender(config);
-      console.log('[WhatsAppPlugin] DirectWhatsAppSender ready');
+      logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
       this._sender = new StubWhatsAppSender();
-      console.log('[WhatsAppPlugin] StubWhatsAppSender ready (API not configured)');
+      logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — WhatsApp API not configured');
     }
   }
 

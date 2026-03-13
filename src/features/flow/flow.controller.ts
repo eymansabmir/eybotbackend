@@ -18,14 +18,18 @@ export class FlowController {
   createFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const data = FlowSchema.parse(req.body);
+      logger.info({ orgId: data.orgId, name: data.name }, 'Creating flow');
       const flow = await this.flowService.createFlow(data);
+      logger.info({ flowId: flow.id }, 'Flow created');
       res.status(201).json(flow);
     } catch (err) { next(err); }
   };
 
   getFlowById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const flow = await this.flowService.getFlowById(req.params['id'] as string);
+      const id = req.params['id'] as string;
+      logger.debug({ flowId: id }, 'Fetching flow by id');
+      const flow = await this.flowService.getFlowById(id);
       res.json(flow);
     } catch (err) { next(err); }
   };
@@ -33,6 +37,7 @@ export class FlowController {
   getFlows = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { orgId, status } = FlowListQuerySchema.parse(req.query);
+      logger.debug({ orgId, status }, 'Listing flows');
       const flows = await this.flowService.getFlowsByOrgId(orgId, status);
       res.json(flows);
     } catch (err) { next(err); }
@@ -42,6 +47,7 @@ export class FlowController {
     try {
       const id = req.params['id'] as string;
       const updates = pruneUndefined(FlowUpdateSchema.parse(req.body));
+      logger.info({ flowId: id, updates }, 'Updating flow');
       const flow = await this.flowService.updateFlow(id, updates as any);
       res.json(flow);
     } catch (err) { next(err); }
@@ -49,21 +55,28 @@ export class FlowController {
 
   publishFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const flow = await this.flowService.publishFlow(req.params['id'] as string);
+      const id = req.params['id'] as string;
+      logger.info({ flowId: id }, 'Publishing flow');
+      const flow = await this.flowService.publishFlow(id);
+      logger.info({ flowId: id }, 'Flow published');
       res.json(flow);
     } catch (err) { next(err); }
   };
 
   archiveFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const flow = await this.flowService.archiveFlow(req.params['id'] as string);
+      const id = req.params['id'] as string;
+      logger.info({ flowId: id }, 'Archiving flow');
+      const flow = await this.flowService.archiveFlow(id);
       res.json(flow);
     } catch (err) { next(err); }
   };
 
   deleteFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      await this.flowService.deleteFlow(req.params['id'] as string);
+      const id = req.params['id'] as string;
+      logger.info({ flowId: id }, 'Deleting flow');
+      await this.flowService.deleteFlow(id);
       res.status(204).send();
     } catch (err) { next(err); }
   };

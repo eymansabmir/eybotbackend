@@ -1,7 +1,7 @@
 import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import morgan from 'morgan';
+import { pinoHttp } from 'pino-http';
 import type { IPluginRegistry } from './plugins/plugin.interface';
 import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
@@ -43,7 +43,7 @@ export function createApp(registry: IPluginRegistry): Application {
 
   app.use(helmet());
   app.use(cors());
-  app.use(morgan('combined'));
+  app.use(pinoHttp({ logger: global.logger }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

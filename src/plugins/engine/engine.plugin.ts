@@ -11,7 +11,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
 
   async initialize(_registry: IPluginRegistry): Promise<void> {
     this._orchestrator = new FlowOrchestrator();
-    console.log('[EnginePlugin] Flow execution engine ready');
+    logger.info('EnginePlugin: flow execution engine ready');
   }
 
   async shutdown(): Promise<void> {

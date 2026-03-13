@@ -24,8 +24,12 @@ export class CampaignService {
       scheduleTime: data.scheduleTime,
     });
 
+    logger.info({ orgId: data.orgId, name: data.name, flowId: data.flowId }, 'Creating new campaign');
     const campaign = await this.campaignRepo.create(campaignEntity);
-    if (!campaign.id) throw new Error('Failed to create campaign');
+    if (!campaign.id) {
+      logger.error({ orgId: data.orgId, name: data.name }, 'Failed to create campaign record');
+      throw new Error('Failed to create campaign');
+    }
 
     // 2. Create Initial Version
     const version = await this.campaignRepo.createVersion({
@@ -43,10 +47,12 @@ export class CampaignService {
     };
 
     if (!importJob.campaignId || !importJob.campaignVersionId) {
+       logger.error({ campaignId: campaign.id }, 'Incomplete campaign or version data for import job');
        throw new Error('Incomplete campaign or version data');
     }
 
     await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
+    logger.info({ campaignId: campaign.id, versionId: version.id }, 'Campaign created and import job published');
 
     return { campaign, version };
   }
@@ -61,12 +67,17 @@ export class CampaignService {
     filePath?: string;
     scheduleTime?: Date;
   }) {
+    logger.info({ campaignId: id }, 'Updating campaign');
     const campaign = await this.campaignRepo.findById(id);
-    if (!campaign) throw new Error('Campaign not found');
+    if (!campaign) {
+      logger.warn({ campaignId: id }, 'Attempted to update non-existent campaign');
+      throw new Error('Campaign not found');
+    }
 
     // If file changed, create new version
     if (data.filePath) {
       const nextVersionNumber = await this.campaignRepo.getLatestVersionNumber(id) + 1;
+      logger.info({ campaignId: id, nextVersionNumber }, 'Creating new campaign version for file update');
       const version = await this.campaignRepo.createVersion({
         campaignId: id,
         filePath: data.filePath,
@@ -81,10 +92,9 @@ export class CampaignService {
       };
 
       await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
+      logger.info({ campaignId: id, versionId: version.id }, 'New campaign version published for import');
     }
 
-    // Update campaign fields
-    // (In a real app, we'd handle status transitions, cancellations of old versions, etc.)
     return campaign;
   }
 }

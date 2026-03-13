@@ -18,10 +18,14 @@ export class WhatsAppWebhookController {
     const token = req.query['hub.verify_token'];
     const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 
+    logger.info({ mode }, 'WhatsApp webhook verification attempt');
+
     if (mode === 'subscribe' && token === verifyToken && typeof challenge === 'string') {
+      logger.info('WhatsApp webhook verified successfully');
       res.status(200).send(challenge);
       return;
     }
+    logger.warn({ mode }, 'WhatsApp webhook verification failed (token mismatch or wrong mode)');
     res.status(403).send('Forbidden');
   };
 
@@ -34,22 +38,25 @@ export class WhatsAppWebhookController {
       res.status(200).json({ status: 'accepted' });
 
       const payload = req.body as WhatsAppWebhookPayload;
-      console.log(JSON.stringify(payload, null, 2));
+      logger.debug({ payload }, 'WhatsApp webhook payload received');
 
       const message = this.whatsappPlugin.normalizer.normalize(orgId, payload);
-      if (!message) return;
+      if (!message) {
+        logger.debug('Webhook payload had no actionable message, skipping');
+        return;
+      }
 
       const isDuplicate = await this.whatsappPlugin.deduplicator.isDuplicate(message.messageId);
       if (isDuplicate) {
-        console.log(`[Webhook] Duplicate message ${message.messageId} ignored`);
+        logger.info({ messageId: message.messageId }, 'Duplicate message ignored');
         return;
       }
 
       const job: InboundJob = { orgId, message };
       await this.workerPlugin.publish(EXCHANGES.INBOUND, job);
-      console.log(`[Webhook] Enqueued message ${message.messageId} for org ${orgId}`);
+      logger.info({ messageId: message.messageId, orgId }, 'Inbound message enqueued');
     } catch (err) {
-      console.error('[Webhook] Error processing webhook:', err);
+      logger.error({ err }, 'Error processing WhatsApp webhook');
     }
   };
 }

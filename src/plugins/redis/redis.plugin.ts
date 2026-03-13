@@ -19,14 +19,17 @@ export class RedisPlugin implements IPlugin, IRedisPlugin {
 
     this._client = new Redis(url, { maxRetriesPerRequest: null });
     this._client.on('error', (err: Error) => {
-      console.error('[RedisPlugin] Connection error:', err);
+      logger.error({ err }, 'RedisPlugin: connection error');
+    });
+    this._client.on('connect', () => {
+      logger.info('RedisPlugin: Redis client connected');
     });
 
-    console.log('[RedisPlugin] Redis client ready');
+    logger.info('RedisPlugin: Redis client ready');
   }
 
   async shutdown(): Promise<void> {
     await this._client.quit();
-    console.log('[RedisPlugin] Redis disconnected');
+    logger.info('RedisPlugin: Redis disconnected');
   }
 }

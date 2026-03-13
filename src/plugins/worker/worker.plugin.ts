@@ -15,7 +15,7 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
   async initialize(registry: IPluginRegistry): Promise<void> {
     const url = process.env.RABBITMQ_URL;
     if (!url) {
-      console.warn('[WorkerPlugin] RABBITMQ_URL not set — workers disabled');
+      logger.warn('WorkerPlugin: RABBITMQ_URL not set — workers disabled');
       this.broker = null as any;
       return;
     }
@@ -30,32 +30,33 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
     if (role === 'all' || role === 'inbound') {
       await this.broker.consume('wa.inbound.q', data => handleInboundJob(data, registry), 10);
     }
-    
+
     if (role === 'all' || role === 'outbound') {
       await this.broker.consume('wa.outbound.q', data => handleOutboundJob(data, registry), 20);
     }
-    
+
     if (role === 'all' || role === 'campaign') {
       await this.broker.consume('campaign.import.q', data => handleImportJob(data, registry), 1);
       await this.broker.consume('campaign.start.q', data => handleDispatchJob(data, registry), 5);
       await this.broker.consume('campaign.dispatch.q', data => handleExecutionJob(data, registry), 50);
     }
 
-    console.log(`[WorkerPlugin] Consumers started for role: ${role}`);
+    logger.info({ role }, 'WorkerPlugin: consumers started');
   }
 
   async shutdown(): Promise<void> {
     if (this.broker) {
       await this.broker.close();
-      console.log('[WorkerPlugin] RabbitMQ connection closed');
+      logger.info('WorkerPlugin: RabbitMQ connection closed');
     }
   }
 
   async publish(exchange: ExchangeName, data: unknown, routingKey = ''): Promise<void> {
     if (!this.broker) {
-      console.warn(`[WorkerPlugin] No broker — dropping publish to ${exchange}`);
+      logger.warn({ exchange }, 'WorkerPlugin: no broker — dropping publish');
       return;
     }
+    logger.debug({ exchange, routingKey }, 'Publishing message to exchange');
     await this.broker.publish(exchange, routingKey, data);
   }
 }

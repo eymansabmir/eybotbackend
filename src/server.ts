@@ -2,6 +2,9 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Initialises global.logger — must be first side-effect import
+import './utils/logger';
+
 import { createApp } from './app';
 import { env } from './config/env';
 import { PluginRegistry } from './plugins/plugin-registry';
@@ -78,17 +81,17 @@ async function startServer(): Promise<void> {
     const PORT = parseInt(env.PORT, 10);
 
     const server = app.listen(PORT, () => {
-      console.log(`✓ Server running on port ${PORT}`);
-      console.log(`✓ Environment: ${env.NODE_ENV}`);
-      console.log(`✓ Health check: http://localhost:${PORT}/health`);
+      logger.info(`✓ Server running on port ${PORT}`);
+      logger.info(`✓ Environment: ${env.NODE_ENV}`);
+      logger.info(`✓ Health check: http://localhost:${PORT}/health`);
     });
 
     // ── Graceful shutdown ─────────────────────────────────────────────────────
     async function shutdown(): Promise<void> {
-      console.log('\nShutting down gracefully...');
+      logger.info('Shutting down gracefully...');
       server.close(async () => {
         await registry.shutdownAll();
-        console.log('✓ All plugins shut down');
+        logger.info('✓ All plugins shut down');
         process.exit(0);
       });
     }
@@ -96,13 +99,13 @@ async function startServer(): Promise<void> {
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
   } else {
-    console.log('✓ Worker node started (Server disabled)');
+    logger.info('✓ Worker node started (Server disabled)');
 
     // Graceful shutdown for workers only
     async function shutdownWorker(): Promise<void> {
-      console.log('\nShutting down worker gracefully...');
+      logger.info('Shutting down worker gracefully...');
       await registry.shutdownAll();
-      console.log('✓ All plugins shut down');
+      logger.info('✓ All plugins shut down');
       process.exit(0);
     }
 
@@ -112,6 +115,6 @@ async function startServer(): Promise<void> {
 }
 
 startServer().catch(err => {
-  console.error('Failed to start server:', err);
+  logger.error(err, 'Failed to start server');
   process.exit(1);
 });

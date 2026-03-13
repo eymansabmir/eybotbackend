@@ -27,8 +27,10 @@ export class SessionInboundHandler implements IInboundHandler {
 
     const locked = await acquireLock(redis, lockKey, lockValue, LOCK_TTL);
     if (!locked) {
+      logger.warn({ waId, lockKey }, 'SessionInboundHandler: could not acquire lock, dropping message');
       throw new Error(`[SessionInboundHandler] Could not acquire lock for ${waId}`);
     }
+    logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock acquired');
 
     try {
       const contact: ContactInfo = {
@@ -42,7 +44,9 @@ export class SessionInboundHandler implements IInboundHandler {
       let sessionId: string;
 
       if (activeSession) {
-        // Resume
+        // Resume existing session
+        logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
+
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
@@ -67,9 +71,12 @@ export class SessionInboundHandler implements IInboundHandler {
 
         outboundMessages.push(...result.outboundMessages);
         sessionId = result.session.id!;
+        logger.info({ sessionId, isFinished: result.isFinished }, 'SessionInboundHandler: session resumed');
       } else {
         // Match flow by keyword
         const tokens = (text ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        logger.debug({ waId, tokens }, 'SessionInboundHandler: matching keyword');
+
         let flow = null;
         for (const token of tokens) {
           flow = await this.flowRepo.findPublishedByOrgAndKeyword(orgId, token);
@@ -77,8 +84,11 @@ export class SessionInboundHandler implements IInboundHandler {
         }
 
         if (!flow) {
+          logger.warn({ waId, orgId, tokens }, 'SessionInboundHandler: no flow matched keyword');
           throw new ValidationError('No published flow matched the incoming message');
         }
+
+        logger.info({ waId, flowId: flow.id }, 'SessionInboundHandler: starting new session from keyword match');
 
         await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
         const result = await this.enginePlugin.startFlow(
@@ -100,6 +110,7 @@ export class SessionInboundHandler implements IInboundHandler {
         });
 
         outboundMessages.push(...result.outboundMessages);
+        logger.info({ sessionId, flowId: flow.id }, 'SessionInboundHandler: new session started');
       }
 
       return outboundMessages.map(msg => ({
@@ -112,6 +123,7 @@ export class SessionInboundHandler implements IInboundHandler {
       }));
     } finally {
       await releaseLock(redis, lockKey, lockValue);
+      logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock released');
     }
   }
 }

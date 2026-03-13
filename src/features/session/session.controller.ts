@@ -33,11 +33,13 @@ export class SessionController {
       const parsed = StartFlowBodySchema.safeParse(req.body);
       if (!parsed.success) throw new ValidationError(parsed.error.message);
       const { orgId, flowId, waId, waBusinessNumber, contactName, initialVariables } = parsed.data;
+      logger.info({ orgId, flowId, waId }, 'Starting new session');
       const { session, result } = await this.sessionService.startSession({
         orgId, flowId, waId, waBusinessNumber,
         ...(contactName !== undefined ? { contactName } : {}),
         ...(initialVariables !== undefined ? { initialVariables: initialVariables as Record<string, unknown> } : {}),
       });
+      logger.info({ sessionId: session.id, flowId, isFinished: result.isFinished }, 'Session started');
       res.status(201).json({
         session,
         outboundMessages: result.outboundMessages,
@@ -53,7 +55,9 @@ export class SessionController {
       if (!sessionId) throw new ValidationError('sessionId param is required');
       const parsed = ResumeFlowBodySchema.safeParse(req.body);
       if (!parsed.success) throw new ValidationError(parsed.error.message);
+      logger.info({ sessionId, userInput: parsed.data.userInput }, 'Resuming session');
       const { session, result } = await this.sessionService.resumeSession(sessionId, parsed.data.userInput);
+      logger.info({ sessionId, isFinished: result.isFinished }, 'Session resumed');
       res.status(200).json({
         session: toSessionResponse(session),
         outboundMessages: result.outboundMessages,
@@ -67,6 +71,7 @@ export class SessionController {
     try {
       const sessionId = req.params['sessionId'] as string;
       if (!sessionId) throw new ValidationError('sessionId param is required');
+      logger.debug({ sessionId }, 'Fetching session');
       const session = await this.sessionService.getSession(sessionId);
       res.status(200).json(toSessionResponse(session));
     } catch (err) { next(err); }

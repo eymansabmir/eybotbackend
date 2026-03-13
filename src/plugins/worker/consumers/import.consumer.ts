@@ -9,7 +9,7 @@ import { ICampaignRecipientRepository } from '../../../features/campaign/campaig
 
 export async function handleImportJob(data: unknown, registry: IPluginRegistry): Promise<void> {
   const job = data as ImportJob;
-  console.log(`[ImportWorker] Importing campaign ${job.campaignId} (version ${job.campaignVersionId})`);
+  logger.info({ campaignId: job.campaignId, versionId: job.campaignVersionId }, 'ImportWorker: starting import');
 
   try {
     const storage = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
@@ -18,36 +18,36 @@ export async function handleImportJob(data: unknown, registry: IPluginRegistry):
 
     // 1. Download file from storage
     const buffer = await storage.downloadFile(job.filePath);
-    
+
     // 2. Parse XLSX using buffer
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName!];
-    
+
     if (!sheet) throw new Error('Sheet not found in XLSX');
 
     const rows = XLSX.utils.sheet_to_json<any>(sheet);
-    console.log(`[ImportWorker] Found ${rows.length} rows in ${job.filePath}`);
+    logger.info({ campaignId: job.campaignId, rowCount: rows.length, filePath: job.filePath }, 'ImportWorker: file parsed');
 
     // 3. Batch insert recipients
     const total = rows.length;
     const batchSize = 1000;
-    
+
     for (let i = 0; i < total; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
-      
       await recipientRepo.batchCreate(job.campaignVersionId, batch.map(row => ({
         waId: String(row.waId || row['Phone Number'] || row.phone).replace(/\D/g, ''),
         variables: row as any,
       })));
+      logger.debug({ campaignId: job.campaignId, batchStart: i, batchEnd: i + batch.length }, 'ImportWorker: batch inserted');
     }
 
     // 4. Create Stats and Update Version Status
     await campaignRepo.createStats(job.campaignId, total);
     await campaignRepo.updateVersionStatus(job.campaignVersionId, CampaignVersionStatus.ready);
 
-    console.log(`[ImportWorker] Import complete for campaign ${job.campaignId}`);
+    logger.info({ campaignId: job.campaignId, totalRecipients: total }, 'ImportWorker: import complete');
   } catch (error) {
-    console.error(`[ImportWorker] Failed to import campaign ${job.campaignId}:`, error);
+    logger.error({ campaignId: job.campaignId, error }, 'ImportWorker: import failed');
   }
 }
