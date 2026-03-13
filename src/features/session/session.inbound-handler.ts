@@ -1,10 +1,8 @@
 import type { IInboundHandler } from '../../plugins/worker/handlers.interface';
 import type { InboundJob, OutboundJob } from '../../plugins/worker/jobs';
 import type { IFlowRepository } from '../flow/flow.repository';
-import type { IContactRepository } from '../contact/contact.repository';
 import type { ISessionRepository } from './session.repository';
-import { ContactEntity } from '../contact/contact.entity';
-import type { IEnginePlugin } from '../../plugins/engine';
+import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
 import { ValidationError } from '../../utils/errors';
 
@@ -14,7 +12,6 @@ const LOCK_TTL = 10; // seconds
 export class SessionInboundHandler implements IInboundHandler {
   constructor(
     private readonly flowRepo: IFlowRepository,
-    private readonly contactRepo: IContactRepository,
     private readonly sessionRepo: ISessionRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly redisPlugin: IRedisPlugin,
@@ -34,15 +31,11 @@ export class SessionInboundHandler implements IInboundHandler {
     }
 
     try {
-      // Ensure contact exists
-      let contact = await this.contactRepo.findByWaId(orgId, waId);
-      if (!contact) {
-        contact = await this.contactRepo.create(new ContactEntity({
-          orgId, waId,
-          name: message.contactName ?? waId,
-          tags: [], customFields: {}, optIn: true,
-        }));
-      }
+      const contact: ContactInfo = {
+        waId,
+        name: message.contactName ?? waId,
+        customFields: {},
+      };
 
       const activeSession = await this.sessionRepo.findCurrentByWhatsApp(waBusinessNumber, waId);
       const outboundMessages: Array<{ type: string; payload: Record<string, unknown> }> = [];
@@ -56,8 +49,11 @@ export class SessionInboundHandler implements IInboundHandler {
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
-        const { result, contactMutations } = (this.enginePlugin as any).orchestrator.resumeFlow(
-          flow, contact, activeSession, userInput,
+        const result = await this.enginePlugin.resumeFlow(
+          { sessionId: activeSession.id!, userInput: userInput ?? '' },
+          flow,
+          contact,
+          activeSession,
         );
 
         await this.sessionRepo.update(result.session.id!, {
@@ -68,12 +64,6 @@ export class SessionInboundHandler implements IInboundHandler {
           waitingFor: result.session.waitingFor,
           isCurrent: result.session.isCurrent,
         });
-
-        if (Object.keys(contactMutations).length > 0) {
-          await this.contactRepo.update(contact.id!, {
-            customFields: { ...contact.customFields, ...contactMutations },
-          });
-        }
 
         outboundMessages.push(...result.outboundMessages);
         sessionId = result.session.id!;
@@ -91,9 +81,10 @@ export class SessionInboundHandler implements IInboundHandler {
         }
 
         await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
-        const { result, contactMutations } = (this.enginePlugin as any).orchestrator.startFlow(
-          flow, contact, {},
-          flow.id!, contact.id!, waId, waBusinessNumber,
+        const result = await this.enginePlugin.startFlow(
+          { orgId, flowId: flow.id!, waId, waBusinessNumber },
+          flow,
+          contact,
         );
 
         const saved = await this.sessionRepo.create(result.session);
@@ -107,12 +98,6 @@ export class SessionInboundHandler implements IInboundHandler {
           waitingFor: result.session.waitingFor,
           isCurrent: result.session.isCurrent,
         });
-
-        if (Object.keys(contactMutations).length > 0) {
-          await this.contactRepo.update(contact.id!, {
-            customFields: { ...contact.customFields, ...contactMutations },
-          });
-        }
 
         outboundMessages.push(...result.outboundMessages);
       }

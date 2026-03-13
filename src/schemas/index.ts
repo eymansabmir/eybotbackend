@@ -6,4 +6,3 @@ export * from './edge.schema';
 export * from './node.schema';
 export * from './flow.schema';
 export * from './session.schema';
-export * from './contact.schema';

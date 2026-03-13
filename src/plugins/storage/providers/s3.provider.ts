@@ -53,4 +53,16 @@ export class S3Provider implements IStorageProvider {
 
     return { uploadUrl, fileUrl };
   }
+
+  async download(filePath: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: filePath }),
+    );
+    const stream = response.Body as any;
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    return Buffer.concat(chunks);
+  }
 }

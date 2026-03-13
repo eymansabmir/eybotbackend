@@ -17,6 +17,7 @@ export class RabbitMQBroker {
   private url!: string;
   private reconnectDelay = 2000;
   private isShuttingDown = false;
+  private _campaignQueue: string | null = null;
 
   async connect(url: string): Promise<void> {
     this.url = url;
@@ -83,6 +84,9 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.INBOUND, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.OUTBOUND, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN, 'fanout', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_IMPORT, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_DISPATCH, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -93,6 +97,18 @@ export class RabbitMQBroker {
     await ch.assertQueue('wa.outbound.q', { durable: true });
     await ch.bindQueue('wa.outbound.q', EXCHANGES.OUTBOUND, '');
 
+    // Campaign Import
+    await ch.assertQueue('campaign.import.q', { durable: true });
+    await ch.bindQueue('campaign.import.q', EXCHANGES.CAMPAIGN_IMPORT, '');
+
+    // Campaign Start (Scheduling)
+    await ch.assertQueue('campaign.start.q', { durable: true });
+    await ch.bindQueue('campaign.start.q', EXCHANGES.CAMPAIGN_START, '');
+
+    // Campaign Dispatch
+    await ch.assertQueue('campaign.dispatch.q', { durable: true });
+    await ch.bindQueue('campaign.dispatch.q', EXCHANGES.CAMPAIGN_DISPATCH, '');
+
     // Campaign: per-instance exclusive queue bound to fanout exchange.
     // Each running instance gets its own queue → every instance receives
     // every campaign message (broadcast pattern).
@@ -101,14 +117,14 @@ export class RabbitMQBroker {
       durable: false,
     });
     await ch.bindQueue(campaignQueue, EXCHANGES.CAMPAIGN, '');
-    (this as any)._campaignQueue = campaignQueue; // store for consumer registration
+    this._campaignQueue = campaignQueue; // store for consumer registration
 
     await ch.close();
     console.log('[RabbitMQBroker] Topology declared');
   }
 
   get campaignQueue(): string {
-    return (this as any)._campaignQueue as string;
+    return this._campaignQueue ?? '';
   }
 
   // ── Private ─────────────────────────────────────────────────────────────

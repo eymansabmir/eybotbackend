@@ -58,4 +58,8 @@ export class StoragePlugin implements IPlugin, IStoragePlugin {
     }
     return this._provider.getSignedUrl(filePath);
   }
+
+  async downloadFile(filePath: string): Promise<Buffer> {
+    return this._provider.download(filePath);
+  }
 }

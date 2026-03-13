@@ -45,4 +45,9 @@ export class GcsProvider implements IStorageProvider {
 
     return { uploadUrl, fileUrl };
   }
+
+  async download(filePath: string): Promise<Buffer> {
+    const [buffer] = await this.bucket.file(filePath).download();
+    return buffer;
+  }
 }

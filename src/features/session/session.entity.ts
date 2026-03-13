@@ -19,7 +19,8 @@ export interface SessionProperties {
     id?: string | undefined;
     flowId: string;
     flowVersion: number;
-    contactId: string;
+    /** @deprecated Contact management removed; kept optional for DB backward compat */
+    contactId?: string | undefined;
     waId: string;
     waBusinessNumber: string;
     status: SessionStatus;
@@ -36,7 +37,8 @@ export class SessionEntity {
     public id?: string | undefined;
     public readonly flowId: string;
     public readonly flowVersion: number;
-    public readonly contactId: string;
+    /** @deprecated Contact management removed; kept optional for DB backward compat */
+    public readonly contactId?: string | undefined;
     public readonly waId: string;
     public readonly waBusinessNumber: string;
     public status: SessionStatus;

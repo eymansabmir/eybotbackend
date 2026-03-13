@@ -49,7 +49,7 @@ export const SessionSchema = z.object({
   id: z.string().optional(),
   flowId: z.string(),
   flowVersion: z.number(),
-  contactId: z.string(),
+  contactId: z.string().optional(),
   waId: z.string(),
   waBusinessNumber: z.string(),
   status: SessionStatusSchema,

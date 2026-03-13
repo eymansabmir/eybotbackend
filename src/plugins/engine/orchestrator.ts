@@ -1,9 +1,8 @@
 import { NodeType } from '../../schemas/node-types.enum';
 import { FlowExecutionError, ValidationError } from '../../shared/errors';
 import { SessionEntity } from '../../features/session/session.entity';
-import type { ContactEntity } from '../../features/contact/contact.entity';
 import type { FlowEntity } from '../../features/flow/flow.entity';
-import type { OrchestratorResult, OutboundMessage } from './engine.interface';
+import type { ContactInfo, OrchestratorResult, OutboundMessage } from './engine.interface';
 import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
@@ -25,13 +24,12 @@ export class FlowOrchestrator {
 
   startFlow(
     flow: FlowEntity,
-    contact: ContactEntity,
+    contact: ContactInfo,
     initialVariables: Record<string, unknown>,
     flowId: string,
-    contactId: string,
     waId: string,
     waBusinessNumber: string,
-  ): { result: OrchestratorResult; contactMutations: Record<string, unknown> } {
+  ): OrchestratorResult {
     if (flow.status !== 'published') {
       throw new ValidationError(`Flow '${flowId}' is not published`);
     }
@@ -44,7 +42,6 @@ export class FlowOrchestrator {
     const session = new SessionEntity({
       flowId,
       flowVersion: flow.version,
-      contactId,
       waId,
       waBusinessNumber,
       status: 'active',
@@ -59,10 +56,10 @@ export class FlowOrchestrator {
 
   resumeFlow(
     flow: FlowEntity,
-    contact: ContactEntity,
+    contact: ContactInfo,
     session: SessionEntity,
     userInput: string,
-  ): { result: OrchestratorResult; contactMutations: Record<string, unknown> } {
+  ): OrchestratorResult {
     if (session.status === 'completed' || session.status === 'timed_out') {
       throw new ValidationError(`Session '${session.id}' is already ${session.status}`);
     }
@@ -78,10 +75,10 @@ export class FlowOrchestrator {
 
   private runLoop(
     session: SessionEntity,
-    contact: ContactEntity,
+    contact: ContactInfo,
     flow: FlowEntity,
     userInput: string | undefined,
-  ): { result: OrchestratorResult; contactMutations: Record<string, unknown> } {
+  ): OrchestratorResult {
     const traverser = new GraphTraverser(flow.nodes, flow.edges);
     const allMessages: OutboundMessage[] = [];
     const allContactMutations: Record<string, unknown> = {};
@@ -105,7 +102,7 @@ export class FlowOrchestrator {
 
       // Apply variable mutations to in-memory entities
       for (const m of stepResult.variableMutations) {
-        this.applyMutation(m, session, allContactMutations);
+        this.applyMutation(m, session, contact, allContactMutations);
       }
 
       // Record history
@@ -123,7 +120,10 @@ export class FlowOrchestrator {
         session.setWaitingFor(stepResult.waitForInput);
         if (stepResult.nextNodeId) session.moveToNode(stepResult.nextNodeId);
         return {
-          result: { session, outboundMessages: allMessages, isFinished: false, waitingFor: stepResult.waitForInput },
+          session,
+          outboundMessages: allMessages,
+          isFinished: false,
+          waitingFor: stepResult.waitForInput,
           contactMutations: allContactMutations,
         };
       }
@@ -133,7 +133,9 @@ export class FlowOrchestrator {
         session.updateStatus('completed');
         session.isCurrent = false;
         return {
-          result: { session, outboundMessages: allMessages, isFinished: true },
+          session,
+          outboundMessages: allMessages,
+          isFinished: true,
           contactMutations: allContactMutations,
         };
       }
@@ -143,11 +145,14 @@ export class FlowOrchestrator {
   private applyMutation(
     mutation: VariableMutation,
     session: SessionEntity,
+    contact: ContactInfo,
     contactMutations: Record<string, unknown>,
   ): void {
     if (mutation.scope === 'session') {
       session.setVariable(mutation.key, mutation.value);
     } else {
+      // Apply to in-memory contact (not persisted — contact management removed)
+      contact.customFields[mutation.key] = mutation.value;
       contactMutations[mutation.key] = mutation.value;
     }
   }

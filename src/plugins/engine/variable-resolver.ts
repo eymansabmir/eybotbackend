@@ -1,10 +1,10 @@
 import type { SessionEntity } from '../../features/session/session.entity';
-import type { ContactEntity } from '../../features/contact/contact.entity';
+import type { ContactInfo } from './engine.interface';
 import type { FlowEntity } from '../../features/flow/flow.entity';
 
 export interface VariableContext {
   session: SessionEntity;
-  contact: ContactEntity;
+  contact: ContactInfo;
   flow: FlowEntity;
 }
 

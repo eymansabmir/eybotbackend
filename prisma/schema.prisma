@@ -27,6 +27,8 @@ model Flow {
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  
+  campaigns     Campaign[]
 
   @@index([orgId, status])
 }
@@ -37,7 +39,7 @@ model Session {
   flowId            String
   flowVersion       Int
 
-  contactId         String
+  contactId         String?
   waId              String
   waBusinessNumber  String
 
@@ -79,6 +81,71 @@ model Contact {
   @@index([orgId])
 }
 
+model Campaign {
+  id              String         @id @default(uuid())
+  orgId           String
+  name            String
+  flowId          String
+  scheduleTime    DateTime?
+  status          CampaignStatus @default(draft)
+  activeVersionId String?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  flow            Flow          @relation(fields: [flowId], references: [id])
+  versions        CampaignVersion[]
+  stats           CampaignStats?
+
+  @@index([orgId, status])
+}
+
+model CampaignVersion {
+  id            String                @id @default(uuid())
+  campaignId    String
+  filePath      String
+  versionNumber Int
+  status        CampaignVersionStatus @default(draft)
+
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  campaign      Campaign              @relation(fields: [campaignId], references: [id])
+  recipients    CampaignRecipient[]
+
+  @@index([campaignId])
+}
+
+model CampaignRecipient {
+  id                String            @id @default(uuid())
+  campaignVersionId String
+  waId              String
+  variables         Json?
+  status            RecipientStatus   @default(pending)
+  attempts          Int               @default(0)
+  sentAt            DateTime?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  version           CampaignVersion   @relation(fields: [campaignVersionId], references: [id])
+
+  @@index([campaignVersionId, status])
+  @@index([waId])
+}
+
+model CampaignStats {
+  campaignId String   @id
+  total      Int      @default(0)
+  sent       Int      @default(0)
+  failed     Int      @default(0)
+  pending    Int      @default(0)
+
+  updatedAt  DateTime @updatedAt
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+}
+
 enum FlowStatus {
   draft
   published
@@ -91,4 +158,25 @@ enum SessionStatus {
   completed
   timed_out
   error
+}
+
+enum CampaignStatus {
+  draft
+  scheduled
+  running
+  completed
+  cancelled
+}
+
+enum CampaignVersionStatus {
+  draft
+  ready
+  cancelled
+}
+
+enum RecipientStatus {
+  pending
+  sent
+  failed
+  completed
 }

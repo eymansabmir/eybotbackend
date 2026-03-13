@@ -5,6 +5,9 @@ export const EXCHANGES = {
   INBOUND: 'wa.inbound',
   OUTBOUND: 'wa.outbound',
   CAMPAIGN: 'campaign',
+  CAMPAIGN_IMPORT: 'campaign.import',
+  CAMPAIGN_START: 'campaign.start',
+  CAMPAIGN_DISPATCH: 'campaign.dispatch',
 } as const;
 
 export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];

@@ -1,7 +1,6 @@
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
-import type { IEnginePlugin, StartFlowInput, ResumeFlowInput, OrchestratorResult } from './engine.interface';
+import type { IEnginePlugin, ContactInfo, StartFlowInput, ResumeFlowInput, OrchestratorResult } from './engine.interface';
 import type { FlowEntity } from '../../features/flow/flow.entity';
-import type { ContactEntity } from '../../features/contact/contact.entity';
 import type { SessionEntity } from '../../features/session/session.entity';
 import { FlowOrchestrator } from './orchestrator';
 
@@ -22,14 +21,13 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   startFlow(
     input: StartFlowInput,
     flow: FlowEntity,
-    contact: ContactEntity,
+    contact: ContactInfo,
   ): Promise<OrchestratorResult> {
-    const { result } = this._orchestrator.startFlow(
+    const result = this._orchestrator.startFlow(
       flow,
       contact,
       input.initialVariables ?? {},
       input.flowId,
-      input.contactId,
       input.waId,
       input.waBusinessNumber,
     );
@@ -37,20 +35,12 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   }
 
   resumeFlow(
-    _input: ResumeFlowInput,
+    input: ResumeFlowInput,
     flow: FlowEntity,
-    contact: ContactEntity,
+    contact: ContactInfo,
     session: SessionEntity,
   ): Promise<OrchestratorResult> {
-    const { result } = this._orchestrator.resumeFlow(flow, contact, session, _input.userInput);
+    const result = this._orchestrator.resumeFlow(flow, contact, session, input.userInput);
     return Promise.resolve(result);
-  }
-
-  /**
-   * Exposes the raw orchestrator for the session service which needs
-   * both the result and the contact mutations in a single call.
-   */
-  get orchestrator(): FlowOrchestrator {
-    return this._orchestrator;
   }
 }

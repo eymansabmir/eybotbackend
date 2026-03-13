@@ -57,4 +57,9 @@ export class AzureProvider implements IStorageProvider {
     const blobClient = this.containerClient.getBlockBlobClient(filePath);
     return `${blobClient.url}?${sasToken}`;
   }
+
+  async download(filePath: string): Promise<Buffer> {
+    const blockBlobClient = this.containerClient.getBlockBlobClient(filePath);
+    return blockBlobClient.downloadToBuffer();
+  }
 }

@@ -25,3 +25,25 @@ export interface CampaignJob {
   languageCode: string;
   components?: unknown[];
 }
+
+export interface ImportJob {
+  campaignId: string;
+  campaignVersionId: string;
+  filePath: string;
+  orgId: string;
+}
+
+export interface DispatchJob {
+  campaignId: string;
+  campaignVersionId: string;
+  orgId: string;
+}
+
+export interface RecipientJob {
+  campaignId: string;
+  campaignVersionId: string;
+  recipientId: string;
+  waId: string;
+  variables: Record<string, any>;
+  orgId: string;
+}

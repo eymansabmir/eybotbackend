@@ -1,8 +1,7 @@
 import { SessionEntity } from './session.entity';
 import { ISessionRepository } from './session.repository';
 import { IFlowRepository } from '../flow/flow.repository';
-import { IContactRepository } from '../contact/contact.repository';
-import type { IEnginePlugin, OrchestratorResult } from '../../plugins/engine';
+import type { IEnginePlugin, OrchestratorResult, ContactInfo } from '../../plugins/engine';
 import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
 import { ValidationError } from '../../utils/errors';
 import { normalizeWaId } from '../../utils/whatsapp';
@@ -26,7 +25,6 @@ export class SessionService implements ISessionService {
   constructor(
     private readonly sessionRepo: ISessionRepository,
     private readonly flowRepo: IFlowRepository,
-    private readonly contactRepo: IContactRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly whatsappPlugin: IWhatsAppPlugin,
   ) {}
@@ -40,12 +38,16 @@ export class SessionService implements ISessionService {
       throw new ValidationError(`Flow '${flowId}' is not published`);
     }
 
-    const contact = await this.contactRepo.findOrCreateByWaId(orgId, waId, contactName);
+    const contact: ContactInfo = {
+      waId,
+      name: contactName ?? waId,
+      customFields: {},
+    };
 
     await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
 
     const result = await this.enginePlugin.startFlow(
-      { orgId, flowId, contactId: contact.id!, waId, waBusinessNumber, initialVariables },
+      { orgId, flowId, waId, waBusinessNumber, initialVariables },
       flow,
       contact,
     );
@@ -62,7 +64,12 @@ export class SessionService implements ISessionService {
   async resumeSession(sessionId: string, userInput: string): Promise<{ session: SessionEntity; result: OrchestratorResult }> {
     const session = await this.sessionRepo.findByIdOrFail(sessionId);
     const flow = await this.flowRepo.findByIdOrFail(session.flowId);
-    const contact = await this.contactRepo.findByIdOrFail(session.contactId);
+
+    const contact: ContactInfo = {
+      waId: session.waId,
+      name: session.waId,
+      customFields: {},
+    };
 
     const result = await this.enginePlugin.resumeFlow(
       { sessionId, userInput },
