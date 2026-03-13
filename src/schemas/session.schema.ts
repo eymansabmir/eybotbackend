@@ -46,7 +46,7 @@ export const WaitingForSchema = z.discriminatedUnion('type', [TextWaitingSchema,
 export type WaitingFor = z.infer<typeof WaitingForSchema>;
 
 export const SessionSchema = z.object({
-  _id: z.string().optional(),
+  id: z.string().optional(),
   flowId: z.string(),
   flowVersion: z.number(),
   contactId: z.string(),
