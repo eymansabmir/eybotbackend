@@ -36,6 +36,12 @@
       ],
       "@plugins/*": [
         "plugins/*"
+      ],
+      "@features/*": [
+        "features/*"
+      ],
+      "@shared/*": [
+        "shared/*"
       ]
     }
   },

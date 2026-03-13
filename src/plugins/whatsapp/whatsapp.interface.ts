@@ -1,0 +1,24 @@
+import type { OutboundMessage } from '../engine/engine.interface';
+import type { WhatsAppNormalizer } from './normalizer';
+import type { WhatsAppDeduplicator } from './deduplicator';
+
+export const WHATSAPP_PLUGIN = 'whatsapp' as const;
+
+export interface IWhatsAppSender {
+  sendMessages(waId: string, messages: OutboundMessage[], sessionId?: string): Promise<void>;
+}
+
+/**
+ * WhatsAppPlugin is the central communication layer for the WhatsApp channel.
+ * It handles:
+ *  - Sending messages via Meta Cloud API (sender)
+ *  - Parsing incoming webhook payloads (normalizer)
+ *  - Deduplicating inbound messages (deduplicator)
+ *
+ * It does NOT own any workers or queues — those belong to WorkerPlugin.
+ */
+export interface IWhatsAppPlugin {
+  readonly sender: IWhatsAppSender;
+  readonly normalizer: WhatsAppNormalizer;
+  readonly deduplicator: WhatsAppDeduplicator;
+}

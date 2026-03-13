@@ -4,86 +4,81 @@ dotenv.config();
 
 import { createApp } from './app';
 import { env } from './config/env';
-import { connectDatabase } from './config/database';
-import { createInboundWorker } from './whatsapp/workers/inbound.worker';
-import { createOutboundWorker } from './whatsapp/workers/outbound.worker';
-import type { Worker } from 'bullmq';
-import type { WhatsAppConfig } from './whatsapp/whatsapp-api.service';
+import { PluginRegistry } from './plugins/plugin-registry';
+import { DatabasePlugin } from './plugins/database/database.plugin';
+import { RedisPlugin } from './plugins/redis/redis.plugin';
+import { StoragePlugin } from './plugins/storage/storage.plugin';
+import { EnginePlugin } from './plugins/engine/engine.plugin';
+import { WhatsAppPlugin } from './plugins/whatsapp/whatsapp.plugin';
+import { WorkerPlugin } from './plugins/worker/worker.plugin';
 
-let inboundWorker: Worker | null = null;
-let outboundWorker: Worker | null = null;
+import { PrismaFlowRepository } from './features/flow/flow.repository';
+import { PrismaContactRepository } from './features/contact/contact.repository';
+import { PrismaSessionRepository } from './features/session/session.repository';
+import { SessionInboundHandler } from './features/session/session.inbound-handler';
 
-async function startServer() {
-  if (!process.env.MONGODB_URI) {
-    throw new Error('MONGO_URI is not defined');
-  }
-  await connectDatabase(process.env.MONGODB_URI);
+import { DATABASE_PLUGIN, type IDatabasePlugin } from './plugins/database';
+import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
+import { REDIS_PLUGIN, type IRedisPlugin } from './plugins/redis';
+import { INBOUND_HANDLER } from './plugins/worker';
 
-  // Start workers if Redis is configured
-  if (env.REDIS_URL) {
-    console.log('✓ Starting WhatsApp workers...');
-    inboundWorker = createInboundWorker();
+async function startServer(): Promise<void> {
+  // ── Phase 1: Build registry & register all plugins ───────────────────────
+  const registry = new PluginRegistry();
 
-    // Configure outbound worker if WhatsApp API is configured
-    if (env.WHATSAPP_API_URL && env.WHATSAPP_API_TOKEN) {
-      const waConfig: WhatsAppConfig = {
-        apiUrl: env.WHATSAPP_API_URL,
-        apiToken: env.WHATSAPP_API_TOKEN,
-        phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID || '',
-      };
-      outboundWorker = createOutboundWorker(waConfig);
-      console.log('✓ Outbound worker started');
-    } else {
-      console.log('⚠ WhatsApp API not configured - outbound messages will be logged only');
-    }
-  } else {
-    console.log('⚠ Redis not configured - WhatsApp workers disabled');
-  }
+  registry.register(new DatabasePlugin());
+  registry.register(new RedisPlugin());
+  registry.register(new StoragePlugin());
+  registry.register(new EnginePlugin());
+  registry.register(new WhatsAppPlugin());
+  registry.register(new WorkerPlugin());
 
-  const app = createApp();
+  // ── Phase 2: Initialize all plugins (sequential, order above) ────────────
+  await registry.initializeAll();
+
+  // ── Phase 3: Register feature handlers (after plugins are ready) ─────────
+  const dbPlugin = registry.get<IDatabasePlugin>(DATABASE_PLUGIN);
+  const enginePlugin = registry.get<IEnginePlugin>(ENGINE_PLUGIN);
+  const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
+
+  const flowRepo = new PrismaFlowRepository(dbPlugin.prisma);
+  const contactRepo = new PrismaContactRepository(dbPlugin.prisma);
+  const sessionRepo = new PrismaSessionRepository(dbPlugin.prisma);
+
+  const inboundHandler = new SessionInboundHandler(
+    flowRepo,
+    contactRepo,
+    sessionRepo,
+    enginePlugin,
+    redisPlugin,
+  );
+  registry.registerValue(INBOUND_HANDLER, inboundHandler);
+
+  // ── Phase 4: Mount routes & start listening ───────────────────────────────
+  const app = createApp(registry);
   const PORT = parseInt(env.PORT, 10);
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`✓ Server running on port ${PORT}`);
     console.log(`✓ Environment: ${env.NODE_ENV}`);
     console.log(`✓ Health check: http://localhost:${PORT}/health`);
-    console.log(`✓ API endpoints:`);
-    console.log(`  - POST   /api/flows`);
-    console.log(`  - GET    /api/flows`);
-    console.log(`  - GET    /api/flows/:id`);
-    console.log(`  - PUT    /api/flows/:id`);
-    console.log(`  - POST   /api/flows/:id/publish`);
-    console.log(`  - POST   /api/flows/:id/archive`);
-    console.log(`  - DELETE /api/flows/:id`);
-    console.log(`  - GET    /api/node-types`);
-    console.log(`  - GET    /api/contacts`);
-    console.log(`  - POST   /api/chat-sessions`);
-    console.log(`  - POST   /api/chat-sessions/:id/resume`);
-    console.log(`  - GET    /api/webhooks/whatsapp/:orgId`);
-    console.log(`  - POST   /api/webhooks/whatsapp/:orgId`);
   });
-}
 
-async function shutdown() {
-  console.log('\nShutting down gracefully...');
-
-  if (inboundWorker) {
-    await inboundWorker.close();
-    console.log('✓ Inbound worker stopped');
+  // ── Graceful shutdown ─────────────────────────────────────────────────────
+  async function shutdown(): Promise<void> {
+    console.log('\nShutting down gracefully...');
+    server.close(async () => {
+      await registry.shutdownAll();
+      console.log('✓ All plugins shut down');
+      process.exit(0);
+    });
   }
 
-  if (outboundWorker) {
-    await outboundWorker.close();
-    console.log('✓ Outbound worker stopped');
-  }
-
-  process.exit(0);
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-startServer().catch((error) => {
-  console.error('Failed to start server:', error);
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
   process.exit(1);
 });

@@ -1,0 +1,309 @@
+import type { Node } from '../../schemas/node.schema';
+import { NodeType } from '../../schemas/node-types.enum';
+import { FlowExecutionError } from '../../shared/errors';
+import type { VariableContext } from './variable-resolver';
+import { VariableResolver } from './variable-resolver';
+import { ConditionEvaluator } from './condition-evaluator';
+import { GraphTraverser } from './graph-traverser';
+import type { OutboundMessage } from './engine.interface';
+import type { WaitingFor } from '../../features/session/session.entity';
+
+export interface VariableMutation {
+  scope: 'session' | 'contact';
+  key: string;
+  value: unknown;
+}
+
+export interface HistoryStep {
+  nodeId: string;
+  nodeType: NodeType;
+  enteredAt: Date;
+  exitedAt?: Date;
+  branchTaken?: string;
+  userInput?: string;
+}
+
+export interface NodeExecutionResult {
+  nextNodeId: string | null;
+  outboundMessages: OutboundMessage[];
+  variableMutations: VariableMutation[];
+  waitForInput?: WaitingFor;
+  historyStep: HistoryStep;
+  isTerminal: boolean;
+}
+
+export interface NodeExecutionInput {
+  context: VariableContext;
+  currentNode: Node;
+  userInput?: string;
+}
+
+const LOGIC_TYPES = new Set<NodeType>([
+  NodeType.CONDITION,
+  NodeType.SET_VARIABLE,
+  NodeType.RANDOM_SPLIT,
+  NodeType.START,
+  NodeType.JUMP_TO_FLOW,
+]);
+
+export class NodeExecutor {
+  constructor(
+    private readonly resolver: VariableResolver,
+    private readonly evaluator: ConditionEvaluator,
+  ) {}
+
+  isLogicNode(type: NodeType): boolean {
+    return LOGIC_TYPES.has(type);
+  }
+
+  execute(input: NodeExecutionInput, traverser: GraphTraverser): NodeExecutionResult {
+    const { context, currentNode, userInput } = input;
+    const enteredAt = new Date();
+
+    switch (currentNode.type) {
+      case NodeType.START:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser);
+
+      case NodeType.END:
+        return {
+          nextNodeId: null, outboundMessages: [], variableMutations: [], isTerminal: true,
+          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date() },
+        };
+
+      case NodeType.SEND_TEXT:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
+          { type: currentNode.type, payload: { message: this.text(currentNode.data['message'] as string, context) } },
+        ]);
+
+      case NodeType.SEND_IMAGE:
+      case NodeType.SEND_VIDEO:
+      case NodeType.SEND_AUDIO:
+      case NodeType.SEND_DOCUMENT:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
+          type: currentNode.type,
+          payload: {
+            url: this.text(currentNode.data['url'] as string, context),
+            ...(currentNode.data['caption'] ? { caption: this.text(currentNode.data['caption'] as string, context) } : {}),
+            ...(currentNode.data['filename'] ? { filename: currentNode.data['filename'] } : {}),
+          },
+        }]);
+
+      case NodeType.SEND_LOCATION:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
+          type: currentNode.type,
+          payload: {
+            latitude: currentNode.data['latitude'],
+            longitude: currentNode.data['longitude'],
+            name: currentNode.data['name'],
+            address: currentNode.data['address'],
+          },
+        }]);
+
+      case NodeType.SEND_BUTTONS:
+        return this.handleButtons(currentNode, context, enteredAt, traverser, userInput);
+
+      case NodeType.SEND_LIST:
+        return this.handleList(currentNode, context, enteredAt, traverser, userInput);
+
+      case NodeType.SEND_TEMPLATE:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
+          type: currentNode.type,
+          payload: {
+            templateName: currentNode.data['templateName'],
+            languageCode: currentNode.data['languageCode'],
+            components: currentNode.data['components'],
+          },
+        }]);
+
+      case NodeType.ASK_QUESTION:
+        return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
+
+      case NodeType.CONDITION:
+        return this.handleCondition(currentNode, context, enteredAt, traverser);
+
+      case NodeType.SET_VARIABLE:
+        return this.handleSetVariable(currentNode, context, enteredAt, traverser);
+
+      case NodeType.RANDOM_SPLIT:
+        return this.handleRandomSplit(currentNode, enteredAt, traverser);
+
+      case NodeType.JUMP_TO_FLOW:
+        return {
+          nextNodeId: null, outboundMessages: [], variableMutations: [], isTerminal: true,
+          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date(), branchTaken: currentNode.data['targetFlowId'] as string },
+        };
+
+      case NodeType.HUMAN_HANDOFF: {
+        const msg = currentNode.data['message'] ? this.text(currentNode.data['message'] as string, context) : undefined;
+        return {
+          nextNodeId: null, outboundMessages: msg ? [{ type: currentNode.type, payload: { message: msg, tag: currentNode.data['tag'] } }] : [],
+          variableMutations: [], isTerminal: true,
+          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date() },
+        };
+      }
+
+      case NodeType.WEBHOOK:
+      case NodeType.GOOGLE_SHEETS:
+      case NodeType.NOCODB:
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
+          { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
+        ]);
+
+      default:
+        throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
+    }
+  }
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  private text(template: string, ctx: VariableContext): string {
+    return this.resolver.resolve(template, ctx);
+  }
+
+  private defaultResult(
+    node: Node,
+    branchKey: string,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+    messages: OutboundMessage[] = [],
+    mutations: VariableMutation[] = [],
+  ): NodeExecutionResult {
+    const next = traverser.getNextNode(node.id, branchKey);
+    return {
+      nextNodeId: next?.id ?? null,
+      outboundMessages: messages,
+      variableMutations: mutations,
+      isTerminal: false,
+      historyStep: { nodeId: node.id, nodeType: node.type, enteredAt, exitedAt: new Date(), branchTaken: branchKey },
+    };
+  }
+
+  private handleAskQuestion(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
+    const resolvedMessage = this.text(message as string, ctx);
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      return {
+        nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'text', variableName, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: variableScope as 'session' | 'contact', key: variableName as string, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput } };
+  }
+
+  private handleButtons(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const body = this.text(node.data['body'] as string, ctx);
+    const footer = node.data['footer'] ? this.text(node.data['footer'] as string, ctx) : undefined;
+    const interaction = node.data['interaction'] as any;
+
+    if (interaction?.mode === 'input' && userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, label: b.label, branchKey: b.id })) ?? [];
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: node.type, payload: { body, footer, buttons: node.data['buttons'] } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    if (interaction?.mode === 'input' && userInput !== undefined) {
+      const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, branchKey: b.id })) ?? [];
+      const selected = (options as any[]).find((o: any) => o.id === userInput);
+      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
+      const mutations: VariableMutation[] = [];
+      if (interaction.input?.variableName && interaction.input?.variableScope) {
+        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      }
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, [
+      { type: node.type, payload: { body, footer, buttons: node.data['buttons'] } },
+    ]);
+  }
+
+  private handleList(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const body = this.text(node.data['body'] as string, ctx);
+    const interaction = node.data['interaction'] as any;
+
+    if (interaction?.mode === 'input' && userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, label: r.title, branchKey: r.id }))) ?? [];
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: node.type, payload: { body, buttonTitle: node.data['buttonTitle'], sections: node.data['sections'] } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    if (interaction?.mode === 'input' && userInput !== undefined) {
+      const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, branchKey: r.id }))) ?? [];
+      const selected = (options as any[]).find((o: any) => o.id === userInput);
+      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
+      const mutations: VariableMutation[] = [];
+      if (interaction.input?.variableName && interaction.input?.variableScope) {
+        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      }
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, [
+      { type: node.type, payload: { body, buttonTitle: node.data['buttonTitle'], sections: node.data['sections'] } },
+    ]);
+  }
+
+  private handleCondition(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const expression = node.data['expression'];
+    if (!expression) throw new FlowExecutionError('Condition node missing expression', node.id);
+    const passed = this.evaluator.evaluate(expression as any, ctx);
+    return this.defaultResult(node, passed ? 'yes' : 'no', enteredAt, traverser);
+  }
+
+  private handleSetVariable(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const assignments = (node.data['assignments'] ?? []) as Array<{ variable: string; value: string; scope: 'session' | 'contact' }>;
+    const mutations: VariableMutation[] = assignments.map(a => ({
+      scope: a.scope,
+      key: a.variable,
+      value: this.text(a.value, ctx),
+    }));
+    return this.defaultResult(node, 'default', enteredAt, traverser, [], mutations);
+  }
+
+  private handleRandomSplit(node: Node, enteredAt: Date, traverser: GraphTraverser): NodeExecutionResult {
+    const branches = (node.data['branches'] ?? []) as Array<{ key: string; percentage: number }>;
+    const rand = Math.random() * 100;
+    let cumulative = 0;
+    let selectedKey = branches[0]?.key ?? 'default';
+    for (const branch of branches) {
+      cumulative += branch.percentage;
+      if (rand < cumulative) { selectedKey = branch.key; break; }
+    }
+    return this.defaultResult(node, selectedKey, enteredAt, traverser);
+  }
+}

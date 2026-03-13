@@ -1,5 +1,5 @@
 import multer from "multer";
-import { MAX_FILE_SIZE } from "../lib/storage/storage.config";
+import { MAX_FILE_SIZE } from "../plugins/storage/storage.config";
 
 /**
  * Multer instance configured with memory storage.
