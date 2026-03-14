@@ -4,12 +4,12 @@ import { AppError, ValidationError } from '../utils/errors';
 
 export function errorHandler(
   error: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void {
   if (error instanceof ZodError) {
-    console.error('Validation Error Details:', JSON.stringify(error.errors, null, 2));
+    logger.warn({ path: req.path, errors: error.errors }, 'Request validation failed');
     res.status(400).json({
       error: 'Validation Error',
       message: 'Invalid request data',
@@ -19,7 +19,11 @@ export function errorHandler(
   }
 
   if (error instanceof AppError) {
-    console.error(`[${error.constructor.name}] ${error.message}`);
+    const level = error.statusCode >= 500 ? 'error' : 'warn';
+    logger[level](
+      { path: req.path, statusCode: error.statusCode, error: error.constructor.name },
+      error.message,
+    );
     res.status(error.statusCode).json({
       error: error.constructor.name,
       message: error.message,
@@ -28,7 +32,7 @@ export function errorHandler(
     return;
   }
 
-  console.error('Unhandled error:', error);
+  logger.error({ path: req.path, err: error }, 'Unhandled error');
 
   res.status(500).json({
     error: 'Internal Server Error',

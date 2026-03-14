@@ -15,7 +15,7 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
       try {
         await this.send(waId, msg);
       } catch (err) {
-        console.error(`[DirectWhatsAppSender] Failed to send ${msg.type}:`, err);
+        logger.error({ waId, messageType: msg.type, err }, 'DirectWhatsAppSender: failed to send message');
       }
     }
   }
@@ -43,13 +43,13 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
       case NodeType.SEND_TEMPLATE:
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
       default:
-        console.warn(`[DirectWhatsAppSender] Unknown message type: ${msg.type}`);
+        logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }
   }
 }
 
 export class StubWhatsAppSender implements IWhatsAppSender {
   async sendMessages(waId: string, messages: OutboundMessage[]): Promise<void> {
-    console.log('[StubWhatsAppSender] Would send to', waId, ':', JSON.stringify(messages, null, 2));
+    logger.debug({ waId, messages }, 'StubWhatsAppSender: would send message(s)');
   }
 }

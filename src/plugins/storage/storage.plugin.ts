@@ -19,7 +19,7 @@ export class StoragePlugin implements IPlugin, IStoragePlugin {
 
   async initialize(_registry: IPluginRegistry): Promise<void> {
     this._provider = createStorageProvider();
-    console.log(`[StoragePlugin] Provider ready: ${process.env.STORAGE_PROVIDER ?? 'gcs'}`);
+    logger.info({ provider: process.env.STORAGE_PROVIDER ?? 'gcs' }, 'StoragePlugin: provider ready');
   }
 
   async shutdown(): Promise<void> {
@@ -57,5 +57,9 @@ export class StoragePlugin implements IPlugin, IStoragePlugin {
       throw new Error('[StoragePlugin] Current provider does not support signed URLs');
     }
     return this._provider.getSignedUrl(filePath);
+  }
+
+  async downloadFile(filePath: string): Promise<Buffer> {
+    return this._provider.download(filePath);
   }
 }

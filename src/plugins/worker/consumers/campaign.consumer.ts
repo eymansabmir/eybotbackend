@@ -13,9 +13,14 @@ import type { CampaignJob } from '../jobs';
  */
 export async function handleCampaignJob(data: unknown, registry: IPluginRegistry): Promise<void> {
   const job = data as CampaignJob;
-  console.log(`[CampaignConsumer] Processing campaign ${job.campaignId} for ${job.recipients.length} recipients`);
+  logger.info(
+    { campaignId: job.campaignId, recipientCount: job.recipients.length },
+    'CampaignConsumer: processing campaign batch',
+  );
 
   const { sender } = registry.get<IWhatsAppPlugin>(WHATSAPP_PLUGIN);
+  let sent = 0;
+  let failed = 0;
 
   for (const waId of job.recipients) {
     try {
@@ -27,11 +32,13 @@ export async function handleCampaignJob(data: unknown, registry: IPluginRegistry
           components: job.components,
         },
       }]);
+      sent++;
     } catch (err) {
-      console.error(`[CampaignConsumer] Failed to send to ${waId}:`, err);
+      failed++;
+      logger.error({ campaignId: job.campaignId, waId, err }, 'CampaignConsumer: failed to send to recipient');
       // Continue — don't fail the entire campaign for one recipient
     }
   }
 
-  console.log(`[CampaignConsumer] Campaign ${job.campaignId} done`);
+  logger.info({ campaignId: job.campaignId, sent, failed }, 'CampaignConsumer: campaign batch complete');
 }

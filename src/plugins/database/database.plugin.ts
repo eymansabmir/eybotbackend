@@ -24,11 +24,11 @@ export class DatabasePlugin implements IPlugin, IDatabasePlugin {
     this._prisma = new PrismaClient({ adapter });
 
     await this._prisma.$connect();
-    console.log('[DatabasePlugin] PostgreSQL connected');
+    logger.info('DatabasePlugin: PostgreSQL connected');
   }
 
   async shutdown(): Promise<void> {
     await this._prisma.$disconnect();
-    console.log('[DatabasePlugin] PostgreSQL disconnected');
+    logger.info('DatabasePlugin: PostgreSQL disconnected');
   }
 }

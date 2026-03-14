@@ -14,7 +14,7 @@ export class PluginRegistry implements IPluginRegistry {
     }
     this.plugins.set(plugin.name, plugin);
     this.registrationOrder.push(plugin.name);
-    console.log(`[PluginRegistry] Registered plugin: ${plugin.name}`);
+    logger.debug({ plugin: plugin.name }, 'Plugin registered');
   }
 
   registerValue(key: string, value: unknown): void {
@@ -22,7 +22,7 @@ export class PluginRegistry implements IPluginRegistry {
       throw new Error(`[PluginRegistry] Value "${key}" is already registered.`);
     }
     this.values.set(key, value);
-    console.log(`[PluginRegistry] Registered value: ${key}`);
+    logger.debug({ key }, 'Registry value registered');
   }
 
   get<T>(name: string): T {
@@ -46,9 +46,9 @@ export class PluginRegistry implements IPluginRegistry {
   async initializeAll(): Promise<void> {
     for (const name of this.registrationOrder) {
       const plugin = this.plugins.get(name)!;
-      console.log(`[PluginRegistry] Initializing plugin: ${name}`);
+      logger.info({ plugin: name }, 'Initialising plugin');
       await plugin.initialize(this);
-      console.log(`[PluginRegistry] ✓ Plugin ready: ${name}`);
+      logger.info({ plugin: name }, 'Plugin ready');
     }
   }
 
@@ -56,12 +56,12 @@ export class PluginRegistry implements IPluginRegistry {
     const reverseOrder = [...this.registrationOrder].reverse();
     for (const name of reverseOrder) {
       const plugin = this.plugins.get(name)!;
-      console.log(`[PluginRegistry] Shutting down plugin: ${name}`);
+      logger.info({ plugin: name }, 'Shutting down plugin');
       try {
         await plugin.shutdown();
-        console.log(`[PluginRegistry] ✓ Plugin stopped: ${name}`);
+        logger.info({ plugin: name }, 'Plugin stopped');
       } catch (err) {
-        console.error(`[PluginRegistry] Error shutting down plugin "${name}":`, err);
+        logger.error({ plugin: name, err }, 'Error shutting down plugin');
       }
     }
   }

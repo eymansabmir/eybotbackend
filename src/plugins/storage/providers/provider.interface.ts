@@ -18,4 +18,5 @@ export interface IStorageProvider {
     filePath: string,
     contentType: string,
   ): Promise<{ uploadUrl: string; fileUrl: string }>;
+  download(filePath: string): Promise<Buffer>;
 }

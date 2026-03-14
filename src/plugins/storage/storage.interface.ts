@@ -21,4 +21,5 @@ export interface IStoragePlugin {
     folder: string,
   ): Promise<{ uploadUrl: string; fileUrl: string }>;
   getSignedUrl(filePath: string): Promise<string>;
+  downloadFile(filePath: string): Promise<Buffer>;
 }

@@ -77,7 +77,7 @@ export class WhatsAppAPIService {
   }
 
   private async call(payload: unknown): Promise<void> {
-    console.log('Sending payload:', payload);
+    logger.debug({ payload }, 'WhatsAppAPI: sending payload');
     const url = `${this.config.apiUrl}/${this.config.phoneNumberId}/messages`;
     const response = await fetch(url, {
       method: 'POST',

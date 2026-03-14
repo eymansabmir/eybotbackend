@@ -17,6 +17,7 @@ export class RabbitMQBroker {
   private url!: string;
   private reconnectDelay = 2000;
   private isShuttingDown = false;
+  private _campaignQueue: string | null = null;
 
   async connect(url: string): Promise<void> {
     this.url = url;
@@ -53,7 +54,7 @@ export class RabbitMQBroker {
     const channel = await this.connection.createChannel();
     await channel.prefetch(prefetch);
 
-    channel.on('error', (err: unknown) => console.error(`[RabbitMQBroker] Consumer channel error on ${queue}:`, err));
+    channel.on('error', (err: unknown) => logger.error({ queue, err }, 'RabbitMQBroker: consumer channel error'));
 
     await channel.consume(queue, async (msg: amqp.Message | null) => {
       if (!msg) return; // consumer cancelled
@@ -63,14 +64,14 @@ export class RabbitMQBroker {
         await handler(data);
         channel.ack(msg);
       } catch (err) {
-        console.error(`[RabbitMQBroker] Job failed on queue "${queue}":`, err);
+        logger.error({ queue, err }, 'RabbitMQBroker: job failed, nacking message');
         // Negative-ack without requeue — message goes to dead-letter or is dropped.
         // Change to `true` if you want automatic retry.
         channel.nack(msg, false, false);
       }
     });
 
-    console.log(`[RabbitMQBroker] Consumer registered on queue: ${queue}`);
+    logger.info({ queue }, 'RabbitMQBroker: consumer registered');
   }
 
   /** Declare all exchanges and queues the app needs. */
@@ -83,6 +84,9 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.INBOUND, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.OUTBOUND, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN, 'fanout', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_IMPORT, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.CAMPAIGN_DISPATCH, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -93,6 +97,18 @@ export class RabbitMQBroker {
     await ch.assertQueue('wa.outbound.q', { durable: true });
     await ch.bindQueue('wa.outbound.q', EXCHANGES.OUTBOUND, '');
 
+    // Campaign Import
+    await ch.assertQueue('campaign.import.q', { durable: true });
+    await ch.bindQueue('campaign.import.q', EXCHANGES.CAMPAIGN_IMPORT, '');
+
+    // Campaign Start (Scheduling)
+    await ch.assertQueue('campaign.start.q', { durable: true });
+    await ch.bindQueue('campaign.start.q', EXCHANGES.CAMPAIGN_START, '');
+
+    // Campaign Dispatch
+    await ch.assertQueue('campaign.dispatch.q', { durable: true });
+    await ch.bindQueue('campaign.dispatch.q', EXCHANGES.CAMPAIGN_DISPATCH, '');
+
     // Campaign: per-instance exclusive queue bound to fanout exchange.
     // Each running instance gets its own queue → every instance receives
     // every campaign message (broadcast pattern).
@@ -101,14 +117,14 @@ export class RabbitMQBroker {
       durable: false,
     });
     await ch.bindQueue(campaignQueue, EXCHANGES.CAMPAIGN, '');
-    (this as any)._campaignQueue = campaignQueue; // store for consumer registration
+    this._campaignQueue = campaignQueue; // store for consumer registration
 
     await ch.close();
-    console.log('[RabbitMQBroker] Topology declared');
+    logger.info('RabbitMQBroker: topology declared');
   }
 
   get campaignQueue(): string {
-    return (this as any)._campaignQueue as string;
+    return this._campaignQueue ?? '';
   }
 
   // ── Private ─────────────────────────────────────────────────────────────
@@ -117,34 +133,34 @@ export class RabbitMQBroker {
     this.connection = await amqp.connect(this.url);
 
     this.connection.on('error', (err: unknown) => {
-      console.error('[RabbitMQBroker] Connection error:', err);
+      logger.error({ err }, 'RabbitMQBroker: connection error');
     });
 
     this.connection.on('close', () => {
       if (!this.isShuttingDown) {
-        console.warn('[RabbitMQBroker] Connection closed unexpectedly — reconnecting...');
+        logger.warn('RabbitMQBroker: connection closed unexpectedly — reconnecting...');
         this.scheduleReconnect();
       }
     });
 
     this.publishChannel = await this.connection.createChannel();
     this.publishChannel.on('error', (err: unknown) => {
-      console.error('[RabbitMQBroker] Publish channel error:', err);
+      logger.error({ err }, 'RabbitMQBroker: publish channel error');
     });
 
-    console.log('[RabbitMQBroker] Connected to RabbitMQ');
+    logger.info('RabbitMQBroker: connected to RabbitMQ');
     this.reconnectDelay = 2000; // reset backoff on successful connect
   }
 
   private scheduleReconnect(): void {
     setTimeout(async () => {
       if (this.isShuttingDown) return;
-      console.log(`[RabbitMQBroker] Reconnecting in ${this.reconnectDelay}ms...`);
+      logger.info({ delay: this.reconnectDelay }, 'RabbitMQBroker: reconnecting...');
       try {
         await this.createConnection();
         await this.setupTopology();
       } catch (err) {
-        console.error('[RabbitMQBroker] Reconnect failed:', err);
+        logger.error({ err, delay: this.reconnectDelay }, 'RabbitMQBroker: reconnect failed');
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000); // cap at 30s
         this.scheduleReconnect();
       }

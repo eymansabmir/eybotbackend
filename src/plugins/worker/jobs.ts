@@ -25,3 +25,27 @@ export interface CampaignJob {
   languageCode: string;
   components?: unknown[];
 }
+
+export interface ImportJob {
+  campaignId: string;
+  campaignVersionId: string;
+  filePath: string;
+  orgId: string;
+  /** When true, the import consumer publishes CAMPAIGN_START after import completes. */
+  autoStart: boolean;
+}
+
+export interface DispatchJob {
+  campaignId: string;
+  campaignVersionId: string;
+  orgId: string;
+}
+
+export interface RecipientJob {
+  campaignId: string;
+  campaignVersionId: string;
+  recipientId: string;
+  waId: string;
+  variables: Record<string, any>;
+  orgId: string;
+}

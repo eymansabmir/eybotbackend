@@ -1,10 +1,8 @@
 import type { IInboundHandler } from '../../plugins/worker/handlers.interface';
 import type { InboundJob, OutboundJob } from '../../plugins/worker/jobs';
 import type { IFlowRepository } from '../flow/flow.repository';
-import type { IContactRepository } from '../contact/contact.repository';
 import type { ISessionRepository } from './session.repository';
-import { ContactEntity } from '../contact/contact.entity';
-import type { IEnginePlugin } from '../../plugins/engine';
+import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
 import { ValidationError } from '../../utils/errors';
 
@@ -14,7 +12,6 @@ const LOCK_TTL = 10; // seconds
 export class SessionInboundHandler implements IInboundHandler {
   constructor(
     private readonly flowRepo: IFlowRepository,
-    private readonly contactRepo: IContactRepository,
     private readonly sessionRepo: ISessionRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly redisPlugin: IRedisPlugin,
@@ -30,34 +27,37 @@ export class SessionInboundHandler implements IInboundHandler {
 
     const locked = await acquireLock(redis, lockKey, lockValue, LOCK_TTL);
     if (!locked) {
+      logger.warn({ waId, lockKey }, 'SessionInboundHandler: could not acquire lock, dropping message');
       throw new Error(`[SessionInboundHandler] Could not acquire lock for ${waId}`);
     }
+    logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock acquired');
 
     try {
-      // Ensure contact exists
-      let contact = await this.contactRepo.findByWaId(orgId, waId);
-      if (!contact) {
-        contact = await this.contactRepo.create(new ContactEntity({
-          orgId, waId,
-          name: message.contactName ?? waId,
-          tags: [], customFields: {}, optIn: true,
-        }));
-      }
+      const contact: ContactInfo = {
+        waId,
+        name: message.contactName ?? waId,
+        customFields: {},
+      };
 
       const activeSession = await this.sessionRepo.findCurrentByWhatsApp(waBusinessNumber, waId);
       const outboundMessages: Array<{ type: string; payload: Record<string, unknown> }> = [];
       let sessionId: string;
 
       if (activeSession) {
-        // Resume
+        // Resume existing session
+        logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
+
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
-        const { result, contactMutations } = (this.enginePlugin as any).orchestrator.resumeFlow(
-          flow, contact, activeSession, userInput,
+        const result = await this.enginePlugin.resumeFlow(
+          { sessionId: activeSession.id!, userInput: userInput ?? '' },
+          flow,
+          contact,
+          activeSession,
         );
 
         await this.sessionRepo.update(result.session.id!, {
@@ -69,17 +69,14 @@ export class SessionInboundHandler implements IInboundHandler {
           isCurrent: result.session.isCurrent,
         });
 
-        if (Object.keys(contactMutations).length > 0) {
-          await this.contactRepo.update(contact.id!, {
-            customFields: { ...contact.customFields, ...contactMutations },
-          });
-        }
-
         outboundMessages.push(...result.outboundMessages);
         sessionId = result.session.id!;
+        logger.info({ sessionId, isFinished: result.isFinished }, 'SessionInboundHandler: session resumed');
       } else {
         // Match flow by keyword
         const tokens = (text ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        logger.debug({ waId, tokens }, 'SessionInboundHandler: matching keyword');
+
         let flow = null;
         for (const token of tokens) {
           flow = await this.flowRepo.findPublishedByOrgAndKeyword(orgId, token);
@@ -87,13 +84,17 @@ export class SessionInboundHandler implements IInboundHandler {
         }
 
         if (!flow) {
+          logger.warn({ waId, orgId, tokens }, 'SessionInboundHandler: no flow matched keyword');
           throw new ValidationError('No published flow matched the incoming message');
         }
 
+        logger.info({ waId, flowId: flow.id }, 'SessionInboundHandler: starting new session from keyword match');
+
         await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
-        const { result, contactMutations } = (this.enginePlugin as any).orchestrator.startFlow(
-          flow, contact, {},
-          flow.id!, contact.id!, waId, waBusinessNumber,
+        const result = await this.enginePlugin.startFlow(
+          { orgId, flowId: flow.id!, waId, waBusinessNumber },
+          flow,
+          contact,
         );
 
         const saved = await this.sessionRepo.create(result.session);
@@ -108,13 +109,8 @@ export class SessionInboundHandler implements IInboundHandler {
           isCurrent: result.session.isCurrent,
         });
 
-        if (Object.keys(contactMutations).length > 0) {
-          await this.contactRepo.update(contact.id!, {
-            customFields: { ...contact.customFields, ...contactMutations },
-          });
-        }
-
         outboundMessages.push(...result.outboundMessages);
+        logger.info({ sessionId, flowId: flow.id }, 'SessionInboundHandler: new session started');
       }
 
       return outboundMessages.map(msg => ({
@@ -127,6 +123,7 @@ export class SessionInboundHandler implements IInboundHandler {
       }));
     } finally {
       await releaseLock(redis, lockKey, lockValue);
+      logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock released');
     }
   }
 }
