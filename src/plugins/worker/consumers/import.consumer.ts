@@ -1,6 +1,7 @@
 import { IPluginRegistry } from '../../plugin.interface';
 import { STORAGE_PLUGIN, IStoragePlugin } from '../../storage';
-import { ImportJob } from '../jobs';
+import { ImportJob, DispatchJob } from '../jobs';
+import { EXCHANGES, IWorkerPlugin, WORKER_PLUGIN } from '../worker.interface';
 import { CampaignVersionStatus } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { CAMPAIGN_REPOSITORY, CAMPAIGN_RECIPIENT_REPOSITORY } from '../../../features/repositories.interface';
@@ -35,11 +36,48 @@ export async function handleImportJob(data: unknown, registry: IPluginRegistry):
 
     for (let i = 0; i < total; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
-      await recipientRepo.batchCreate(job.campaignVersionId, batch.map(row => ({
-        waId: String(row.waId || row['Phone Number'] || row.phone).replace(/\D/g, ''),
-        variables: row as any,
-      })));
-      logger.debug({ campaignId: job.campaignId, batchStart: i, batchEnd: i + batch.length }, 'ImportWorker: batch inserted');
+      const recipients = batch.map(row => {
+        // Find phone number column case-insensitively
+        const keys = Object.keys(row);
+        const phoneKey = keys.find(k => {
+          const normalized = k.toLowerCase().trim().replace(/[\s_-]/g, '');
+          return ['waid', 'phonenumber', 'phone', 'phoneno', 'contact', 'mobile', 'telephone', 'mobileno', 'phonenumbertextformat', 'phonecolumn'].includes(normalized);
+        });
+
+        if (!phoneKey) {
+          logger.warn({ row, campaignId: job.campaignId }, 'ImportWorker: No phone column found in row. Available columns:', Object.keys(row));
+          return null;
+        }
+
+        const rawWaId = row[phoneKey];
+        const cleanWaId = rawWaId ? String(rawWaId).trim().replace(/\D/g, '') : '';
+
+        if (i === 0 && batch.indexOf(row) === 0) {
+          logger.info({ 
+            firstRow: row, 
+            phoneKey, 
+            rawWaId, 
+            cleanWaId,
+            campaignId: job.campaignId 
+          }, 'ImportWorker: Debug - First row processing details');
+        }
+
+        return {
+          waId: cleanWaId,
+          variables: row as any,
+        };
+      }).filter(r => {
+        if (!r || !r.waId) {
+          logger.warn({ campaignId: job.campaignId, row: r }, 'ImportWorker: skipping row with missing/invalid phone number');
+          return false;
+        }
+        return true;
+      });
+
+      if (recipients.length > 0) {
+        await recipientRepo.batchCreate(job.campaignVersionId, recipients);
+        logger.debug({ campaignId: job.campaignId, batchStart: i, count: recipients.length }, 'ImportWorker: batch inserted');
+      }
     }
 
     // 4. Create Stats and Update Version Status
@@ -47,6 +85,18 @@ export async function handleImportJob(data: unknown, registry: IPluginRegistry):
     await campaignRepo.updateVersionStatus(job.campaignVersionId, CampaignVersionStatus.ready);
 
     logger.info({ campaignId: job.campaignId, totalRecipients: total }, 'ImportWorker: import complete');
+
+    // 5. Auto-start immediate campaigns — scheduled ones are handled by the DB poller
+    if (job.autoStart) {
+      const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
+      const dispatchJob: DispatchJob = {
+        campaignId: job.campaignId,
+        campaignVersionId: job.campaignVersionId,
+        orgId: job.orgId,
+      };
+      await workerPlugin.publish(EXCHANGES.CAMPAIGN_START, dispatchJob);
+      logger.info({ campaignId: job.campaignId }, 'ImportWorker: CAMPAIGN_START enqueued after import');
+    }
   } catch (error) {
     logger.error({ campaignId: job.campaignId, error }, 'ImportWorker: import failed');
   }

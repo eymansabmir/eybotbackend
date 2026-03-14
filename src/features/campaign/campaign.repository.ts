@@ -5,6 +5,7 @@ import { NotFoundError } from '../../utils/errors';
 
 export interface ICampaignRepository {
   create(campaign: CampaignEntity): Promise<CampaignEntity>;
+  findAll(orgId: string): Promise<CampaignEntity[]>;
   findById(id: string): Promise<CampaignEntity | null>;
   findByIdOrFail(id: string): Promise<CampaignEntity>;
   findByIdWithFlow(id: string): Promise<any>; // Includes flow
@@ -23,6 +24,10 @@ export interface ICampaignRepository {
   }): Promise<any>;
   updateVersionStatus(id: string, status: CampaignVersionStatus): Promise<any>;
   getLatestVersionNumber(campaignId: string): Promise<number>;
+  getLatestVersion(campaignId: string): Promise<any>;
+  findDueScheduledCampaigns(): Promise<CampaignEntity[]>;
+  updateStatusIfScheduled(id: string, status: CampaignStatus): Promise<boolean>;
+  delete(id: string): Promise<void>;
   updateStats(campaignId: string, updates: { 
     sent?: number; 
     failed?: number; 
@@ -39,6 +44,14 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     const data = CampaignMapper.toPrisma(campaign);
     const created = await this.prisma.campaign.create({ data });
     return CampaignMapper.toEntity(created);
+  }
+
+  async findAll(orgId: string): Promise<CampaignEntity[]> {
+    const campaigns = await this.prisma.campaign.findMany({
+      where: { orgId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return campaigns.map(CampaignMapper.toEntity);
   }
 
   async findById(id: string): Promise<CampaignEntity | null> {
@@ -107,11 +120,42 @@ export class PrismaCampaignRepository implements ICampaignRepository {
   }
 
   async getLatestVersionNumber(campaignId: string): Promise<number> {
-    const lastVersion = await this.prisma.campaignVersion.findFirst({
+    const lastVersion = await this.getLatestVersion(campaignId);
+    return lastVersion?.versionNumber || 0;
+  }
+
+  async getLatestVersion(campaignId: string): Promise<any> {
+    return this.prisma.campaignVersion.findFirst({
       where: { campaignId },
       orderBy: { versionNumber: 'desc' },
     });
-    return lastVersion?.versionNumber || 0;
+  }
+
+  async findDueScheduledCampaigns(): Promise<CampaignEntity[]> {
+    const campaigns = await this.prisma.campaign.findMany({
+      where: {
+        status: CampaignStatus.scheduled,
+        scheduleTime: {
+          lte: new Date(),
+        },
+      },
+    });
+    return campaigns.map(CampaignMapper.toEntity);
+  }
+
+  async updateStatusIfScheduled(id: string, status: CampaignStatus): Promise<boolean> {
+    const result = await this.prisma.campaign.updateMany({
+      where: { 
+        id,
+        status: CampaignStatus.scheduled,
+      },
+      data: { status },
+    });
+    return result.count > 0;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.prisma.campaign.delete({ where: { id } });
   }
 
   async updateStats(campaignId: string, updates: { 

@@ -31,6 +31,8 @@ export interface ImportJob {
   campaignVersionId: string;
   filePath: string;
   orgId: string;
+  /** When true, the import consumer publishes CAMPAIGN_START after import completes. */
+  autoStart: boolean;
 }
 
 export interface DispatchJob {

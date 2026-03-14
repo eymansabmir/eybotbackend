@@ -17,14 +17,23 @@ export class CampaignMapper {
   }
 
   public static toPrisma(entity: CampaignEntity): any {
-    return {
-      id: entity.id,
+    const data: any = {
       orgId: entity.orgId,
       name: entity.name,
-      flowId: entity.flowId,
-      scheduleTime: entity.scheduleTime,
       status: entity.status,
-      activeVersionId: entity.activeVersionId ?? null, // Ensure null for optional fields if undefined
+      // Use the relation connect form — Prisma rejects the raw scalar flowId
+      // on create when a @relation is defined on the same field.
+      flow: { connect: { id: entity.flowId } },
+      ...(entity.scheduleTime != null && { scheduleTime: entity.scheduleTime }),
+      ...(entity.activeVersionId != null && { activeVersionId: entity.activeVersionId }),
     };
+
+    // Only include id for upsert / explicit-id scenarios; omit on new records
+    // so Prisma uses @default(uuid()).
+    if (entity.id != null) {
+      data.id = entity.id;
+    }
+
+    return data;
   }
 }

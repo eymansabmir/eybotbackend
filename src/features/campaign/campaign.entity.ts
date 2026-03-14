@@ -40,6 +40,7 @@ export class CampaignEntity {
     name: string;
     flowId: string;
     scheduleTime?: Date | null | undefined;
+    status?: CampaignStatus;
   }): CampaignEntity {
     return new CampaignEntity({
       id: null,
@@ -47,7 +48,7 @@ export class CampaignEntity {
       name: props.name,
       flowId: props.flowId,
       scheduleTime: props.scheduleTime ?? null,
-      status: CampaignStatus.draft,
+      status: props.status ?? CampaignStatus.draft,
       activeVersionId: null,
       createdAt: null,
       updatedAt: null,
