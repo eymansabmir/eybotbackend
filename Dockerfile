@@ -26,7 +26,7 @@ ENV NODE_ENV=production
 # Re-install only production dependencies
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy build output and prisma client
 COPY --from=builder /app/dist ./dist
