@@ -1,26 +1,37 @@
-# multi-stage build so dev dependencies never reach the runtime image
+# Build Stage
 FROM node:20-alpine AS builder
+
+# Install system dependencies (needed for prisma)
+RUN apk add --no-cache libc6-compat
+
 WORKDIR /app
 
-# install dependencies (npm ci fails under npm@10 workspaces)
+# Install dependencies
 COPY package*.json ./
-RUN npm install
+COPY prisma ./prisma/
+RUN npm ci
 
-# build TypeScript -> dist
+# Copy source and build
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
-# production runtime image
-FROM node:20-alpine
+# Production Stage
+FROM node:20-alpine AS runner
+
 WORKDIR /app
+
 ENV NODE_ENV=production
 
-# install only production deps
+# Re-install only production dependencies
 COPY package*.json ./
-RUN npm install --omit=dev
+COPY prisma ./prisma/
+RUN npm ci --omit=dev && npm cache clean --force
 
-# copy compiled output from builder
+# Copy build output and prisma client
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000
+
 CMD ["node", "dist/server.js"]
