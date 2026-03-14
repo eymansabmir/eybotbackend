@@ -11,7 +11,8 @@
     "test:watch": "vitest --watch",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "seed": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/seeds/index.ts"
+    "seed": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/seeds/index.ts",
+    "docker:build": "docker build -t flowbuilder-backend:latest ."
   },
   "keywords": [
     "whatsapp",
