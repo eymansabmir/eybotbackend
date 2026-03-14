@@ -66,7 +66,7 @@ export async function handleImportJob(data: unknown, registry: IPluginRegistry):
           waId: cleanWaId,
           variables: row as any,
         };
-      }).filter(r => {
+      }).filter((r): r is { waId: string; variables: any } => {
         if (!r || !r.waId) {
           logger.warn({ campaignId: job.campaignId, row: r }, 'ImportWorker: skipping row with missing/invalid phone number');
           return false;

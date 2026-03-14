@@ -69,6 +69,28 @@ export class CampaignService {
     return this.campaignRepo.findById(id);
   }
 
+  async getCampaignStats(id: string) {
+    // Verify campaign exists
+    await this.campaignRepo.findByIdOrFail(id);
+    const stats = await this.campaignRepo.findStatsById(id);
+
+    return {
+      analytics: {
+        total: stats?.total ?? 0,
+        sent: stats?.sent ?? 0,
+        completed: stats?.completed ?? 0,
+        failed: stats?.failed ?? 0,
+        pending: stats?.pending ?? 0,
+        initiated: 0,
+        delivered: 0,
+        opened: 0,
+        started: 0,
+        queued: 0,
+        nps: null,
+      },
+    };
+  }
+
   async deleteCampaign(id: string, orgId: string) {
     logger.info({ campaignId: id }, 'Deleting campaign');
     const campaign = await this.campaignRepo.findById(id);

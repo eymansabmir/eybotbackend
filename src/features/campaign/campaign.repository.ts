@@ -1,4 +1,4 @@
-import { PrismaClient, CampaignStatus, CampaignVersionStatus } from '@prisma/client';
+import { PrismaClient, CampaignStatus, CampaignVersionStatus, CampaignStats } from '@prisma/client';
 import { CampaignEntity } from './campaign.entity';
 import { CampaignMapper } from './campaign.mapper';
 import { NotFoundError } from '../../utils/errors';
@@ -28,10 +28,12 @@ export interface ICampaignRepository {
   findDueScheduledCampaigns(): Promise<CampaignEntity[]>;
   updateStatusIfScheduled(id: string, status: CampaignStatus): Promise<boolean>;
   delete(id: string): Promise<void>;
-  updateStats(campaignId: string, updates: { 
-    sent?: number; 
-    failed?: number; 
+  findStatsById(campaignId: string): Promise<CampaignStats | null>;
+  updateStats(campaignId: string, updates: {
+    sent?: number;
+    failed?: number;
     pending?: number;
+    completed?: number;
     total?: number;
   }): Promise<void>;
   createStats(campaignId: string, total: number): Promise<void>;
@@ -158,16 +160,22 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     await this.prisma.campaign.delete({ where: { id } });
   }
 
-  async updateStats(campaignId: string, updates: { 
-    sent?: number; 
-    failed?: number; 
+  async findStatsById(campaignId: string): Promise<CampaignStats | null> {
+    return this.prisma.campaignStats.findUnique({ where: { campaignId } });
+  }
+
+  async updateStats(campaignId: string, updates: {
+    sent?: number;
+    failed?: number;
     pending?: number;
+    completed?: number;
     total?: number;
   }): Promise<void> {
     const data: any = {};
     if (updates.sent !== undefined) data.sent = { increment: updates.sent };
     if (updates.failed !== undefined) data.failed = { increment: updates.failed };
     if (updates.pending !== undefined) data.pending = { increment: updates.pending };
+    if (updates.completed !== undefined) data.completed = { increment: updates.completed };
     if (updates.total !== undefined) data.total = updates.total;
 
     await this.prisma.campaignStats.update({
@@ -185,12 +193,14 @@ export class PrismaCampaignRepository implements ICampaignRepository {
         pending: total,
         sent: 0,
         failed: 0,
+        completed: 0,
       },
       update: {
         total,
         pending: total,
         sent: 0,
         failed: 0,
+        completed: 0,
       },
     });
   }

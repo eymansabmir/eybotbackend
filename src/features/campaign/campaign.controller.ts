@@ -64,6 +64,18 @@ export class CampaignController {
     }
   };
 
+  getStats = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      logger.debug({ campaignId: id }, 'Fetching campaign stats');
+      const result = await this.service.getCampaignStats(id as string);
+      res.json(result);
+    } catch (error) {
+      logger.error({ error }, 'Failed to fetch campaign stats');
+      next(error);
+    }
+  };
+
   start = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
