@@ -42,7 +42,9 @@ export function createApp(registry: IPluginRegistry): Application {
   const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
   app.use(helmet());
-  app.use(cors());
+  app.use(cors({
+    origin: '*',
+  }));
   app.use(pinoHttp({ logger: global.logger }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
