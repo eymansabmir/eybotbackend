@@ -31,7 +31,7 @@ model Flow {
   @@index([orgId, status])
 }
 
-model Session {
+model ChatSession {
   id String @id @default(uuid())
 
   flowId      String @default("")
@@ -55,16 +55,23 @@ model Session {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+  @@index([waId, status])
+  @@index([flowId, status])
+  @@index([waBusinessNumber, waId, isCurrent])
+  @@map("chat_session")
+}
+
+model Session {
+  id        String   @id @default(uuid())
   expiresAt DateTime @db.Timestamptz(3)
   token     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
   ipAddress String?
   userAgent String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([waId, status])
-  @@index([flowId, status])
-  @@index([waBusinessNumber, waId, isCurrent])
   @@unique([token])
   @@index([userId])
   @@map("session")

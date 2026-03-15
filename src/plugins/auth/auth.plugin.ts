@@ -6,6 +6,7 @@ import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import { DATABASE_PLUGIN, type IDatabasePlugin } from '../database';
 import { AUTH_PLUGIN, type IAuthPlugin } from './auth.interface';
 import { env } from '../../config/env';
+import { logger } from '../../utils/logger';
 
 export class AuthPlugin implements IPlugin, IAuthPlugin {
   readonly name = AUTH_PLUGIN;
@@ -57,9 +58,16 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
       plugins: [
         emailOTP({
           otpLength: 6,
-          expiresIn: 300,
+          expiresIn: 600,
           allowedAttempts: 5,
           sendVerificationOTP: async ({ email, otp, type }) => {
+            if (!isProduction) {
+              logger.info(
+                { email, type },
+                'AuthPlugin: OTP generated (development)',
+              );
+            }
+
             if (!this.smtpTransporter) {
               if (devFallbackEnabled) {
                 logger.info({ type, email }, 'AuthPlugin: OTP generated (dev fallback enabled)');
@@ -77,8 +85,8 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
               from,
               to: email,
               subject: 'Your verification code',
-              text: `Your OTP is ${otp}. It expires in 5 minutes.`,
-              html: `<p>Your OTP is <strong>${otp}</strong>.</p><p>This code expires in 5 minutes.</p>`,
+              text: `Your OTP is ${otp}. It expires in 10 minutes.`,
+              html: `<p>Your OTP is <strong>${otp}</strong>.</p><p>This code expires in 10 minutes.</p>`,
             });
           },
         }),
