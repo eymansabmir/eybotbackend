@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "session" ALTER COLUMN "flowId" SET DEFAULT '',
+ALTER COLUMN "flowVersion" SET DEFAULT 1,
+ALTER COLUMN "waId" SET DEFAULT '',
+ALTER COLUMN "waBusinessNumber" SET DEFAULT '',
+ALTER COLUMN "currentNodeId" SET DEFAULT '';

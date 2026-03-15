@@ -18,5 +18,8 @@ export type { IEnginePlugin, OrchestratorResult, OutboundMessage } from './engin
 export { WHATSAPP_PLUGIN } from './whatsapp';
 export type { IWhatsAppPlugin, IWhatsAppSender } from './whatsapp';
 
+export { AUTH_PLUGIN } from './auth';
+export type { IAuthPlugin } from './auth';
+
 export { WORKER_PLUGIN, EXCHANGES, INBOUND_HANDLER, CAMPAIGN_HANDLER } from './worker';
 export type { IWorkerPlugin, ExchangeName, IInboundHandler, ICampaignHandler } from './worker';

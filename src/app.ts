@@ -2,7 +2,9 @@ import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
+import { toNodeHandler } from 'better-auth/node';
 import type { IPluginRegistry } from './plugins/plugin.interface';
+import { AUTH_PLUGIN, type IAuthPlugin } from './plugins/auth';
 import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
 import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
@@ -40,10 +42,17 @@ import { errorHandler } from './middleware/error.middleware';
 export function createApp(registry: IPluginRegistry): Application {
   const app = express();
   const WEBHOOK_URL = process.env.WEBHOOK_URL;
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const authPlugin = registry.get<IAuthPlugin>(AUTH_PLUGIN);
+  const authHandler = toNodeHandler(authPlugin.auth as any);
 
   app.use(helmet());
-  app.use(cors());
+  app.use(cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+  }));
   app.use(pinoHttp({ logger: global.logger }));
+  app.all('/api/auth/{*any}', authHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

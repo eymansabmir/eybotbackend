@@ -13,6 +13,7 @@ import { RedisPlugin } from './plugins/redis/redis.plugin';
 import { StoragePlugin } from './plugins/storage/storage.plugin';
 import { EnginePlugin } from './plugins/engine/engine.plugin';
 import { WhatsAppPlugin } from './plugins/whatsapp/whatsapp.plugin';
+import { AuthPlugin } from './plugins/auth/auth.plugin';
 import { WorkerPlugin } from './plugins/worker/worker.plugin';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
@@ -44,6 +45,7 @@ async function startServer(): Promise<void> {
   registry.register(new StoragePlugin());
   registry.register(new EnginePlugin());
   registry.register(new WhatsAppPlugin());
+  registry.register(new AuthPlugin());
 
   if (enableWorker) {
     registry.register(new WorkerPlugin());
