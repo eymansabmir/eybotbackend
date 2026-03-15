@@ -58,7 +58,7 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
       plugins: [
         emailOTP({
           otpLength: 6,
-          expiresIn: 600,
+          expiresIn: 300,
           allowedAttempts: 5,
           sendVerificationOTP: async ({ email, otp, type }) => {
             if (!isProduction) {
