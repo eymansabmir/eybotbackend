@@ -32,7 +32,8 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
     }
 
     if (role === 'all' || role === 'outbound') {
-      await this.broker.consume('wa.outbound.q', data => handleOutboundJob(data, registry), 20);
+      // Prefetch=1 ensures messages are processed sequentially, maintaining node order
+      await this.broker.consume('wa.outbound.q', data => handleOutboundJob(data, registry), 1);
     }
 
     if (role === 'all' || role === 'campaign') {

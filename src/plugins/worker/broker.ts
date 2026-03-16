@@ -82,8 +82,7 @@ export class RabbitMQBroker {
 
     // ── Exchanges ────────────────────────────────────────────────────────
     await ch.assertExchange(EXCHANGES.INBOUND, 'direct', { durable: true });
-    // Use 'topic' for OUTBOUND to support routing by waId while maintaining ordering
-    await ch.assertExchange(EXCHANGES.OUTBOUND, 'topic', { durable: true });
+    await ch.assertExchange(EXCHANGES.OUTBOUND, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN, 'fanout', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_IMPORT, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
@@ -95,9 +94,8 @@ export class RabbitMQBroker {
     await ch.bindQueue('wa.inbound.q', EXCHANGES.INBOUND, '');
 
     // Outbound: single durable queue — scale by running multiple instances
-    // Bind with '#' to receive all messages regardless of routing key (waId)
     await ch.assertQueue('wa.outbound.q', { durable: true });
-    await ch.bindQueue('wa.outbound.q', EXCHANGES.OUTBOUND, '#');
+    await ch.bindQueue('wa.outbound.q', EXCHANGES.OUTBOUND, '');
 
     // Campaign Import
     await ch.assertQueue('campaign.import.q', { durable: true });

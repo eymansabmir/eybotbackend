@@ -13,10 +13,27 @@ export async function handleInboundJob(data: unknown, registry: IPluginRegistry)
     const handler = registry.get<IInboundHandler>(INBOUND_HANDLER);
     const outboundJobs = await handler.process(job);
 
+    logger.info(
+      {
+        messageId: job.message.messageId,
+        outboundCount: outboundJobs.length,
+        types: outboundJobs.map((j, idx) => `${idx}: ${j.messageType}`),
+      },
+      'InboundConsumer: outbound jobs generated',
+    );
+
     const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
-    for (const outboundJob of outboundJobs) {
-      // Use waId as routing key to ensure messages for the same user are processed in order
-      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, outboundJob.waId);
+    for (let i = 0; i < outboundJobs.length; i++) {
+      const outboundJob = outboundJobs[i];
+      logger.info(
+        {
+          messageId: job.message.messageId,
+          index: i,
+          messageType: outboundJob?.messageType,
+        },
+        'InboundConsumer: publishing outbound job',
+      );
+      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
     }
 
     logger.info({ messageId: job.message.messageId, outboundCount: outboundJobs.length }, 'InboundConsumer: message processed');
