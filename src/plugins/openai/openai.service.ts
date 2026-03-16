@@ -25,6 +25,28 @@ import type {
 } from './openai.types';
 
 export class OpenAIIntegrationService implements IOpenAIIntegrationService {
+  private static readonly DEFAULT_CHAT_MODELS: OpenAIModelInfo[] = [
+    { id: 'gpt-5' },
+    { id: 'gpt-5-mini' },
+    { id: 'gpt-5-nano' },
+    { id: 'gpt-4.1' },
+    { id: 'gpt-4.1-mini' },
+    { id: 'gpt-4.1-nano' },
+    { id: 'gpt-4o' },
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4-turbo' },
+    { id: 'gpt-4' },
+    { id: 'gpt-3.5-turbo' },
+  ];
+
+  private static readonly DEFAULT_SPEECH_MODELS: OpenAISpeechModelInfo[] = [
+    { id: 'gpt-4o-mini-tts', mode: 'create_speech' },
+    { id: 'tts-1', mode: 'create_speech' },
+    { id: 'tts-1-hd', mode: 'create_speech' },
+    { id: 'gpt-4o-transcribe', mode: 'create_transcription' },
+    { id: 'whisper-1', mode: 'create_transcription' },
+  ];
+
   constructor(
     private readonly credentials: ICredentialService,
     private readonly provider: IOpenAIProvider,
@@ -81,24 +103,64 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   async listModels(orgId: string, credentialId: string): Promise<OpenAIModelInfo[]> {
+    const material = await this.getCredentialMaterial(orgId, credentialId);
     try {
-      const material = await this.getCredentialMaterial(orgId, credentialId);
-      return await this.provider.listModels({ credential: material });
+      const models = await this.provider.listModels({ credential: material });
+      return [...models].sort((a, b) => a.id.localeCompare(b.id));
     } catch (error) {
-      throw this.toPublicError(error);
+      const publicError = this.toPublicError(error);
+      logger.warn(
+        {
+          operation: 'openai.list_models',
+          orgId,
+          credentialId,
+          statusCode: publicError.statusCode,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI model listing failed; using fallback model catalog',
+      );
+
+      if (this.shouldUseModelFallback(publicError)) {
+        return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
+      }
+
+      throw publicError;
     }
   }
 
   async listSpeechModels(input: ListSpeechModelsPayload): Promise<OpenAISpeechModelInfo[]> {
+    const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
     try {
-      const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
-      return await this.provider.listSpeechModels({
+      const models = await this.provider.listSpeechModels({
         credential: material,
         actionMode: input.actionMode,
         timeoutMs: input.timeoutMs,
       });
+
+      return [...models].sort((a, b) => a.id.localeCompare(b.id));
     } catch (error) {
-      throw this.toPublicError(error);
+      const publicError = this.toPublicError(error);
+      logger.warn(
+        {
+          operation: 'openai.list_speech_models',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          actionMode: input.actionMode,
+          statusCode: publicError.statusCode,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI speech model listing failed; using fallback model catalog',
+      );
+
+      if (this.shouldUseModelFallback(publicError)) {
+        if (input.actionMode) {
+          return OpenAIIntegrationService.DEFAULT_SPEECH_MODELS.filter((m) => m.mode === input.actionMode);
+        }
+
+        return OpenAIIntegrationService.DEFAULT_SPEECH_MODELS;
+      }
+
+      throw publicError;
     }
   }
 
@@ -243,6 +305,70 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   async executeNode(input: ExecuteOpenAINodePayload): Promise<ExecuteOpenAINodeResult> {
+    if (input.mode === 'voice') {
+      const actionMode = input.voiceAction ?? 'create_speech';
+
+      if (actionMode === 'create_speech') {
+        if (!input.voice?.trim()) {
+          throw new ValidationError('voice is required for create_speech mode');
+        }
+
+        const speech = await this.createSpeech({
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
+          voice: input.voice.trim(),
+          input: input.prompt,
+          timeoutMs: input.timeoutMs,
+        });
+
+        return {
+          content: speech.audioUrl,
+          model: speech.model,
+          outputType: 'audio',
+          mimeType: speech.mimeType,
+        };
+      }
+
+      const audioUrl = input.prompt.trim();
+      if (!audioUrl) {
+        throw new ValidationError('audio URL is required for create_transcription mode');
+      }
+
+      let validatedAudioUrl: URL;
+      try {
+        validatedAudioUrl = new URL(audioUrl);
+      } catch {
+        throw new ValidationError('audio URL must be a valid absolute URL for create_transcription mode');
+      }
+
+      const response = await fetch(validatedAudioUrl);
+      if (!response.ok) {
+        throw new AppError(`Could not fetch audio source: HTTP ${response.status}`, 400);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const mimeType = response.headers.get('content-type') || 'audio/mpeg';
+      const fileName = validatedAudioUrl.pathname.split('/').pop() || `audio-${Date.now()}.mp3`;
+
+      const transcription = await this.createTranscription({
+        orgId: input.orgId,
+        credentialId: input.credentialId,
+        model: input.model,
+        audioBuffer: Buffer.from(arrayBuffer),
+        fileName,
+        mimeType,
+        prompt: input.systemPrompt,
+        timeoutMs: input.timeoutMs,
+      });
+
+      return {
+        content: transcription.text,
+        model: transcription.model,
+        outputType: 'text',
+      };
+    }
+
     const messages: OpenAIMessage[] = [
       ...(input.systemPrompt ? [{ role: 'system', content: input.systemPrompt } as const] : []),
       { role: 'user', content: input.prompt },
@@ -264,6 +390,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     return {
       content: completion.content,
       model: completion.model,
+      outputType: 'text',
     };
   }
 
@@ -298,6 +425,11 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       return error;
     }
     return new AppError('OpenAI request failed', 502);
+  }
+
+  private shouldUseModelFallback(error: AppError): boolean {
+    return error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 ||
+      error.statusCode === 429 || error.statusCode >= 500;
   }
 
   private mimeToExtension(mimeType: string, requestedFormat?: string): string {

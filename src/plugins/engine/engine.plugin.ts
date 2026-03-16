@@ -2,10 +2,12 @@ import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import type { IEnginePlugin, ContactInfo, StartFlowInput, ResumeFlowInput, OrchestratorResult } from './engine.interface';
 import type { FlowEntity } from '../../features/flow/flow.entity';
 import type { SessionEntity } from '../../features/session/session.entity';
+import { NodeType } from '../../schemas/node-types.enum';
 import { CREDENTIAL_SERVICE } from '../../features/repositories.interface';
 import type { ICredentialService } from '../../features/credentials';
 import { OpenAIIntegrationService } from '../openai';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from '../openai';
+import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
 export class EnginePlugin implements IPlugin, IEnginePlugin {
@@ -60,10 +62,13 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
     return {
       executeOpenAI: async ({ orgId, request }) => {
         const service = this.openAIService();
-        const completion = await service.executeNode({
+        const output = await service.executeNode({
           orgId,
+          mode: request.mode,
+          voiceAction: request.voiceAction,
           credentialId: request.credentialId,
           model: request.model,
+          voice: request.voice,
           prompt: request.prompt,
           systemPrompt: request.systemPrompt,
           temperature: request.temperature,
@@ -74,7 +79,23 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           timeoutMs: request.timeoutMs,
         });
 
-        return { text: completion.content };
+        if (output.outputType === 'audio') {
+          return {
+            value: output.content,
+            message: {
+              type: NodeType.SEND_AUDIO,
+              payload: { url: output.content },
+            },
+          };
+        }
+
+        return {
+          value: output.content,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: output.content },
+          },
+        };
       },
     };
   }
@@ -83,7 +104,8 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
     if (!this._openAIService) {
       const provider = this._registry.get<IOpenAIPlugin>(OPENAI_PLUGIN);
       const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
-      this._openAIService = new OpenAIIntegrationService(credentials, provider);
+      const storage = this._registry.get<IStoragePlugin>(STORAGE_PLUGIN);
+      this._openAIService = new OpenAIIntegrationService(credentials, provider, storage);
     }
     return this._openAIService;
   }

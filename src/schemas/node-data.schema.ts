@@ -139,8 +139,11 @@ const NocoDBDataSchema = z.object({
 });
 
 const OpenAIDataSchema = z.object({
+  mode: z.enum(['agent', 'voice']).default('agent'),
+  voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
   credentialId: z.string().min(1),
   model: z.string().min(1),
+  voice: z.string().optional(),
   prompt: z.string().min(1),
   systemPrompt: z.string().optional(),
 

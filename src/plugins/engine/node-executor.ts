@@ -41,8 +41,11 @@ export interface NodeExecutionInput {
 
 export interface OpenAINodeRequest {
   nodeId: string;
+  mode: 'agent' | 'voice';
+  voiceAction?: 'create_speech' | 'create_transcription';
   credentialId: string;
   model: string;
+  voice?: string;
   prompt: string;
   systemPrompt?: string;
   temperature?: number;
@@ -194,8 +197,18 @@ export class NodeExecutor {
 
     const request: OpenAINodeRequest = {
       nodeId: node.id,
+      mode: data['mode'] === 'voice' ? 'voice' : 'agent',
+      ...(data['mode'] === 'voice'
+        ? {
+            voiceAction:
+              data['voiceAction'] === 'create_transcription'
+                ? 'create_transcription' as const
+                : 'create_speech' as const,
+          }
+        : {}),
       credentialId: String(data['credentialId'] ?? ''),
       model: String(data['model'] ?? ''),
+      ...(typeof data['voice'] === 'string' ? { voice: this.text(data['voice'], ctx) } : {}),
       prompt: this.text(String(data['prompt'] ?? ''), ctx),
       ...(typeof data['systemPrompt'] === 'string'
         ? { systemPrompt: this.text(data['systemPrompt'], ctx) }

@@ -20,7 +20,7 @@ export interface OpenAINodeExecutionInput {
 }
 
 export interface RuntimeIntegrations {
-  executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ text: string }>;
+  executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
 }
 
 /**
@@ -121,7 +121,7 @@ export class FlowOrchestrator {
       }
 
       if (stepResult.openAIRequest) {
-        const openAIText = await this.executeOpenAIRequest(
+        const openAIOutput = await this.executeOpenAIRequest(
           flow,
           session,
           contact,
@@ -132,14 +132,11 @@ export class FlowOrchestrator {
         this.applyMutation({
           scope: stepResult.openAIRequest.resultScope,
           key: stepResult.openAIRequest.resultVariable,
-          value: openAIText,
+          value: openAIOutput.value,
         }, session, contact, allContactMutations);
 
         if (stepResult.openAIRequest.sendResponseToUser) {
-          allMessages.push({
-            type: NodeType.SEND_TEXT,
-            payload: { message: openAIText },
-          });
+          allMessages.push(openAIOutput.message);
         }
       }
 
@@ -182,7 +179,7 @@ export class FlowOrchestrator {
     contact: ContactInfo,
     request: OpenAINodeRequest,
     runtime?: RuntimeIntegrations,
-  ): Promise<string> {
+  ): Promise<{ value: string; message: OutboundMessage }> {
     try {
       if (!runtime?.executeOpenAI) {
         throw new FlowExecutionError('OpenAI runtime executor is not configured', request.nodeId);
@@ -196,13 +193,19 @@ export class FlowOrchestrator {
         request,
       });
 
-      if (!response.text.trim()) {
+      if (!response.value.trim()) {
         throw new FlowExecutionError('OpenAI runtime returned empty response', request.nodeId);
       }
-      return response.text;
+      return response;
     } catch (error) {
       if (request.fallbackText) {
-        return request.fallbackText;
+        return {
+          value: request.fallbackText,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: request.fallbackText },
+          },
+        };
       }
       if (error instanceof Error) {
         throw new FlowExecutionError(error.message, request.nodeId);

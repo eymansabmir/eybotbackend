@@ -138,6 +138,9 @@ export interface ExecuteOpenAINodePayload {
   orgId: string;
   credentialId: string;
   model: string;
+  mode: 'agent' | 'voice';
+  voiceAction?: OpenAIVoiceActionMode;
+  voice?: string;
   prompt: string;
   systemPrompt?: string;
   temperature?: number;
@@ -151,6 +154,8 @@ export interface ExecuteOpenAINodePayload {
 export interface ExecuteOpenAINodeResult {
   content: string;
   model: string;
+  outputType: 'text' | 'audio';
+  mimeType?: string;
 }
 
 export interface ListSpeechModelsPayload {
