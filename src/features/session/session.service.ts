@@ -3,6 +3,8 @@ import { ISessionRepository } from './session.repository';
 import { IFlowRepository } from '../flow/flow.repository';
 import type { IEnginePlugin, OrchestratorResult, ContactInfo } from '../../plugins/engine';
 import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
+import type { IWorkerPlugin } from '../../plugins/worker';
+import { EXCHANGES } from '../../plugins/worker';
 import { ValidationError } from '../../utils/errors';
 import { normalizeWaId } from '../../utils/whatsapp';
 
@@ -27,6 +29,7 @@ export class SessionService implements ISessionService {
     private readonly flowRepo: IFlowRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly whatsappPlugin: IWhatsAppPlugin,
+    private readonly workerPlugin?: IWorkerPlugin,
   ) {}
 
   async startSession(input: StartSessionInput): Promise<{ session: SessionEntity; result: OrchestratorResult }> {
@@ -59,8 +62,25 @@ export class SessionService implements ISessionService {
     logger.info({ sessionId: saved.id, flowId, isFinished: result.isFinished }, 'SessionService: session started');
 
     if (result.outboundMessages.length > 0) {
-      await this.whatsappPlugin.sender.sendMessages(waId, result.outboundMessages, saved.id!);
+      // Queue messages through RabbitMQ for consistent ordering with prefetch=1
+      if (this.workerPlugin) {
+        for (const msg of result.outboundMessages) {
+          const outboundJob = {
+            waId,
+            waBusinessNumber: input.waBusinessNumber,
+            messageType: msg.type,
+            payload: msg.payload,
+            orgId: input.orgId,
+            sessionId: saved.id!,
+          };
+          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, saved.id!);
+        }
+      } else {
+        // Fallback: send directly if worker plugin is unavailable
+        await this.whatsappPlugin.sender.sendMessages(waId, result.outboundMessages, saved.id!);
+      }
     }
+
 
     return { session: saved, result };
   }
@@ -94,7 +114,23 @@ export class SessionService implements ISessionService {
     });
 
     if (result.outboundMessages.length > 0) {
-      await this.whatsappPlugin.sender.sendMessages(session.waId, result.outboundMessages, sessionId);
+      // Queue messages through RabbitMQ for consistent ordering with prefetch=1
+      if (this.workerPlugin) {
+        for (const msg of result.outboundMessages) {
+          const outboundJob = {
+            waId: session.waId,
+            waBusinessNumber: session.waBusinessNumber,
+            messageType: msg.type,
+            payload: msg.payload,
+            orgId: '', // orgId is not stored in session, but required by OutboundJob interface
+            sessionId,
+          };
+          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, sessionId);
+        }
+      } else {
+        // Fallback: send directly if worker plugin is unavailable
+        await this.whatsappPlugin.sender.sendMessages(session.waId, result.outboundMessages, sessionId);
+      }
     }
 
     logger.info({ sessionId, isFinished: result.isFinished }, 'SessionService: session resumed');
