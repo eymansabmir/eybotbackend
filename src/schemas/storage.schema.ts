@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ALLOWED_FOLDERS } from "../lib/storage/storage.config";
+import { ALLOWED_FOLDERS } from "../plugins/storage/storage.config";
 
 /** Schema for POST /upload body (folder field from multipart form) */
 export const UploadBodySchema = z.object({

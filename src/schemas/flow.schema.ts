@@ -26,7 +26,7 @@ export const FlowSettingsSchema = z.object({
 export type FlowSettings = z.infer<typeof FlowSettingsSchema>;
 
 export const FlowSchema = z.object({
-  _id: z.string().optional(),
+  id: z.string().optional(),
   orgId: z.string(),
   name: z.string(),
   description: z.string().optional(),
