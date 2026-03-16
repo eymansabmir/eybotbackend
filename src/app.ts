@@ -45,9 +45,32 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use(cors({
     origin: '*',
   }));
-  app.use(pinoHttp({ logger: global.logger }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(pinoHttp({
+    logger: global.logger,
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          query: req.query,
+          params: req.params,
+          headers: {
+            host: req.headers.host,
+          },
+          remoteAddress: req.remoteAddress,
+          body: req.body,
+        };
+      },
+      res(res) {
+        return {
+          statusCode: res.statusCode,
+        };
+      },
+    },
+  }));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -68,7 +91,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const flowService = new FlowService(flowRepo);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin);
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
-  
+
   // Start the background db poller for scheduled campaigns
   campaignService.startScheduler();
 
