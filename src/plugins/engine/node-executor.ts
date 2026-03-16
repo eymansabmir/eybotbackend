@@ -27,6 +27,7 @@ export interface NodeExecutionResult {
   nextNodeId: string | null;
   outboundMessages: OutboundMessage[];
   variableMutations: VariableMutation[];
+  openAIRequest?: OpenAINodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -36,6 +37,24 @@ export interface NodeExecutionInput {
   context: VariableContext;
   currentNode: Node;
   userInput?: string;
+}
+
+export interface OpenAINodeRequest {
+  nodeId: string;
+  credentialId: string;
+  model: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
 }
 
 const LOGIC_TYPES = new Set<NodeType>([
@@ -50,7 +69,7 @@ export class NodeExecutor {
   constructor(
     private readonly resolver: VariableResolver,
     private readonly evaluator: ConditionEvaluator,
-  ) {}
+  ) { }
 
   isLogicNode(type: NodeType): boolean {
     return LOGIC_TYPES.has(type);
@@ -149,6 +168,10 @@ export class NodeExecutor {
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
 
+      case NodeType.OPENAI:
+        return this.handleOpenAI(currentNode, context, enteredAt, traverser);
+
+
       default:
         throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
     }
@@ -158,6 +181,47 @@ export class NodeExecutor {
 
   private text(template: string, ctx: VariableContext): string {
     return this.resolver.resolve(template, ctx);
+  }
+
+  private handleOpenAI(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const request: OpenAINodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string'
+        ? { systemPrompt: this.text(data['systemPrompt'], ctx) }
+        : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['topP'] === 'number' ? { topP: data['topP'] } : {}),
+      ...(typeof data['frequencyPenalty'] === 'number'
+        ? { frequencyPenalty: data['frequencyPenalty'] }
+        : {}),
+      ...(typeof data['presencePenalty'] === 'number'
+        ? { presencePenalty: data['presencePenalty'] }
+        : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string'
+        ? { fallbackText: this.text(data['fallbackText'], ctx) }
+        : {}),
+    };
+
+    return {
+      ...base,
+      openAIRequest: request,
+    };
   }
 
   private defaultResult(

@@ -138,6 +138,26 @@ const NocoDBDataSchema = z.object({
   resultScope: z.enum(['session', 'contact']).optional(),
 });
 
+const OpenAIDataSchema = z.object({
+  credentialId: z.string().min(1),
+  model: z.string().min(1),
+  prompt: z.string().min(1),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  topP: z.number().min(0).max(1).optional(),
+  frequencyPenalty: z.number().min(-2).max(2).optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().min(1),
+  resultScope: z.enum(['session', 'contact']).default('session'),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+});
+
+
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_IMAGE), ...SendMediaDataSchema.shape }),
@@ -159,6 +179,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

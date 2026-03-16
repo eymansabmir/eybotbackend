@@ -28,10 +28,15 @@ import {
   SESSION_REPOSITORY,
   CAMPAIGN_REPOSITORY,
   CAMPAIGN_RECIPIENT_REPOSITORY,
-  INBOUND_HANDLER
+  CREDENTIAL_REPOSITORY,
+  CREDENTIAL_SERVICE,
+  INBOUND_HANDLER,
 } from './features/repositories.interface';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
+import { OpenAIPlugin } from './plugins/openai/openai.plugin';
+import { CredentialService, PrismaCredentialRepository } from './features/credentials';
+
 
 async function startServer(): Promise<void> {
   // ── Phase 1: Build registry & register all plugins ───────────────────────
@@ -51,6 +56,8 @@ async function startServer(): Promise<void> {
     registry.register(new WorkerPlugin());
   }
 
+  registry.register(new OpenAIPlugin());
+
   // ── Phase 2: Initialize all plugins (sequential, order above) ────────────
   await registry.initializeAll();
 
@@ -58,16 +65,20 @@ async function startServer(): Promise<void> {
   const dbPlugin = registry.get<IDatabasePlugin>(DATABASE_PLUGIN);
   const enginePlugin = registry.get<IEnginePlugin>(ENGINE_PLUGIN);
   const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
-
+  
   const flowRepo = new PrismaFlowRepository(dbPlugin.prisma);
   const sessionRepo = new PrismaSessionRepository(dbPlugin.prisma);
   const campaignRepo = new PrismaCampaignRepository(dbPlugin.prisma);
   const recipientRepo = new PrismaCampaignRecipientRepository(dbPlugin.prisma);
+  const credentialRepo = new PrismaCredentialRepository(dbPlugin.prisma);
+  const credentialService = new CredentialService(credentialRepo);
 
   registry.registerValue(FLOW_REPOSITORY, flowRepo);
   registry.registerValue(SESSION_REPOSITORY, sessionRepo);
   registry.registerValue(CAMPAIGN_REPOSITORY, campaignRepo);
   registry.registerValue(CAMPAIGN_RECIPIENT_REPOSITORY, recipientRepo);
+  registry.registerValue(CREDENTIAL_REPOSITORY, credentialRepo);
+  registry.registerValue(CREDENTIAL_SERVICE, credentialService);
 
   const inboundHandler = new SessionInboundHandler(
     flowRepo,

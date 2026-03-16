@@ -45,6 +45,9 @@ const envSchema = z.object({
 
   /** Base CDN/Media URL */
   BASE_MEDIA_URL: z.string().url().optional(),
+
+  /** Integration secret encryption key (32-byte hex/base64/raw) */
+  INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

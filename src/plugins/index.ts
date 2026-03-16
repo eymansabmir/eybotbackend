@@ -23,3 +23,6 @@ export type { IAuthPlugin } from './auth';
 
 export { WORKER_PLUGIN, EXCHANGES, INBOUND_HANDLER, CAMPAIGN_HANDLER } from './worker';
 export type { IWorkerPlugin, ExchangeName, IInboundHandler, ICampaignHandler } from './worker';
+
+export { OPENAI_PLUGIN } from './openai';
+export type { IOpenAIPlugin } from './openai';

@@ -7,34 +7,46 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-import type { VariableMutation } from './node-executor';
+import type { OpenAINodeRequest, VariableMutation } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
 
+export interface OpenAINodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: OpenAINodeRequest;
+}
+
+export interface RuntimeIntegrations {
+  executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ text: string }>;
+}
+
 /**
- * Pure-computation orchestrator.
- * Receives entities, runs the flow execution loop entirely in memory,
- * and returns the resulting session state + messages + contact mutations.
- * No repository or I/O calls happen here.
+ * Flow orchestrator with optional runtime integration hooks.
+ * The engine remains the owner of graph traversal while integration handlers
+ * can execute side effects for integration nodes (OpenAI, etc.).
  */
 export class FlowOrchestrator {
   private readonly resolver = new VariableResolver();
   private readonly evaluator = new ConditionEvaluator(this.resolver);
   private readonly executor = new NodeExecutor(this.resolver, this.evaluator);
 
-  startFlow(
+  async startFlow(
     flow: FlowEntity,
     contact: ContactInfo,
     initialVariables: Record<string, unknown>,
     flowId: string,
     waId: string,
     waBusinessNumber: string,
-  ): OrchestratorResult {
+    runtime?: RuntimeIntegrations,
+  ): Promise<OrchestratorResult> {
     if (flow.status !== 'published') {
       throw new ValidationError(`Flow '${flowId}' is not published`);
     }
 
-    const startNode = flow.nodes.find(n => n.type === NodeType.START);
+    const startNode = flow.nodes.find((n) => n.type === NodeType.START);
     if (!startNode) {
       throw new FlowExecutionError('Flow has no START node', flowId);
     }
@@ -51,15 +63,16 @@ export class FlowOrchestrator {
       isCurrent: true,
     });
 
-    return this.runLoop(session, contact, flow, undefined);
+    return this.runLoop(session, contact, flow, undefined, runtime);
   }
 
-  resumeFlow(
+  async resumeFlow(
     flow: FlowEntity,
     contact: ContactInfo,
     session: SessionEntity,
     userInput: string,
-  ): OrchestratorResult {
+    runtime?: RuntimeIntegrations,
+  ): Promise<OrchestratorResult> {
     if (session.status === 'completed' || session.status === 'timed_out') {
       throw new ValidationError(`Session '${session.id}' is already ${session.status}`);
     }
@@ -70,15 +83,16 @@ export class FlowOrchestrator {
     session.clearWaitingFor();
     session.isCurrent = true;
 
-    return this.runLoop(session, contact, flow, userInput);
+    return this.runLoop(session, contact, flow, userInput, runtime);
   }
 
-  private runLoop(
+  private async runLoop(
     session: SessionEntity,
     contact: ContactInfo,
     flow: FlowEntity,
     userInput: string | undefined,
-  ): OrchestratorResult {
+    runtime?: RuntimeIntegrations,
+  ): Promise<OrchestratorResult> {
     const traverser = new GraphTraverser(flow.nodes, flow.edges);
     const allMessages: OutboundMessage[] = [];
     const allContactMutations: Record<string, unknown> = {};
@@ -100,25 +114,46 @@ export class FlowOrchestrator {
       isFirstStep = false;
       stepCount++;
 
-      // Apply variable mutations to in-memory entities
+      allMessages.push(...stepResult.outboundMessages);
+
       for (const m of stepResult.variableMutations) {
         this.applyMutation(m, session, contact, allContactMutations);
       }
 
-      // Record history
+      if (stepResult.openAIRequest) {
+        const openAIText = await this.executeOpenAIRequest(
+          flow,
+          session,
+          contact,
+          stepResult.openAIRequest,
+          runtime,
+        );
+
+        this.applyMutation({
+          scope: stepResult.openAIRequest.resultScope,
+          key: stepResult.openAIRequest.resultVariable,
+          value: openAIText,
+        }, session, contact, allContactMutations);
+
+        if (stepResult.openAIRequest.sendResponseToUser) {
+          allMessages.push({
+            type: NodeType.SEND_TEXT,
+            payload: { message: openAIText },
+          });
+        }
+      }
+
       session.addToHistory(stepResult.historyStep);
 
-      // Advance node pointer
       if (stepResult.nextNodeId) {
         session.moveToNode(stepResult.nextNodeId);
       }
 
-      allMessages.push(...stepResult.outboundMessages);
-
-      // Waiting for user input
       if (stepResult.waitForInput) {
         session.setWaitingFor(stepResult.waitForInput);
-        if (stepResult.nextNodeId) session.moveToNode(stepResult.nextNodeId);
+        if (stepResult.nextNodeId) {
+          session.moveToNode(stepResult.nextNodeId);
+        }
         return {
           session,
           outboundMessages: allMessages,
@@ -128,7 +163,6 @@ export class FlowOrchestrator {
         };
       }
 
-      // Flow finished
       if (stepResult.isTerminal || stepResult.nextNodeId === null) {
         session.updateStatus('completed');
         session.isCurrent = false;
@@ -142,6 +176,41 @@ export class FlowOrchestrator {
     }
   }
 
+  private async executeOpenAIRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: OpenAINodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<string> {
+    try {
+      if (!runtime?.executeOpenAI) {
+        throw new FlowExecutionError('OpenAI runtime executor is not configured', request.nodeId);
+      }
+
+      const response = await runtime.executeOpenAI({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+
+      if (!response.text.trim()) {
+        throw new FlowExecutionError('OpenAI runtime returned empty response', request.nodeId);
+      }
+      return response.text;
+    } catch (error) {
+      if (request.fallbackText) {
+        return request.fallbackText;
+      }
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('OpenAI runtime execution failed', request.nodeId);
+    }
+  }
+
   private applyMutation(
     mutation: VariableMutation,
     session: SessionEntity,
@@ -151,7 +220,6 @@ export class FlowOrchestrator {
     if (mutation.scope === 'session') {
       session.setVariable(mutation.key, mutation.value);
     } else {
-      // Apply to in-memory contact (not persisted — contact management removed)
       contact.customFields[mutation.key] = mutation.value;
       contactMutations[mutation.key] = mutation.value;
     }

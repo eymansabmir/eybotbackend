@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -38,8 +37,8 @@ model ChatSession {
   flowVersion Int    @default(1)
 
   contactId        String?
-  waId             String @default("")
-  waBusinessNumber String @default("")
+  waId             String  @default("")
+  waBusinessNumber String  @default("")
 
   status SessionStatus @default(active)
 
@@ -241,4 +240,38 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+enum CredentialType {
+  OPENAI
+  GOOGLE_SHEETS
+  NOCODB
+  ELEVENLABS
+  ZAPIER
+  HTTP_REQUEST
+  ANTHROPIC
+  MAKE
+  DEEPSEEK
+}
+
+model Credential {
+  id           String         @id @default(uuid())
+  orgId        String
+  name         String
+  type         CredentialType
+  ciphertext   Bytes
+  iv           Bytes
+  authTag      Bytes
+  keyVersion   Int            @default(1)
+  metadata     Json? // baseUrl, projectId, etc (non-secret)
+  isActive     Boolean        @default(true)
+  lastTestedAt DateTime?
+  revokedAt    DateTime?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([orgId, type, name])
+  @@index([orgId, type, isActive])
+  @@map("credentials")
 }
