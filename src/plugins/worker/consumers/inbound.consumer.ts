@@ -15,7 +15,8 @@ export async function handleInboundJob(data: unknown, registry: IPluginRegistry)
 
     const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
     for (const outboundJob of outboundJobs) {
-      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
+      // Use waId as routing key to ensure messages for the same user are processed in order
+      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, outboundJob.waId);
     }
 
     logger.info({ messageId: job.message.messageId, outboundCount: outboundJobs.length }, 'InboundConsumer: message processed');
