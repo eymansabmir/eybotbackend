@@ -1,6 +1,7 @@
 import type { IPluginRegistry } from '../../plugin.interface';
 import { WORKER_PLUGIN, EXCHANGES, type IWorkerPlugin } from '../worker.interface';
-import { INBOUND_HANDLER, type IInboundHandler } from '../handlers.interface';
+import type { IInboundHandler } from '../handlers.interface';
+import { INBOUND_HANDLER } from '../../../features/repositories.interface';
 import type { InboundJob } from '../jobs';
 
 export async function handleInboundJob(data: unknown, registry: IPluginRegistry): Promise<void> {
