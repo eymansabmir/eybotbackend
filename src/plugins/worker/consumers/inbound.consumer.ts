@@ -23,17 +23,18 @@ export async function handleInboundJob(data: unknown, registry: IPluginRegistry)
     );
 
     const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
-    for (let i = 0; i < outboundJobs.length; i++) {
-      const outboundJob = outboundJobs[i];
+    for (const [index, outboundJob] of outboundJobs.entries()) {
       logger.info(
         {
           messageId: job.message.messageId,
-          index: i,
-          messageType: outboundJob?.messageType,
+          index,
+          messageType: outboundJob.messageType,
+          sessionId: outboundJob.sessionId,
         },
         'InboundConsumer: publishing outbound job',
       );
-      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
+      // Use sessionId as routing key to ensure all messages for same session go to same worker
+      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, outboundJob.sessionId || '');
     }
 
     logger.info({ messageId: job.message.messageId, outboundCount: outboundJobs.length }, 'InboundConsumer: message processed');

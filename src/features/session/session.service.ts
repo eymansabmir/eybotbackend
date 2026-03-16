@@ -73,7 +73,7 @@ export class SessionService implements ISessionService {
             orgId: input.orgId,
             sessionId: saved.id!,
           };
-          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
+          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, saved.id!);
         }
       } else {
         // Fallback: send directly if worker plugin is unavailable
@@ -125,7 +125,7 @@ export class SessionService implements ISessionService {
             orgId: '', // orgId is not stored in session, but required by OutboundJob interface
             sessionId,
           };
-          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
+          await this.workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, sessionId);
         }
       } else {
         // Fallback: send directly if worker plugin is unavailable
