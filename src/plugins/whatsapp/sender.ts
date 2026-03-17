@@ -42,14 +42,25 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendList(waId, p['body'] as string, p['buttonTitle'] as string, p['sections'] as any[], p['footer'] as string | undefined);
       case NodeType.SEND_TEMPLATE:
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
+      case NodeType.SEND_STICKER:
+        return this.api.sendSticker(waId, (p['mediaId'] as string) || (p['url'] as string));
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }
+  }
+
+  async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    return this.api.uploadMedia(url, type);
   }
 }
 
 export class StubWhatsAppSender implements IWhatsAppSender {
   async sendMessages(waId: string, messages: OutboundMessage[]): Promise<void> {
     logger.debug({ waId, messages }, 'StubWhatsAppSender: would send message(s)');
+  }
+
+  async uploadMedia(_url: string, _type: string): Promise<string> {
+    logger.debug({ _url, _type }, 'StubWhatsAppSender: would upload media');
+    return 'stub-media-id';
   }
 }

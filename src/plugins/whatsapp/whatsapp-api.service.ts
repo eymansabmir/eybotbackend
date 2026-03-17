@@ -76,6 +76,54 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
+  async sendSticker(to: string, urlOrId: string): Promise<void> {
+    const isId = !urlOrId.startsWith('http');
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'sticker',
+      sticker: isId ? { id: urlOrId } : { link: urlOrId },
+    });
+  }
+
+  async uploadMedia(sourceUrl: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    logger.info({ sourceUrl, type }, 'WhatsAppAPI: uploading media');
+
+    // 1. Fetch file from URL
+    const fileResponse = await fetch(sourceUrl);
+    if (!fileResponse.ok) {
+      throw new Error(`Failed to fetch media from URL: ${sourceUrl}`);
+    }
+    const blob = await fileResponse.blob();
+    const fileName = sourceUrl.split('/').pop()?.split('?')[0] || 'media';
+
+    // 2. Prepare FormData
+    const formData = new FormData();
+    formData.append('file', blob, fileName);
+    formData.append('type', type);
+    formData.append('messaging_product', 'whatsapp');
+
+    // 3. Upload to Meta
+    const url = `${this.config.apiUrl}/${this.config.phoneNumberId}/media`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.config.apiToken}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp Media API error: ${response.status} - ${errorText}`, response.status);
+    }
+
+    const { id } = (await response.json()) as { id: string };
+    logger.info({ mediaId: id }, 'WhatsAppAPI: media uploaded successfully');
+    return id;
+  }
+
   private async call(payload: unknown): Promise<void> {
     logger.debug({ payload }, 'WhatsAppAPI: sending payload');
     const url = `${this.config.apiUrl}/${this.config.phoneNumberId}/messages`;

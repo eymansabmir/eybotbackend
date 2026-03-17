@@ -16,7 +16,7 @@ export interface IFlowService {
 }
 
 export class FlowService implements IFlowService {
-  constructor(private readonly flowRepo: IFlowRepository) {}
+  constructor(private readonly flowRepo: IFlowRepository) { }
 
   async createFlow(data: Partial<FlowProperties>): Promise<FlowEntity> {
     const entity = new FlowEntity({
@@ -124,6 +124,7 @@ export class FlowService implements IFlowService {
         case NodeType.SEND_VIDEO:
         case NodeType.SEND_AUDIO:
         case NodeType.SEND_DOCUMENT:
+        case NodeType.SEND_STICKER:
           if (node.data.url && typeof node.data.url === 'string') {
             const url = node.data.url as string;
             if (url.startsWith('http')) {

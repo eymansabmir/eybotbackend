@@ -11,6 +11,7 @@ const SendTextDataSchema = z.object({
 const SendMediaDataSchema = z.object({
   url: z.string().url(),
   caption: z.string().optional(),
+  mediaId: z.string().optional(),
 });
 
 const SendLocationDataSchema = z.object({
@@ -148,6 +149,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_BUTTONS), ...SendButtonsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_LIST), ...SendListDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_TEMPLATE), ...SendTemplateDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_STICKER), ...SendMediaDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),

@@ -34,6 +34,8 @@ import { createStorageRouter } from './features/storage/storage.route';
 import { CampaignService } from './features/campaign/campaign.service';
 import { CampaignController } from './features/campaign/campaign.controller';
 import { createCampaignRouter } from './features/campaign/campaign.route';
+import { WhatsAppController } from './features/whatsapp/whatsapp.controller';
+import { createWhatsAppRouter } from './features/whatsapp/whatsapp.route';
 
 import { errorHandler } from './middleware/error.middleware';
 
@@ -102,6 +104,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const webhookController = new WhatsAppWebhookController(whatsappPlugin, workerPlugin);
   const storageController = new StorageController(storagePlugin);
   const campaignController = new CampaignController(campaignService);
+  const whatsappController = new WhatsAppController(whatsappPlugin);
 
   // ── Routes ───────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -109,6 +112,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/node-types', createNodeTypesRouter(nodeTypesController));
   app.use('/api/storage', createStorageRouter(storageController));
   app.use('/api/campaigns', createCampaignRouter(campaignController));
+  app.use('/api/whatsapp', createWhatsAppRouter(whatsappController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

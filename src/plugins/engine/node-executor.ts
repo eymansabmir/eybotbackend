@@ -79,10 +79,12 @@ export class NodeExecutor {
       case NodeType.SEND_VIDEO:
       case NodeType.SEND_AUDIO:
       case NodeType.SEND_DOCUMENT:
+      case NodeType.SEND_STICKER:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            url: this.text(currentNode.data['url'] as string, context),
+            url: currentNode.data['url'] ? this.text(currentNode.data['url'] as string, context) : undefined,
+            mediaId: currentNode.data['mediaId'] ? this.text(currentNode.data['mediaId'] as string, context) : undefined,
             ...(currentNode.data['caption'] ? { caption: this.text(currentNode.data['caption'] as string, context) } : {}),
             ...(currentNode.data['filename'] ? { filename: currentNode.data['filename'] } : {}),
           },

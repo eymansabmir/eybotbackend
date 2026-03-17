@@ -9,6 +9,7 @@ export enum NodeType {
   SEND_BUTTONS = 'send_buttons',
   SEND_LIST = 'send_list',
   SEND_TEMPLATE = 'send_template',
+  SEND_STICKER = 'send_sticker',
   ASK_QUESTION = 'ask_question',
 
   // Logic Nodes
@@ -38,6 +39,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.SEND_BUTTONS,
   NodeType.SEND_LIST,
   NodeType.SEND_TEMPLATE,
+  NodeType.SEND_STICKER,
   NodeType.ASK_QUESTION,
 ];
 
