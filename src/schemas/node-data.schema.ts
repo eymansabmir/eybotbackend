@@ -75,6 +75,18 @@ const AskQuestionDataSchema = z.object({
   timeoutSeconds: z.number(),
 });
 
+const NpsDataSchema = z.object({
+  message: z.string(),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
+  length: z.number().default(10),
+  startsAt: z.number().default(0),
+  leftLabel: z.string().optional(),
+  rightLabel: z.string().optional(),
+  buttonLabel: z.string().optional(),
+  timeoutSeconds: z.number().optional(),
+});
+
 const ConditionDataSchema = z.object({
   expression: ConditionExpressionSchema,
 });
@@ -151,6 +163,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEMPLATE), ...SendTemplateDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_STICKER), ...SendMediaDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.NPS), ...NpsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),
   z.object({ type: z.literal(NodeType.RANDOM_SPLIT), ...RandomSplitDataSchema.shape }),

@@ -11,6 +11,7 @@ export enum NodeType {
   SEND_TEMPLATE = 'send_template',
   SEND_STICKER = 'send_sticker',
   ASK_QUESTION = 'ask_question',
+  NPS = 'nps',
 
   // Logic Nodes
   CONDITION = 'condition',
@@ -41,6 +42,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.SEND_TEMPLATE,
   NodeType.SEND_STICKER,
   NodeType.ASK_QUESTION,
+  NodeType.NPS,
 ];
 
 export const LOGIC_NODE_TYPES = [

@@ -44,6 +44,25 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
       case NodeType.SEND_STICKER:
         return this.api.sendSticker(waId, (p['mediaId'] as string) || (p['url'] as string));
+      case NodeType.NPS: {
+        const message = p['message'] as string;
+        const buttonLabel = (p['buttonLabel'] as string) || 'Rate';
+        const length = Math.min((p['length'] as number) ?? 10, 10);
+        const startsAt = (p['startsAt'] as number) ?? 0;
+        const leftLabel = p['leftLabel'] as string | undefined;
+        const rightLabel = p['rightLabel'] as string | undefined;
+
+        const rows = [];
+        for (let i = 0; i < length; i++) {
+          const value = (startsAt + i).toString();
+          const row: any = { id: value, title: value };
+          if (i === 0 && leftLabel) row.description = leftLabel.slice(0, 72);
+          if (i === length - 1 && rightLabel) row.description = rightLabel.slice(0, 72);
+          rows.push(row);
+        }
+
+        return this.api.sendList(waId, message, buttonLabel, [{ title: 'Score', rows }]);
+      }
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }
