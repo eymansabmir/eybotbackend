@@ -69,6 +69,30 @@ export function createApp(registry: IPluginRegistry): Application {
   app.all('/api/auth/{*any}', authHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(pinoHttp({
+    logger: global.logger,
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          query: req.query,
+          params: req.params,
+          headers: {
+            host: req.headers.host,
+          },
+          remoteAddress: req.remoteAddress,
+          body: req.body,
+        };
+      },
+      res(res) {
+        return {
+          statusCode: res.statusCode,
+        };
+      },
+    },
+  }));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -90,7 +114,7 @@ export function createApp(registry: IPluginRegistry): Application {
 
   // ── Services ───────────────────────────────────────────────────────────────
   const flowService = new FlowService(flowRepo);
-  const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin);
+  const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);

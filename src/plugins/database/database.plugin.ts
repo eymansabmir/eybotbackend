@@ -15,11 +15,15 @@ export class DatabasePlugin implements IPlugin, IDatabasePlugin {
 
   async initialize(_registry: IPluginRegistry): Promise<void> {
     const connectionString = process.env.DATABASE_URL;
+    logger.info({ connectionString }, 'DatabasePlugin: PostgreSQL connection string');
     if (!connectionString) {
       throw new Error('[DatabasePlugin] DATABASE_URL environment variable is required');
     }
 
-    const pool = new pg.Pool({ connectionString });
+    const pool = new pg.Pool({
+      connectionString,
+      ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false }
+    });
     const adapter = new PrismaPg(pool);
     this._prisma = new PrismaClient({ adapter });
 
