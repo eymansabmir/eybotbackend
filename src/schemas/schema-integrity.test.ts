@@ -250,6 +250,7 @@ describe('Frontend ↔ Backend NodeType parity', () => {
     'send_buttons',
     'send_list',
     'send_template',
+    'send_carousel',
     'ask_question',
     'condition',
     'set_variable',
