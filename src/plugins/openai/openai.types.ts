@@ -1,13 +1,9 @@
-import type { CredentialView } from '../../features/credentials';
-
 export interface OpenAICredentialMaterial {
   apiKey: string;
   baseUrl?: string;
   organization?: string;
   project?: string;
 }
-
-export type OpenAICredentialView = CredentialView;
 
 export type OpenAIMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -112,15 +108,6 @@ export interface IOpenAIProvider {
   }>;
 }
 
-export interface CreateOpenAICredentialPayload {
-  orgId: string;
-  name: string;
-  apiKey: string;
-  baseUrl?: string;
-  organization?: string;
-  project?: string;
-}
-
 export interface OpenAIPreviewPayload {
   orgId: string;
   credentialId: string;
@@ -202,8 +189,6 @@ export interface CreateTranscriptionResult {
 }
 
 export interface IOpenAIIntegrationService {
-  createCredential(input: CreateOpenAICredentialPayload): Promise<OpenAICredentialView>;
-  listCredentials(orgId: string): Promise<OpenAICredentialView[]>;
   testCredential(orgId: string, credentialId: string): Promise<OpenAITestResult>;
   listModels(orgId: string, credentialId: string): Promise<OpenAIModelInfo[]>;
   listSpeechModels(input: ListSpeechModelsPayload): Promise<OpenAISpeechModelInfo[]>;
@@ -211,5 +196,4 @@ export interface IOpenAIIntegrationService {
   createSpeech(input: CreateSpeechPayload): Promise<CreateSpeechResult>;
   createTranscription(input: CreateTranscriptionPayload): Promise<CreateTranscriptionResult>;
   executeNode(input: ExecuteOpenAINodePayload): Promise<ExecuteOpenAINodeResult>;
-  revokeCredential(orgId: string, credentialId: string): Promise<OpenAICredentialView>;
 }

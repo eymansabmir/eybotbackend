@@ -27,6 +27,7 @@ export enum NodeType {
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
    OPENAI = 'openai',
+  ELEVENLABS = 'elevenlabs',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -60,4 +61,5 @@ export const INTEGRATION_NODE_TYPES = [
   NodeType.GOOGLE_SHEETS,
   NodeType.NOCODB,
   NodeType.OPENAI,
+  NodeType.ELEVENLABS,
 ];

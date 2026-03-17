@@ -14,8 +14,6 @@ export type {
 	OpenAIChatCompletionInput,
 	OpenAIChatCompletionOutput,
 	OpenAICredentialMaterial,
-	CreateOpenAICredentialPayload,
-	OpenAICredentialView,
 	OpenAIPreviewPayload,
 	ListSpeechModelsPayload,
 	CreateSpeechPayload,

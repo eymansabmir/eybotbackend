@@ -26,3 +26,6 @@ export type { IWorkerPlugin, ExchangeName, IInboundHandler, ICampaignHandler } f
 
 export { OPENAI_PLUGIN } from './openai';
 export type { IOpenAIPlugin } from './openai';
+
+export { ELEVENLABS_PLUGIN } from './elevenlabs';
+export type { IElevenLabsPlugin } from './elevenlabs';

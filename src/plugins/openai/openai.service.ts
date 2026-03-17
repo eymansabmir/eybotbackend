@@ -6,7 +6,6 @@ import type { IStoragePlugin } from '../storage';
 import type {
   CreateSpeechPayload,
   CreateSpeechResult,
-  CreateOpenAICredentialPayload,
   CreateTranscriptionPayload,
   CreateTranscriptionResult,
   ExecuteOpenAINodePayload,
@@ -16,7 +15,6 @@ import type {
   ListSpeechModelsPayload,
   OpenAIChatCompletionOutput,
   OpenAICredentialMaterial,
-  OpenAICredentialView,
   OpenAIMessage,
   OpenAIModelInfo,
   OpenAISpeechModelInfo,
@@ -52,44 +50,6 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     private readonly provider: IOpenAIProvider,
     private readonly storage?: IStoragePlugin,
   ) {}
-
-  async createCredential(input: CreateOpenAICredentialPayload): Promise<OpenAICredentialView> {
-    const orgId = input.orgId.trim();
-    const name = input.name.trim();
-    const apiKey = input.apiKey.trim();
-
-    if (!orgId) throw new ValidationError('orgId is required');
-    if (!name) throw new ValidationError('Credential name is required');
-    if (!apiKey) throw new ValidationError('API key is required');
-
-    const view = await this.credentials.createCredential({
-      orgId,
-      name,
-      type: CredentialType.OPENAI,
-      secret: {
-        apiKey,
-        ...(this.normalizeOptional(input.baseUrl) ? { baseUrl: this.normalizeOptional(input.baseUrl) } : {}),
-        ...(this.normalizeOptional(input.organization) ? { organization: this.normalizeOptional(input.organization) } : {}),
-        ...(this.normalizeOptional(input.project) ? { project: this.normalizeOptional(input.project) } : {}),
-      },
-      metadata: {
-        ...(this.normalizeOptional(input.baseUrl) ? { baseUrl: this.normalizeOptional(input.baseUrl) } : {}),
-        ...(this.normalizeOptional(input.organization) ? { organization: this.normalizeOptional(input.organization) } : {}),
-        ...(this.normalizeOptional(input.project) ? { project: this.normalizeOptional(input.project) } : {}),
-      },
-      isActive: true,
-    });
-
-    return view;
-  }
-
-  async listCredentials(orgId: string): Promise<OpenAICredentialView[]> {
-    return this.credentials.listCredentials(orgId, {
-      type: CredentialType.OPENAI,
-      includeInactive: true,
-      includeRevoked: true,
-    });
-  }
 
   async testCredential(orgId: string, credentialId: string): Promise<OpenAITestResult> {
     const material = await this.getCredentialMaterial(orgId, credentialId);
@@ -394,10 +354,6 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     };
   }
 
-  async revokeCredential(orgId: string, credentialId: string): Promise<OpenAICredentialView> {
-    return this.credentials.revokeCredential(orgId, credentialId);
-  }
-
   private async getCredentialMaterial(orgId: string, credentialId: string): Promise<OpenAICredentialMaterial> {
     const secret = await this.credentials.decryptSecret(orgId, credentialId, CredentialType.OPENAI);
     const apiKey = secret['apiKey'];
@@ -412,12 +368,6 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       ...(typeof secret['organization'] === 'string' ? { organization: secret['organization'] } : {}),
       ...(typeof secret['project'] === 'string' ? { project: secret['project'] } : {}),
     };
-  }
-
-  private normalizeOptional(value?: string): string | undefined {
-    if (!value) return undefined;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
   }
 
   private toPublicError(error: unknown): AppError {

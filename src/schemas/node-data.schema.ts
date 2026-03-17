@@ -160,6 +160,19 @@ const OpenAIDataSchema = z.object({
   fallbackText: z.string().optional(),
 });
 
+const ElevenLabsDataSchema = z.object({
+  credentialId: z.string().min(1),
+  voiceId: z.string().min(1),
+  text: z.string().min(1),
+  modelId: z.string().optional(),
+  outputFormat: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+  resultVariable: z.string().min(1),
+  resultScope: z.enum(['session', 'contact']).default('session'),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+});
+
 
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
@@ -183,6 +196,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

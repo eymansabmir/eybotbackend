@@ -35,6 +35,7 @@ import {
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
+import { ElevenLabsPlugin } from './plugins/elevenlabs/elevenlabs.plugin';
 import { CredentialService, PrismaCredentialRepository } from './features/credentials';
 
 
@@ -57,6 +58,7 @@ async function startServer(): Promise<void> {
   }
 
   registry.register(new OpenAIPlugin());
+  registry.register(new ElevenLabsPlugin());
 
   // ── Phase 2: Initialize all plugins (sequential, order above) ────────────
   await registry.initializeAll();

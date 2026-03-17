@@ -7,6 +7,8 @@ import { CREDENTIAL_SERVICE } from '../../features/repositories.interface';
 import type { ICredentialService } from '../../features/credentials';
 import { OpenAIIntegrationService } from '../openai';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from '../openai';
+import { ElevenLabsIntegrationService } from '../elevenlabs';
+import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from '../elevenlabs';
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
@@ -16,6 +18,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _registry!: IPluginRegistry;
   private _orchestrator!: FlowOrchestrator;
   private _openAIService?: OpenAIIntegrationService;
+  private _elevenLabsService?: ElevenLabsIntegrationService;
 
   async initialize(registry: IPluginRegistry): Promise<void> {
     this._registry = registry;
@@ -97,6 +100,26 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           },
         };
       },
+      executeElevenLabs: async ({ orgId, request }) => {
+        const service = this.elevenLabsService();
+        const output = await service.executeNode({
+          orgId,
+          credentialId: request.credentialId,
+          voiceId: request.voiceId,
+          text: request.text,
+          modelId: request.modelId,
+          outputFormat: request.outputFormat,
+          timeoutMs: request.timeoutMs,
+        });
+
+        return {
+          value: output.audioUrl,
+          message: {
+            type: NodeType.SEND_AUDIO,
+            payload: { url: output.audioUrl },
+          },
+        };
+      },
     };
   }
 
@@ -108,5 +131,15 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._openAIService = new OpenAIIntegrationService(credentials, provider, storage);
     }
     return this._openAIService;
+  }
+
+  private elevenLabsService(): ElevenLabsIntegrationService {
+    if (!this._elevenLabsService) {
+      const provider = this._registry.get<IElevenLabsPlugin>(ELEVENLABS_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      const storage = this._registry.get<IStoragePlugin>(STORAGE_PLUGIN);
+      this._elevenLabsService = new ElevenLabsIntegrationService(credentials, provider, storage);
+    }
+    return this._elevenLabsService;
   }
 }
