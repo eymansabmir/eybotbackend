@@ -134,6 +134,20 @@ export class FlowService implements IFlowService {
             }
           }
           break;
+        case NodeType.SEND_CARDS:
+          if (node.data.items && Array.isArray(node.data.items)) {
+            for (const item of node.data.items) {
+              if (item.imageUrl && typeof item.imageUrl === 'string') {
+                const url = item.imageUrl as string;
+                if (url.startsWith('http')) {
+                  item.imageUrl = new URL(url).pathname.replace(/^\/+/, '');
+                } else if (base && url.startsWith(base)) {
+                  item.imageUrl = url.replace(`${base}/`, '');
+                }
+              }
+            }
+          }
+          break;
       }
     }
   }

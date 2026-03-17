@@ -154,6 +154,9 @@ export class NodeExecutor {
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
 
+      case NodeType.SEND_CARDS:
+        return this.handleCards(currentNode, context, enteredAt, traverser, userInput);
+
       default:
         throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
     }
@@ -181,6 +184,74 @@ export class NodeExecutor {
       isTerminal: false,
       historyStep: { nodeId: node.id, nodeType: node.type, enteredAt, exitedAt: new Date(), branchTaken: branchKey },
     };
+  }
+
+  private handleCards(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const interaction = node.data['interaction'] as any;
+    const items = (node.data['items'] ?? []) as any[];
+
+    if (interaction?.mode === 'input' && userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      
+      const options = items.flatMap((item: any) => 
+        (item.buttons ?? []).map((b: any) => ({ id: b.id, label: b.text, branchKey: b.branchKey }))
+      );
+
+      const messages: OutboundMessage[] = items.map((item: any) => ({
+        type: node.type,
+        payload: {
+          imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+          title: item.title ? this.text(item.title, ctx) : undefined,
+          description: item.description ? this.text(item.description, ctx) : undefined,
+          buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
+        }
+      }));
+
+      return {
+        nextNodeId: node.id,
+        outboundMessages: messages,
+        variableMutations: [], isTerminal: false,
+        waitForInput: { 
+          type: 'choice', 
+          options, 
+          defaultBranchKey: interaction.input?.defaultBranchKey, 
+          variableName: interaction.input?.variableName, 
+          variableScope: interaction.input?.variableScope, 
+          since, 
+          timeoutAt 
+        },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    if (interaction?.mode === 'input' && userInput !== undefined) {
+      const options = items.flatMap((item: any) => 
+        (item.buttons ?? []).map((b: any) => ({ id: b.id, branchKey: b.branchKey }))
+      );
+      const selected = (options as any[]).find((o: any) => o.id === userInput);
+      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
+      const mutations: VariableMutation[] = [];
+      if (interaction.input?.variableName && interaction.input?.variableScope) {
+        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      }
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+
+    const messages: OutboundMessage[] = items.map((item: any) => ({
+      type: node.type,
+      payload: {
+        imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+        title: item.title ? this.text(item.title, ctx) : undefined,
+        description: item.description ? this.text(item.description, ctx) : undefined,
+        buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
+      }
+    }));
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, messages);
   }
 
   private handleAskQuestion(

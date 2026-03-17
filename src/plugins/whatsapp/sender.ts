@@ -63,6 +63,28 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
 
         return this.api.sendList(waId, message, buttonLabel, [{ title: 'Score', rows }]);
       }
+      case NodeType.SEND_CARDS: {
+        const imageUrl = p['imageUrl'] as string | undefined;
+        const title = p['title'] as string | undefined;
+        const description = p['description'] as string | undefined;
+        const buttons = p['buttons'] as any[];
+
+        let body = '';
+        if (title) body += `*${title}*\n`;
+        if (description) body += description;
+        if (!body) body = '―';
+
+        let header;
+        if (imageUrl) {
+          const isId = !imageUrl.startsWith('http');
+          header = {
+            type: 'image',
+            image: isId ? { id: imageUrl } : { link: imageUrl },
+          };
+        }
+
+        return this.api.sendButtons(waId, body, buttons, undefined, header);
+      }
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }
@@ -78,7 +100,7 @@ export class StubWhatsAppSender implements IWhatsAppSender {
     logger.debug({ waId, messages }, 'StubWhatsAppSender: would send message(s)');
   }
 
-  async uploadMedia(_url: string, _type: string): Promise<string> {
+  async uploadMedia(_url: string, _type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
     logger.debug({ _url, _type }, 'StubWhatsAppSender: would upload media');
     return 'stub-media-id';
   }
