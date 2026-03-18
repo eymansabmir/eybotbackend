@@ -76,8 +76,14 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
-  private async call(payload: unknown): Promise<void> {
-    logger.debug({ payload }, 'WhatsAppAPI: sending payload');
+  private async call(payload: any): Promise<void> {
+    const msgType = payload.type;
+    logger.info(
+      { messageType: msgType, to: payload.to },
+      'WhatsAppAPI: sending message to Meta',
+    );
+    logger.debug({ payload }, 'WhatsAppAPI: full payload');
+
     const url = `${this.config.apiUrl}/${this.config.phoneNumberId}/messages`;
     const response = await fetch(url, {
       method: 'POST',
@@ -89,5 +95,10 @@ export class WhatsAppAPIService {
       const errorText = await response.text();
       throw new WhatsAppAPIError(`WhatsApp API error: ${response.status} - ${errorText}`, response.status);
     }
+
+    logger.info(
+      { messageType: msgType, to: payload.to },
+      'WhatsAppAPI: message sent to Meta successfully',
+    );
   }
 }

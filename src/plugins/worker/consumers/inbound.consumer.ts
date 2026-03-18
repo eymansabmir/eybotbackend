@@ -1,6 +1,7 @@
 import type { IPluginRegistry } from '../../plugin.interface';
 import { WORKER_PLUGIN, EXCHANGES, type IWorkerPlugin } from '../worker.interface';
-import { INBOUND_HANDLER, type IInboundHandler } from '../handlers.interface';
+import type { IInboundHandler } from '../handlers.interface';
+import { INBOUND_HANDLER } from '../../../features/repositories.interface';
 import type { InboundJob } from '../jobs';
 
 export async function handleInboundJob(data: unknown, registry: IPluginRegistry): Promise<void> {
@@ -12,9 +13,28 @@ export async function handleInboundJob(data: unknown, registry: IPluginRegistry)
     const handler = registry.get<IInboundHandler>(INBOUND_HANDLER);
     const outboundJobs = await handler.process(job);
 
+    logger.info(
+      {
+        messageId: job.message.messageId,
+        outboundCount: outboundJobs.length,
+        types: outboundJobs.map((j, idx) => `${idx}: ${j.messageType}`),
+      },
+      'InboundConsumer: outbound jobs generated',
+    );
+
     const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
-    for (const outboundJob of outboundJobs) {
-      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob);
+    for (const [index, outboundJob] of outboundJobs.entries()) {
+      logger.info(
+        {
+          messageId: job.message.messageId,
+          index,
+          messageType: outboundJob.messageType,
+          sessionId: outboundJob.sessionId,
+        },
+        'InboundConsumer: publishing outbound job',
+      );
+      // Use sessionId as routing key to ensure all messages for same session go to same worker
+      await workerPlugin.publish(EXCHANGES.OUTBOUND, outboundJob, outboundJob.sessionId || '');
     }
 
     logger.info({ messageId: job.message.messageId, outboundCount: outboundJobs.length }, 'InboundConsumer: message processed');
