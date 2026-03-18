@@ -9,6 +9,7 @@ export enum NodeType {
   SEND_BUTTONS = 'send_buttons',
   SEND_LIST = 'send_list',
   SEND_TEMPLATE = 'send_template',
+  SEND_CAROUSEL = 'send_carousel',
   ASK_QUESTION = 'ask_question',
 
   // Logic Nodes
@@ -26,6 +27,8 @@ export enum NodeType {
   WEBHOOK = 'webhook',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
+   OPENAI = 'openai',
+  ELEVENLABS = 'elevenlabs',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -38,6 +41,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.SEND_BUTTONS,
   NodeType.SEND_LIST,
   NodeType.SEND_TEMPLATE,
+  NodeType.SEND_CAROUSEL,
   NodeType.ASK_QUESTION,
 ];
 
@@ -58,4 +62,6 @@ export const INTEGRATION_NODE_TYPES = [
   NodeType.WEBHOOK,
   NodeType.GOOGLE_SHEETS,
   NodeType.NOCODB,
+  NodeType.OPENAI,
+  NodeType.ELEVENLABS,
 ];

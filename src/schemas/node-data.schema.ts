@@ -65,6 +65,29 @@ const SendTemplateDataSchema = z.object({
   components: z.array(z.any()).optional(),
 });
 
+const SendCarouselDataSchema = z.object({
+  bodyText: z.string().max(1024).optional(),
+  cards: z.array(
+    z.object({
+      headerType: z.enum(['image', 'video']),
+      url: z.string().url(),
+      bodyText: z.string().max(160).optional(),
+      buttonType: z.enum(['cta_url', 'quick_reply']).optional(),
+      ctaUrlButton: z.object({
+        displayText: z.string().max(20),
+        url: z.string().url(),
+      }).optional(),
+      quickReplyButtons: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string().max(20),
+        })
+      ).max(2).optional(),
+    })
+  ).min(1).max(10),
+  interaction: NodeInteractionSchema.optional(),
+});
+
 const AskQuestionDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
@@ -138,6 +161,42 @@ const NocoDBDataSchema = z.object({
   resultScope: z.enum(['session', 'contact']).optional(),
 });
 
+const OpenAIDataSchema = z.object({
+  mode: z.enum(['agent', 'voice']).default('agent'),
+  voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
+  credentialId: z.string().min(1),
+  model: z.string().min(1),
+  voice: z.string().optional(),
+  prompt: z.string().min(1),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  topP: z.number().min(0).max(1).optional(),
+  frequencyPenalty: z.number().min(-2).max(2).optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().min(1),
+  resultScope: z.enum(['session', 'contact']).default('session'),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+});
+
+const ElevenLabsDataSchema = z.object({
+  credentialId: z.string().min(1),
+  voiceId: z.string().min(1),
+  text: z.string().min(1),
+  modelId: z.string().optional(),
+  outputFormat: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+  resultVariable: z.string().min(1),
+  resultScope: z.enum(['session', 'contact']).default('session'),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+});
+
+
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_IMAGE), ...SendMediaDataSchema.shape }),
@@ -148,6 +207,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_BUTTONS), ...SendButtonsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_LIST), ...SendListDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_TEMPLATE), ...SendTemplateDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_CAROUSEL), ...SendCarouselDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),
@@ -159,6 +219,8 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

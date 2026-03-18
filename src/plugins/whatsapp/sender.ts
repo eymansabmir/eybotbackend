@@ -42,6 +42,8 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendList(waId, p['body'] as string, p['buttonTitle'] as string, p['sections'] as any[], p['footer'] as string | undefined);
       case NodeType.SEND_TEMPLATE:
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
+      case NodeType.SEND_CAROUSEL:
+        return this.api.sendCarousel(waId, p['bodyText'] as string | undefined, p['cards'] as any[]);
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }

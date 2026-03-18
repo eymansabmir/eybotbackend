@@ -3,10 +3,61 @@ import { STORAGE_PLUGIN, IStoragePlugin } from '../../storage';
 import { ImportJob, DispatchJob } from '../jobs';
 import { EXCHANGES, IWorkerPlugin, WORKER_PLUGIN } from '../worker.interface';
 import { CampaignVersionStatus } from '@prisma/client';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { CAMPAIGN_REPOSITORY, CAMPAIGN_RECIPIENT_REPOSITORY } from '../../../features/repositories.interface';
 import { ICampaignRepository } from '../../../features/campaign/campaign.repository';
 import { ICampaignRecipientRepository } from '../../../features/campaign/campaign-recipient.repository';
+
+type ParsedRow = Record<string, unknown>;
+
+function normalizeCellValue(value: ExcelJS.CellValue): unknown {
+  if (value && typeof value === 'object' && 'result' in value) {
+    return value.result;
+  }
+
+  return value;
+}
+
+async function parseXlsxRows(buffer: Buffer): Promise<ParsedRow[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error('Sheet not found in XLSX');
+  }
+
+  const headerRow = worksheet.getRow(1);
+  const headerValues = Array.isArray(headerRow.values) ? headerRow.values : Object.values(headerRow.values);
+  const headers: string[] = headerValues
+    .slice(1)
+    .map((value: ExcelJS.CellValue) => String(normalizeCellValue(value) ?? '').trim());
+
+  const rows: ParsedRow[] = [];
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const parsed: ParsedRow = {};
+    let hasValue = false;
+
+    headers.forEach((header: string, index: number) => {
+      if (!header) {
+        return;
+      }
+
+      const cellValue = row.getCell(index + 1).value;
+      const normalizedValue = normalizeCellValue(cellValue);
+
+      parsed[header] = normalizedValue;
+      hasValue = hasValue || normalizedValue !== null && normalizedValue !== undefined && String(normalizedValue).trim() !== '';
+    });
+
+    if (hasValue) {
+      rows.push(parsed);
+    }
+  }
+
+  return rows;
+}
 
 export async function handleImportJob(data: unknown, registry: IPluginRegistry): Promise<void> {
   const job = data as ImportJob;
@@ -21,13 +72,7 @@ export async function handleImportJob(data: unknown, registry: IPluginRegistry):
     const buffer = await storage.downloadFile(job.filePath);
 
     // 2. Parse XLSX using buffer
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName!];
-
-    if (!sheet) throw new Error('Sheet not found in XLSX');
-
-    const rows = XLSX.utils.sheet_to_json<any>(sheet);
+    const rows = await parseXlsxRows(buffer);
     logger.info({ campaignId: job.campaignId, rowCount: rows.length, filePath: job.filePath }, 'ImportWorker: file parsed');
 
     // 3. Batch insert recipients

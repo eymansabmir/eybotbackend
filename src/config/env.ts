@@ -11,6 +11,18 @@ const envSchema = z.object({
   WHATSAPP_API_TOKEN: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  FRONTEND_URL: z.string().url().optional(),
+  BETTER_AUTH_SECRET: z.string().min(1, 'BETTER_AUTH_SECRET is required'),
+  BETTER_AUTH_URL: z.string().url().optional(),
+
+  /** Auth email OTP */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_SECURE: z.enum(['true', 'false']).optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
+  EMAIL_OTP_DEV_FALLBACK: z.enum(['true', 'false']).optional(),
 
   /** Google Cloud Storage */
   GCS_PROJECT_ID: z.string().optional(),
@@ -33,6 +45,9 @@ const envSchema = z.object({
 
   /** Base CDN/Media URL */
   BASE_MEDIA_URL: z.string().url().optional(),
+
+  /** Integration secret encryption key (32-byte hex/base64/raw) */
+  INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

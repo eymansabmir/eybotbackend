@@ -27,6 +27,8 @@ export interface NodeExecutionResult {
   nextNodeId: string | null;
   outboundMessages: OutboundMessage[];
   variableMutations: VariableMutation[];
+  openAIRequest?: OpenAINodeRequest;
+  elevenLabsRequest?: ElevenLabsNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -36,6 +38,41 @@ export interface NodeExecutionInput {
   context: VariableContext;
   currentNode: Node;
   userInput?: string;
+}
+
+export interface OpenAINodeRequest {
+  nodeId: string;
+  mode: 'agent' | 'voice';
+  voiceAction?: 'create_speech' | 'create_transcription';
+  credentialId: string;
+  model: string;
+  voice?: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+}
+
+export interface ElevenLabsNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  voiceId: string;
+  text: string;
+  modelId?: string;
+  outputFormat?: string;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
 }
 
 const LOGIC_TYPES = new Set<NodeType>([
@@ -50,7 +87,7 @@ export class NodeExecutor {
   constructor(
     private readonly resolver: VariableResolver,
     private readonly evaluator: ConditionEvaluator,
-  ) {}
+  ) { }
 
   isLogicNode(type: NodeType): boolean {
     return LOGIC_TYPES.has(type);
@@ -115,6 +152,9 @@ export class NodeExecutor {
           },
         }]);
 
+      case NodeType.SEND_CAROUSEL:
+        return this.handleCarousel(currentNode, context, enteredAt, traverser, userInput);
+
       case NodeType.ASK_QUESTION:
         return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
 
@@ -149,6 +189,13 @@ export class NodeExecutor {
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
 
+      case NodeType.OPENAI:
+        return this.handleOpenAI(currentNode, context, enteredAt, traverser);
+
+      case NodeType.ELEVENLABS:
+        return this.handleElevenLabs(currentNode, context, enteredAt, traverser);
+
+
       default:
         throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
     }
@@ -158,6 +205,88 @@ export class NodeExecutor {
 
   private text(template: string, ctx: VariableContext): string {
     return this.resolver.resolve(template, ctx);
+  }
+
+  private handleOpenAI(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const request: OpenAINodeRequest = {
+      nodeId: node.id,
+      mode: data['mode'] === 'voice' ? 'voice' : 'agent',
+      ...(data['mode'] === 'voice'
+        ? {
+            voiceAction:
+              data['voiceAction'] === 'create_transcription'
+                ? 'create_transcription' as const
+                : 'create_speech' as const,
+          }
+        : {}),
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      ...(typeof data['voice'] === 'string' ? { voice: this.text(data['voice'], ctx) } : {}),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string'
+        ? { systemPrompt: this.text(data['systemPrompt'], ctx) }
+        : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['topP'] === 'number' ? { topP: data['topP'] } : {}),
+      ...(typeof data['frequencyPenalty'] === 'number'
+        ? { frequencyPenalty: data['frequencyPenalty'] }
+        : {}),
+      ...(typeof data['presencePenalty'] === 'number'
+        ? { presencePenalty: data['presencePenalty'] }
+        : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string'
+        ? { fallbackText: this.text(data['fallbackText'], ctx) }
+        : {}),
+    };
+
+    return {
+      ...base,
+      openAIRequest: request,
+    };
+  }
+
+  private handleElevenLabs(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const request: ElevenLabsNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      voiceId: String(data['voiceId'] ?? ''),
+      text: this.text(String(data['text'] ?? ''), ctx),
+      ...(typeof data['modelId'] === 'string' ? { modelId: this.text(data['modelId'], ctx) } : {}),
+      ...(typeof data['outputFormat'] === 'string' ? { outputFormat: data['outputFormat'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string'
+        ? { fallbackText: this.text(data['fallbackText'], ctx) }
+        : {}),
+    };
+
+    return {
+      ...base,
+      elevenLabsRequest: request,
+    };
   }
 
   private defaultResult(
@@ -271,6 +400,61 @@ export class NodeExecutor {
 
     return this.defaultResult(node, 'default', enteredAt, traverser, [
       { type: node.type, payload: { body, buttonTitle: node.data['buttonTitle'], sections: node.data['sections'] } },
+    ]);
+  }
+
+  private handleCarousel(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const bodyText = node.data['bodyText'] ? this.text(node.data['bodyText'] as string, ctx) : undefined;
+    const cards = (node.data['cards'] as any[])?.map(card => ({
+      ...card,
+      bodyText: card.bodyText ? this.text(card.bodyText as string, ctx) : undefined,
+    }));
+    const interaction = node.data['interaction'] as any;
+
+    if (interaction?.mode === 'input' && userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 3600) as number) * 1000);
+      
+      // Collect all possible quick reply options across all cards
+      const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
+        card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
+          id: btn.id,
+          label: btn.title,
+          branchKey: btn.id
+        })) : []
+      ) ?? [];
+
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: node.type, payload: { bodyText, cards: node.data['cards'] } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    if (interaction?.mode === 'input' && userInput !== undefined) {
+      const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
+        card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
+          id: btn.id,
+          branchKey: btn.id
+        })) : []
+      ) ?? [];
+
+      const selected = (options as any[]).find((o: any) => o.id === userInput);
+      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'timeout';
+      const mutations: VariableMutation[] = [];
+      if (interaction.input?.variableName && interaction.input?.variableScope) {
+        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      }
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, [
+      { type: node.type, payload: { bodyText, cards: node.data['cards'] } },
     ]);
   }
 
