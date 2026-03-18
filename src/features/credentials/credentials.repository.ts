@@ -51,6 +51,14 @@ export class PrismaCredentialRepository implements ICredentialRepository {
   }
 
   async findById(orgId: string, id: string): Promise<Credential | null> {
+    logger.info(
+      {
+        orgId,
+        credentialId: id,
+        action: 'credential.findById',
+      },
+      'STEP 4: DB query',
+    );
     return this.prisma.credential.findFirst({
       where: {
         id,

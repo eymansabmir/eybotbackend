@@ -7,7 +7,7 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-import type { OpenAINodeRequest, VariableMutation } from './node-executor';
+import type { ElevenLabsNodeRequest, OpenAINodeRequest, VariableMutation } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
 
@@ -21,6 +21,15 @@ export interface OpenAINodeExecutionInput {
 
 export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+}
+
+export interface ElevenLabsNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: ElevenLabsNodeRequest;
 }
 
 /**
@@ -140,6 +149,26 @@ export class FlowOrchestrator {
         }
       }
 
+      if (stepResult.elevenLabsRequest) {
+        const elevenLabsOutput = await this.executeElevenLabsRequest(
+          flow,
+          session,
+          contact,
+          stepResult.elevenLabsRequest,
+          runtime,
+        );
+
+        this.applyMutation({
+          scope: stepResult.elevenLabsRequest.resultScope,
+          key: stepResult.elevenLabsRequest.resultVariable,
+          value: elevenLabsOutput.value,
+        }, session, contact, allContactMutations);
+
+        if (stepResult.elevenLabsRequest.sendResponseToUser) {
+          allMessages.push(elevenLabsOutput.message);
+        }
+      }
+
       session.addToHistory(stepResult.historyStep);
 
       if (stepResult.nextNodeId) {
@@ -185,6 +214,20 @@ export class FlowOrchestrator {
         throw new FlowExecutionError('OpenAI runtime executor is not configured', request.nodeId);
       }
 
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          model: request.model,
+          mode: request.mode,
+          hasFallbackText: Boolean(request.fallbackText),
+          action: 'runtime.executeOpenAI',
+        },
+        'STEP 5: Executing OpenAI runtime request',
+      );
+
       const response = await runtime.executeOpenAI({
         orgId: flow.orgId,
         flow,
@@ -196,8 +239,34 @@ export class FlowOrchestrator {
       if (!response.value.trim()) {
         throw new FlowExecutionError('OpenAI runtime returned empty response', request.nodeId);
       }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          outputType: response.message.type,
+          outputChars: response.value.length,
+          action: 'runtime.executeOpenAI',
+        },
+        'STEP 6: OpenAI runtime response received',
+      );
+
       return response;
     } catch (error) {
+      logger.warn(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          action: 'runtime.executeOpenAI',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI runtime execution failed in orchestrator',
+      );
+
       if (request.fallbackText) {
         return {
           value: request.fallbackText,
@@ -225,6 +294,47 @@ export class FlowOrchestrator {
     } else {
       contact.customFields[mutation.key] = mutation.value;
       contactMutations[mutation.key] = mutation.value;
+    }
+  }
+
+  private async executeElevenLabsRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: ElevenLabsNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ value: string; message: OutboundMessage }> {
+    try {
+      if (!runtime?.executeElevenLabs) {
+        throw new FlowExecutionError('ElevenLabs runtime executor is not configured', request.nodeId);
+      }
+
+      const response = await runtime.executeElevenLabs({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+
+      if (!response.value.trim()) {
+        throw new FlowExecutionError('ElevenLabs runtime returned empty response', request.nodeId);
+      }
+      return response;
+    } catch (error) {
+      if (request.fallbackText) {
+        return {
+          value: request.fallbackText,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: request.fallbackText },
+          },
+        };
+      }
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('ElevenLabs runtime execution failed', request.nodeId);
     }
   }
 }

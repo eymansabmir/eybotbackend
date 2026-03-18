@@ -28,6 +28,7 @@ export interface NodeExecutionResult {
   outboundMessages: OutboundMessage[];
   variableMutations: VariableMutation[];
   openAIRequest?: OpenAINodeRequest;
+  elevenLabsRequest?: ElevenLabsNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -53,6 +54,20 @@ export interface OpenAINodeRequest {
   topP?: number;
   frequencyPenalty?: number;
   presencePenalty?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+}
+
+export interface ElevenLabsNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  voiceId: string;
+  text: string;
+  modelId?: string;
+  outputFormat?: string;
   timeoutMs?: number;
   resultVariable: string;
   resultScope: 'session' | 'contact';
@@ -174,6 +189,9 @@ export class NodeExecutor {
       case NodeType.OPENAI:
         return this.handleOpenAI(currentNode, context, enteredAt, traverser);
 
+      case NodeType.ELEVENLABS:
+        return this.handleElevenLabs(currentNode, context, enteredAt, traverser);
+
 
       default:
         throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
@@ -234,6 +252,37 @@ export class NodeExecutor {
     return {
       ...base,
       openAIRequest: request,
+    };
+  }
+
+  private handleElevenLabs(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const request: ElevenLabsNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      voiceId: String(data['voiceId'] ?? ''),
+      text: this.text(String(data['text'] ?? ''), ctx),
+      ...(typeof data['modelId'] === 'string' ? { modelId: this.text(data['modelId'], ctx) } : {}),
+      ...(typeof data['outputFormat'] === 'string' ? { outputFormat: data['outputFormat'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string'
+        ? { fallbackText: this.text(data['fallbackText'], ctx) }
+        : {}),
+    };
+
+    return {
+      ...base,
+      elevenLabsRequest: request,
     };
   }
 

@@ -11,6 +11,7 @@ import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
 import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
 import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from './plugins/openai';
+import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from './plugins/elevenlabs';
 
 import {
   FLOW_REPOSITORY,
@@ -28,6 +29,7 @@ import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
 import { CampaignService } from './features/campaign/campaign.service';
 import { OpenAIIntegrationService } from './plugins/openai';
+import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -36,6 +38,7 @@ import { WhatsAppWebhookController } from './features/whatsapp-webhook/whatsapp-
 import { StorageController } from './features/storage/storage.controller';
 import { CampaignController } from './features/campaign/campaign.controller';
 import { OpenAIController } from './features/integrations/openai/openai.controller';
+import { ElevenLabsController } from './features/integrations/elevenlabs/elevenlabs.controller';
 import { CredentialController } from './features/credentials';
 
 import { createFlowRouter } from './features/flow/flow.route';
@@ -45,6 +48,7 @@ import { createWhatsAppWebhookRouter } from './features/whatsapp-webhook/whatsap
 import { createStorageRouter } from './features/storage/storage.route';
 import { createCampaignRouter } from './features/campaign/campaign.route';
 import { createOpenAIRouter } from './features/integrations/openai/openai.route';
+import { createElevenLabsRouter } from './features/integrations/elevenlabs/elevenlabs.route';
 import { createCredentialRouter } from './features/credentials';
 
 import { errorHandler } from './middleware/error.middleware';
@@ -100,6 +104,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
   const storagePlugin = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
   const openAIPlugin = registry.get<IOpenAIPlugin>(OPENAI_PLUGIN);
+  const elevenLabsPlugin = registry.get<IElevenLabsPlugin>(ELEVENLABS_PLUGIN);
 
   // ── Repositories ───────────────────────────────────────────────────────────
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
@@ -112,6 +117,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
+  const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
 
   // Start background scheduler
   campaignService.startScheduler();
@@ -124,6 +130,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const storageController = new StorageController(storagePlugin);
   const campaignController = new CampaignController(campaignService);
   const openAIController = new OpenAIController(openAIService);
+  const elevenLabsController = new ElevenLabsController(elevenLabsService);
   const credentialController = new CredentialController(credentialService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -134,6 +141,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/campaigns', createCampaignRouter(campaignController));
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
+  app.use('/api/integrations/elevenlabs', createElevenLabsRouter(elevenLabsController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

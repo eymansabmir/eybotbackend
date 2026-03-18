@@ -1,13 +1,9 @@
-import type { CredentialView } from '../../features/credentials';
-
 export interface OpenAICredentialMaterial {
   apiKey: string;
   baseUrl?: string;
   organization?: string;
   project?: string;
 }
-
-export type OpenAICredentialView = CredentialView;
 
 export type OpenAIMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -22,6 +18,8 @@ export interface OpenAIModelInfo {
   id: string;
   ownedBy?: string;
 }
+
+export type OpenAIModelActionMode = 'agent';
 
 export type OpenAIVoiceActionMode = 'create_speech' | 'create_transcription';
 
@@ -69,6 +67,7 @@ export interface IOpenAIProvider {
 
   listModels(input: {
     credential: OpenAICredentialMaterial;
+    actionMode?: OpenAIModelActionMode;
     timeoutMs?: number;
   }): Promise<OpenAIModelInfo[]>;
 
@@ -110,15 +109,6 @@ export interface IOpenAIProvider {
     durationSeconds?: number;
     raw?: unknown;
   }>;
-}
-
-export interface CreateOpenAICredentialPayload {
-  orgId: string;
-  name: string;
-  apiKey: string;
-  baseUrl?: string;
-  organization?: string;
-  project?: string;
 }
 
 export interface OpenAIPreviewPayload {
@@ -202,14 +192,11 @@ export interface CreateTranscriptionResult {
 }
 
 export interface IOpenAIIntegrationService {
-  createCredential(input: CreateOpenAICredentialPayload): Promise<OpenAICredentialView>;
-  listCredentials(orgId: string): Promise<OpenAICredentialView[]>;
   testCredential(orgId: string, credentialId: string): Promise<OpenAITestResult>;
-  listModels(orgId: string, credentialId: string): Promise<OpenAIModelInfo[]>;
+  listModels(orgId: string, credentialId: string, actionMode?: OpenAIModelActionMode): Promise<OpenAIModelInfo[]>;
   listSpeechModels(input: ListSpeechModelsPayload): Promise<OpenAISpeechModelInfo[]>;
   preview(input: OpenAIPreviewPayload): Promise<OpenAIChatCompletionOutput>;
   createSpeech(input: CreateSpeechPayload): Promise<CreateSpeechResult>;
   createTranscription(input: CreateTranscriptionPayload): Promise<CreateTranscriptionResult>;
   executeNode(input: ExecuteOpenAINodePayload): Promise<ExecuteOpenAINodeResult>;
-  revokeCredential(orgId: string, credentialId: string): Promise<OpenAICredentialView>;
 }

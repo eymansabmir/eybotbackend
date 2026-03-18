@@ -12,22 +12,10 @@ const OrgIdBodySchema = z.object({
   orgId: z.string().min(1),
 });
 
-const ListCredentialsQuerySchema = z.object({
-  orgId: z.preprocess(pickFirst, z.string().min(1)),
-});
-
-const CreateCredentialBodySchema = z.object({
-  orgId: z.string().min(1),
-  name: z.string().min(1),
-  apiKey: z.string().min(1),
-  baseUrl: z.string().url().optional(),
-  organization: z.string().optional(),
-  project: z.string().optional(),
-});
-
 const ListModelsQuerySchema = z.object({
   orgId: z.preprocess(pickFirst, z.string().min(1)),
   credentialId: z.preprocess(pickFirst, z.string().min(1)),
+  actionMode: z.preprocess(pickFirst, z.enum(['agent']).optional()),
 });
 
 const OpenAIMessageSchema = z.object({
@@ -90,26 +78,6 @@ const CreateTranscriptionBodySchema = z.object({
 export class OpenAIController {
   constructor(private readonly service: IOpenAIIntegrationService) {}
 
-  createCredential = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const body = CreateCredentialBodySchema.parse(req.body);
-      const credential = await this.service.createCredential(body);
-      res.status(201).json(credential);
-    } catch (err) {
-      next(err);
-    }
-  };
-
-  listCredentials = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { orgId } = ListCredentialsQuerySchema.parse(req.query);
-      const credentials = await this.service.listCredentials(orgId);
-      res.json(credentials);
-    } catch (err) {
-      next(err);
-    }
-  };
-
   testCredential = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = PathSchema.parse(req.params);
@@ -123,8 +91,8 @@ export class OpenAIController {
 
   listModels = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { orgId, credentialId } = ListModelsQuerySchema.parse(req.query);
-      const models = await this.service.listModels(orgId, credentialId);
+      const { orgId, credentialId, actionMode } = ListModelsQuerySchema.parse(req.query);
+      const models = await this.service.listModels(orgId, credentialId, actionMode);
       res.json(models);
     } catch (err) {
       next(err);
@@ -217,14 +185,4 @@ export class OpenAIController {
     }
   };
 
-  revokeCredential = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { id } = PathSchema.parse(req.params);
-      const { orgId } = OrgIdBodySchema.parse(req.body);
-      const credential = await this.service.revokeCredential(orgId, id);
-      res.json(credential);
-    } catch (err) {
-      next(err);
-    }
-  };
 }
