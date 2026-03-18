@@ -91,7 +91,7 @@ export function createApp(registry: IPluginRegistry): Application {
 
   // ── Services ────────────────────────────────────────────────────────────────
   const flowService = new FlowService(flowRepo);
-  const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin);
+  const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
 
   // Start the background db poller for scheduled campaigns

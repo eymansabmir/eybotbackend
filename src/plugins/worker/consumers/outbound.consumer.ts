@@ -5,20 +5,26 @@ import type { OutboundJob } from '../jobs';
 
 export async function handleOutboundJob(data: unknown, registry: IPluginRegistry): Promise<void> {
   const job = data as OutboundJob;
-  const { waId, messageType, payload } = job;
+  const { waId, messageType, payload, sessionId } = job;
 
-  logger.info({ waId, messageType }, 'OutboundConsumer: sending message');
+  logger.info(
+    { waId, messageType, sessionId, payloadKeys: Object.keys(payload) },
+    'OutboundConsumer: processing outbound job',
+  );
 
   try {
     const { sender } = registry.get<IWhatsAppPlugin>(WHATSAPP_PLUGIN);
     const p = payload;
 
     // Build a single OutboundMessage and delegate to the central sender.
-    await sender.sendMessages(waId, [{ type: messageType as NodeType, payload: p }], job.sessionId);
+    await sender.sendMessages(waId, [{ type: messageType as NodeType, payload: p }], sessionId);
 
-    logger.info({ waId, messageType }, 'OutboundConsumer: message sent');
+    logger.info({ waId, messageType, sessionId }, 'OutboundConsumer: message sent successfully');
   } catch (err) {
-    logger.error({ waId, messageType, err }, 'OutboundConsumer: failed to send message');
+    logger.error(
+      { waId, messageType, sessionId, err },
+      'OutboundConsumer: failed to send message',
+    );
     throw err;
   }
 }
