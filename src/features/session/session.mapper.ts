@@ -1,4 +1,4 @@
-import { Session as PrismaSession, SessionStatus as PrismaSessionStatus } from '@prisma/client';
+import { ChatSession as PrismaSession, SessionStatus as PrismaSessionStatus } from '@prisma/client';
 import { SessionEntity, WaitingFor } from './session.entity';
 
 export class SessionMapper {
