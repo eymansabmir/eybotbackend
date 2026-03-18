@@ -15,6 +15,7 @@ const OrgIdBodySchema = z.object({
 const ListModelsQuerySchema = z.object({
   orgId: z.preprocess(pickFirst, z.string().min(1)),
   credentialId: z.preprocess(pickFirst, z.string().min(1)),
+  actionMode: z.preprocess(pickFirst, z.enum(['agent']).optional()),
 });
 
 const OpenAIMessageSchema = z.object({
@@ -90,8 +91,8 @@ export class OpenAIController {
 
   listModels = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { orgId, credentialId } = ListModelsQuerySchema.parse(req.query);
-      const models = await this.service.listModels(orgId, credentialId);
+      const { orgId, credentialId, actionMode } = ListModelsQuerySchema.parse(req.query);
+      const models = await this.service.listModels(orgId, credentialId, actionMode);
       res.json(models);
     } catch (err) {
       next(err);

@@ -33,11 +33,13 @@ export class ElevenLabsIntegrationService implements IElevenLabsIntegrationServi
   }
 
   async listModels(orgId: string, credentialId: string): Promise<ElevenLabsModelInfo[]> {
+    logger.info({ orgId, credentialId, action: 'listModels' }, 'STEP 3: Service processing');
     const material = await this.getCredentialMaterial(orgId, credentialId);
     return this.provider.listModels({ credential: material });
   }
 
   async listVoices(orgId: string, credentialId: string): Promise<ElevenLabsVoiceInfo[]> {
+    logger.info({ orgId, credentialId, action: 'listVoices' }, 'STEP 3: Service processing');
     const material = await this.getCredentialMaterial(orgId, credentialId);
     return this.provider.listVoices({ credential: material });
   }
@@ -62,21 +64,28 @@ export class ElevenLabsIntegrationService implements IElevenLabsIntegrationServi
     });
 
     const extension = this.mimeToExtension(speech.mimeType);
-    const uploaded = await this.storage.uploadFile(
-      {
-        fieldname: 'audio',
-        originalname: `elevenlabs-tts-${Date.now()}.${extension}`,
-        encoding: '7bit',
-        mimetype: speech.mimeType,
-        size: speech.audioBuffer.length,
-        destination: '',
-        filename: '',
-        path: '',
-        buffer: speech.audioBuffer,
-        stream: Readable.from([]),
-      },
-      `integrations/elevenlabs/${input.orgId}/voice`,
-    );
+    const uploadFolder = `integrations/elevenlabs/${input.orgId}/voice`;
+    let uploaded;
+
+    try {
+      uploaded = await this.storage.uploadFile(
+        {
+          fieldname: 'audio',
+          originalname: `elevenlabs-tts-${Date.now()}.${extension}`,
+          encoding: '7bit',
+          mimetype: speech.mimeType,
+          size: speech.audioBuffer.length,
+          destination: '',
+          filename: '',
+          path: '',
+          buffer: speech.audioBuffer,
+          stream: Readable.from([]),
+        },
+        uploadFolder,
+      );
+    } catch (error) {
+      throw this.mapStorageUploadError(error);
+    }
 
     return {
       audioUrl: uploaded.url,
@@ -87,6 +96,7 @@ export class ElevenLabsIntegrationService implements IElevenLabsIntegrationServi
   }
 
   private async getCredentialMaterial(orgId: string, credentialId: string): Promise<ElevenLabsCredentialMaterial> {
+    logger.info({ orgId, credentialId, action: 'getCredentialMaterial' }, 'STEP 3: Service processing');
     const secret = await this.credentials.decryptSecret(orgId, credentialId, CredentialType.ELEVENLABS);
     const apiKey = secret['apiKey'];
 
@@ -106,5 +116,22 @@ export class ElevenLabsIntegrationService implements IElevenLabsIntegrationServi
     if (mimeType.includes('ogg') || mimeType.includes('opus')) return 'opus';
     if (mimeType.includes('flac')) return 'flac';
     return 'audio';
+  }
+
+  private mapStorageUploadError(error: unknown): AppError {
+    const message = error instanceof Error ? error.message : '';
+    const isGcsPermissionError =
+      /storage\.objects\.create/i.test(message) ||
+      /does not have .*storage\.objects\.create/i.test(message) ||
+      /permission\s+'storage\.objects\.create'\s+denied/i.test(message);
+
+    if (isGcsPermissionError) {
+      return new AppError(
+        'Audio upload failed: storage service account lacks GCS write permission (storage.objects.create). Grant roles/storage.objectCreator or roles/storage.objectAdmin on the configured bucket and retry.',
+        500,
+      );
+    }
+
+    return new AppError('Audio upload failed while saving ElevenLabs output to storage', 500);
   }
 }

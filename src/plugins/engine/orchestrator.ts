@@ -214,6 +214,20 @@ export class FlowOrchestrator {
         throw new FlowExecutionError('OpenAI runtime executor is not configured', request.nodeId);
       }
 
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          model: request.model,
+          mode: request.mode,
+          hasFallbackText: Boolean(request.fallbackText),
+          action: 'runtime.executeOpenAI',
+        },
+        'STEP 5: Executing OpenAI runtime request',
+      );
+
       const response = await runtime.executeOpenAI({
         orgId: flow.orgId,
         flow,
@@ -225,8 +239,34 @@ export class FlowOrchestrator {
       if (!response.value.trim()) {
         throw new FlowExecutionError('OpenAI runtime returned empty response', request.nodeId);
       }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          outputType: response.message.type,
+          outputChars: response.value.length,
+          action: 'runtime.executeOpenAI',
+        },
+        'STEP 6: OpenAI runtime response received',
+      );
+
       return response;
     } catch (error) {
+      logger.warn(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          action: 'runtime.executeOpenAI',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI runtime execution failed in orchestrator',
+      );
+
       if (request.fallbackText) {
         return {
           value: request.fallbackText,

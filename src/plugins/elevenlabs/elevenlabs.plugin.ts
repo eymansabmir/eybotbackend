@@ -161,9 +161,20 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const url = this.buildUrl(input.credential, input.path);
+
+    logger.info(
+      {
+        action: 'elevenlabs.jsonRequest',
+        method: 'GET',
+        path: input.path,
+        url,
+      },
+      'STEP 4: Provider request',
+    );
 
     try {
-      const response = await fetch(this.buildUrl(input.credential, input.path), {
+      const response = await fetch(url, {
         method: 'GET',
         headers: this.buildHeaders(input.credential),
         signal: controller.signal,
@@ -192,9 +203,28 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
   }
 
   private buildUrl(credential: ElevenLabsCredentialMaterial, path: string): string {
-    const base = (credential.baseUrl ?? 'https://api.elevenlabs.io/v1').replace(/\/+$/, '');
+    const base = this.normalizeBaseUrl(credential.baseUrl ?? 'https://api.elevenlabs.io/v1').replace(/\/+$/, '');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${base}${normalizedPath}`;
+  }
+
+  private normalizeBaseUrl(baseUrl: string): string {
+    const trimmed = baseUrl.trim();
+
+    try {
+      const url = new URL(trimmed);
+      const host = url.hostname.toLowerCase();
+      const path = url.pathname.replace(/\/+$/, '');
+
+      // ElevenLabs API endpoints are versioned under /v1.
+      if (host === 'api.elevenlabs.io' && (!path || path === '/')) {
+        url.pathname = '/v1';
+      }
+
+      return url.toString();
+    } catch {
+      return trimmed;
+    }
   }
 
   private mapHttpError(status: number): ElevenLabsProviderError {

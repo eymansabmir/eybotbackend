@@ -1,4 +1,5 @@
 import type {
+  OpenAIModelActionMode,
   OpenAIVoiceActionMode,
   OpenAIChatCompletionInput,
   OpenAIChatCompletionOutput,
@@ -121,6 +122,7 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
 
   async listModels(input: {
     credential: OpenAICredentialMaterial;
+    actionMode?: OpenAIModelActionMode;
     timeoutMs?: number;
   }): Promise<OpenAIModelInfo[]> {
     const payload = await this.jsonRequest<OpenAIModelListResponse>({
@@ -136,6 +138,11 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
 
     return payload.data
       .filter((item) => typeof item.id === 'string' && item.id.length > 0)
+      .filter((item) => {
+        if (!input.actionMode) return true;
+        if (input.actionMode === 'agent') return this.isAgentModelId(item.id);
+        return true;
+      })
       .map((item) => ({
         id: item.id,
         ownedBy: item.owned_by,
@@ -207,8 +214,8 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     for (const item of payload.data) {
       if (typeof item.id !== 'string' || item.id.length === 0) continue;
       const id = item.id.toLowerCase();
-      const isSpeech = id.includes('tts') || id.includes('audio');
-      const isTranscription = id.includes('transcribe') || id.includes('whisper') || id.includes('audio');
+      const isSpeech = id.includes('tts');
+      const isTranscription = id.includes('transcribe') || id.includes('whisper');
 
       if ((!mode || mode === 'create_speech') && isSpeech) {
         models.push({ id: item.id, ownedBy: item.owned_by, mode: 'create_speech' });
@@ -445,6 +452,25 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       return new OpenAIProviderError('timeout', status, 'OpenAI request timed out');
     }
     return new OpenAIProviderError('provider_error', status, 'OpenAI request failed');
+  }
+
+  private isAgentModelId(modelId: string): boolean {
+    const id = modelId.toLowerCase();
+
+    if (
+      id.includes('audio') ||
+      id.includes('tts') ||
+      id.includes('transcribe') ||
+      id.includes('whisper') ||
+      id.includes('embedding') ||
+      id.includes('moderation') ||
+      id.includes('dall') ||
+      id.includes('image')
+    ) {
+      return false;
+    }
+
+    return id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
   }
 
   private extractText(content: unknown): string {

@@ -13,6 +13,7 @@ import type {
   IOpenAIIntegrationService,
   IOpenAIProvider,
   ListSpeechModelsPayload,
+  OpenAIModelActionMode,
   OpenAIChatCompletionOutput,
   OpenAICredentialMaterial,
   OpenAIMessage,
@@ -62,10 +63,10 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     return result;
   }
 
-  async listModels(orgId: string, credentialId: string): Promise<OpenAIModelInfo[]> {
+  async listModels(orgId: string, credentialId: string, actionMode?: OpenAIModelActionMode): Promise<OpenAIModelInfo[]> {
     const material = await this.getCredentialMaterial(orgId, credentialId);
     try {
-      const models = await this.provider.listModels({ credential: material });
+      const models = await this.provider.listModels({ credential: material, actionMode });
       return [...models].sort((a, b) => a.id.localeCompare(b.id));
     } catch (error) {
       const publicError = this.toPublicError(error);
@@ -74,6 +75,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
           operation: 'openai.list_models',
           orgId,
           credentialId,
+          actionMode,
           statusCode: publicError.statusCode,
           error: error instanceof Error ? error.message : String(error),
         },
@@ -81,6 +83,10 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       );
 
       if (this.shouldUseModelFallback(publicError)) {
+        if (actionMode === 'agent') {
+          return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
+        }
+
         return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
       }
 
@@ -152,12 +158,50 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       throw new ValidationError('Speech input exceeds maximum length (5000)');
     }
 
+    const resolvedModel = this.resolveSpeechModel(input.model);
     const startedAt = Date.now();
     try {
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: resolvedModel,
+          voice: input.voice,
+          inputChars: input.input.length,
+          action: 'createSpeech',
+        },
+        'STEP 5: OpenAI service request started',
+      );
+
+      if (resolvedModel !== input.model) {
+        logger.warn(
+          {
+            orgId: input.orgId,
+            credentialId: input.credentialId,
+            requestedModel: input.model,
+            resolvedModel,
+            action: 'createSpeech',
+          },
+          'OpenAI speech model is incompatible with /audio/speech; using compatible TTS model',
+        );
+      }
+
       const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
+
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: resolvedModel,
+          voice: input.voice,
+          action: 'provider.createSpeech',
+        },
+        'STEP 6: OpenAI provider request',
+      );
+
       const speech = await this.provider.createSpeech({
         credential: material,
-        model: input.model,
+        model: resolvedModel,
         voice: input.voice,
         input: input.input,
         format: input.format,
@@ -165,7 +209,33 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
         timeoutMs: input.timeoutMs,
       });
 
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: speech.model,
+          voice: speech.voice,
+          mimeType: speech.mimeType,
+          outputBytes: speech.audioBuffer.length,
+          action: 'provider.createSpeech',
+        },
+        'STEP 7: OpenAI provider response received',
+      );
+
       const extension = this.mimeToExtension(speech.mimeType, input.format);
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          destination: `integrations/openai/${input.orgId}/voice`,
+          fileExtension: extension,
+          mimeType: speech.mimeType,
+          outputBytes: speech.audioBuffer.length,
+          action: 'storage.uploadFile',
+        },
+        'STEP 8: Uploading generated speech audio',
+      );
+
       const upload = await this.storage.uploadFile(
         {
           fieldname: 'audio',
@@ -184,7 +254,19 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
 
       logger.info(
         {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          audioUrl: upload.url,
+          action: 'storage.uploadFile',
+        },
+        'STEP 9: Speech audio uploaded successfully',
+      );
+
+      logger.info(
+        {
           operation: 'openai.create_speech',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
           model: speech.model,
           latencyMs: Date.now() - startedAt,
           cost: null,
@@ -203,7 +285,12 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       logger.warn(
         {
           operation: 'openai.create_speech',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: resolvedModel,
+          voice: input.voice,
           latencyMs: Date.now() - startedAt,
+          ...this.buildErrorDebugMeta(error),
           error: error instanceof Error ? error.message : String(error),
         },
         'OpenAI voice call failed',
@@ -222,7 +309,30 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
 
     const startedAt = Date.now();
     try {
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
+          mimeType: input.mimeType,
+          audioBytes: input.audioBuffer.length,
+          action: 'createTranscription',
+        },
+        'STEP 5: OpenAI transcription request started',
+      );
+
       const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
+
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
+          action: 'provider.createTranscription',
+        },
+        'STEP 6: OpenAI transcription provider request',
+      );
+
       const result = await this.provider.createTranscription({
         credential: material,
         model: input.model,
@@ -236,7 +346,20 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
 
       logger.info(
         {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: result.model,
+          outputChars: result.text.length,
+          action: 'provider.createTranscription',
+        },
+        'STEP 7: OpenAI transcription provider response received',
+      );
+
+      logger.info(
+        {
           operation: 'openai.create_transcription',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
           model: result.model,
           latencyMs: Date.now() - startedAt,
           cost: null,
@@ -255,7 +378,11 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       logger.warn(
         {
           operation: 'openai.create_transcription',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
           latencyMs: Date.now() - startedAt,
+          ...this.buildErrorDebugMeta(error),
           error: error instanceof Error ? error.message : String(error),
         },
         'OpenAI voice call failed',
@@ -355,6 +482,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   private async getCredentialMaterial(orgId: string, credentialId: string): Promise<OpenAICredentialMaterial> {
+    logger.info({ orgId, credentialId, action: 'getCredentialMaterial' }, 'STEP 4: DB query');
     const secret = await this.credentials.decryptSecret(orgId, credentialId, CredentialType.OPENAI);
     const apiKey = secret['apiKey'];
 
@@ -367,6 +495,26 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       ...(typeof secret['baseUrl'] === 'string' ? { baseUrl: secret['baseUrl'] } : {}),
       ...(typeof secret['organization'] === 'string' ? { organization: secret['organization'] } : {}),
       ...(typeof secret['project'] === 'string' ? { project: secret['project'] } : {}),
+    };
+  }
+
+  private buildErrorDebugMeta(error: unknown): Record<string, unknown> {
+    if (!(error instanceof Error)) {
+      return {};
+    }
+
+    const known = error as Error & {
+      statusCode?: number;
+      code?: string;
+      providerStatus?: number;
+    };
+
+    return {
+      errorName: error.name,
+      errorCode: known.code,
+      statusCode: known.statusCode,
+      providerStatus: known.providerStatus,
+      stack: error.stack,
     };
   }
 
@@ -389,5 +537,22 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     if (mimeType.includes('ogg') || mimeType.includes('opus')) return 'opus';
     if (mimeType.includes('flac')) return 'flac';
     return 'audio';
+  }
+
+  private resolveSpeechModel(model: string): string {
+    const normalized = model.trim();
+    const lowered = normalized.toLowerCase();
+
+    if (lowered.includes('audio-preview')) {
+      return 'gpt-4o-mini-tts';
+    }
+
+    if (lowered.includes('tts')) {
+      return normalized;
+    }
+
+    throw new ValidationError(
+      `Model ${normalized} does not support create_speech. Use a TTS model like gpt-4o-mini-tts, tts-1, or tts-1-hd.`,
+    );
   }
 }

@@ -45,6 +45,15 @@ export class ElevenLabsController {
         })
         .parse(req.query);
 
+      logger.info(
+        {
+          orgId: query.orgId,
+          credentialId: query.credentialId,
+          action: 'listModels',
+        },
+        'STEP 2: Action received',
+      );
+
       const models = await this.service.listModels(query.orgId, query.credentialId);
       res.json(models);
     } catch (error) {
@@ -60,6 +69,15 @@ export class ElevenLabsController {
           credentialId: z.preprocess(pickFirst, z.string().min(1)),
         })
         .parse(req.query);
+
+      logger.info(
+        {
+          orgId: query.orgId,
+          credentialId: query.credentialId,
+          action: 'listVoices',
+        },
+        'STEP 2: Action received',
+      );
 
       const voices = await this.service.listVoices(query.orgId, query.credentialId);
       res.json(voices);

@@ -19,6 +19,8 @@ export interface OpenAIModelInfo {
   ownedBy?: string;
 }
 
+export type OpenAIModelActionMode = 'agent';
+
 export type OpenAIVoiceActionMode = 'create_speech' | 'create_transcription';
 
 export interface OpenAISpeechModelInfo extends OpenAIModelInfo {
@@ -65,6 +67,7 @@ export interface IOpenAIProvider {
 
   listModels(input: {
     credential: OpenAICredentialMaterial;
+    actionMode?: OpenAIModelActionMode;
     timeoutMs?: number;
   }): Promise<OpenAIModelInfo[]>;
 
@@ -190,7 +193,7 @@ export interface CreateTranscriptionResult {
 
 export interface IOpenAIIntegrationService {
   testCredential(orgId: string, credentialId: string): Promise<OpenAITestResult>;
-  listModels(orgId: string, credentialId: string): Promise<OpenAIModelInfo[]>;
+  listModels(orgId: string, credentialId: string, actionMode?: OpenAIModelActionMode): Promise<OpenAIModelInfo[]>;
   listSpeechModels(input: ListSpeechModelsPayload): Promise<OpenAISpeechModelInfo[]>;
   preview(input: OpenAIPreviewPayload): Promise<OpenAIChatCompletionOutput>;
   createSpeech(input: CreateSpeechPayload): Promise<CreateSpeechResult>;
