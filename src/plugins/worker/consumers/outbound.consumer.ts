@@ -20,6 +20,11 @@ export async function handleOutboundJob(data: unknown, registry: IPluginRegistry
     await sender.sendMessages(waId, [{ type: messageType as NodeType, payload: p }], sessionId);
 
     logger.info({ waId, messageType, sessionId }, 'OutboundConsumer: message sent successfully');
+
+    // Small delay so Meta delivers messages in the order they were sent.
+    // Without this, Meta's async delivery can reorder messages even when sent sequentially.
+    const delayMs = Number(process.env.OUTBOUND_MESSAGE_DELAY_MS ?? 500);
+    if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
   } catch (err) {
     logger.error(
       { waId, messageType, sessionId, err },
