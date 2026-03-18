@@ -26,6 +26,7 @@ export enum NodeType {
   WEBHOOK = 'webhook',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
+   OPENAI = 'openai',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -58,4 +59,5 @@ export const INTEGRATION_NODE_TYPES = [
   NodeType.WEBHOOK,
   NodeType.GOOGLE_SHEETS,
   NodeType.NOCODB,
+  NodeType.OPENAI,
 ];

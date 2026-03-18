@@ -23,12 +23,12 @@ export class PrismaSessionRepository implements ISessionRepository {
 
     async create(session: SessionEntity): Promise<SessionEntity> {
         const data = SessionMapper.toPrisma(session);
-        const created = await this.prisma.session.create({ data });
+        const created = await this.prisma.chatSession.create({ data });
         return SessionMapper.toEntity(created);
     }
 
     async findById(id: string): Promise<SessionEntity | null> {
-        const session = await this.prisma.session.findUnique({ where: { id } });
+        const session = await this.prisma.chatSession.findUnique({ where: { id } });
         if (!session) return null;
         return SessionMapper.toEntity(session);
     }
@@ -42,7 +42,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     }
 
     async findActiveByWaId(waId: string): Promise<SessionEntity | null> {
-        const session = await this.prisma.session.findFirst({
+        const session = await this.prisma.chatSession.findFirst({
             where: {
                 waId,
                 status: { in: ['active', 'waiting'] as PrismaSessionStatus[] },
@@ -58,7 +58,7 @@ export class PrismaSessionRepository implements ISessionRepository {
         if (status) {
             where.status = status as PrismaSessionStatus;
         }
-        const sessions = await this.prisma.session.findMany({
+        const sessions = await this.prisma.chatSession.findMany({
             where,
             orderBy: { updatedAt: 'desc' },
         });
@@ -66,14 +66,14 @@ export class PrismaSessionRepository implements ISessionRepository {
     }
 
     async findByStatus(status: SessionStatus): Promise<SessionEntity[]> {
-        const sessions = await this.prisma.session.findMany({
+        const sessions = await this.prisma.chatSession.findMany({
             where: { status: status as PrismaSessionStatus },
         });
         return sessions.map(SessionMapper.toEntity);
     }
 
     async findTimedOut(): Promise<SessionEntity[]> {
-        const sessions = await this.prisma.session.findMany({
+        const sessions = await this.prisma.chatSession.findMany({
             where: {
                 status: 'waiting' as PrismaSessionStatus,
             }
@@ -93,7 +93,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     }
 
     async findCurrentByWhatsApp(waBusinessNumber: string, waId: string): Promise<SessionEntity | null> {
-        const session = await this.prisma.session.findFirst({
+        const session = await this.prisma.chatSession.findFirst({
             where: {
                 waBusinessNumber,
                 waId,
@@ -107,7 +107,7 @@ export class PrismaSessionRepository implements ISessionRepository {
     }
 
     async clearCurrentFlags(waBusinessNumber: string, waId: string): Promise<void> {
-        await this.prisma.session.updateMany({
+        await this.prisma.chatSession.updateMany({
             where: {
                 waBusinessNumber,
                 waId,
@@ -126,7 +126,7 @@ export class PrismaSessionRepository implements ISessionRepository {
             delete data.createdAt;
             delete data.updatedAt;
 
-            const updated = await this.prisma.session.update({
+            const updated = await this.prisma.chatSession.update({
                 where: { id },
                 data,
             });
@@ -145,7 +145,7 @@ export class PrismaSessionRepository implements ISessionRepository {
 
     async delete(id: string): Promise<void> {
         try {
-            await this.prisma.session.delete({ where: { id } });
+            await this.prisma.chatSession.delete({ where: { id } });
         } catch (error: any) {
             if (error.code === 'P2025') {
                 throw new NotFoundError('Session', id);

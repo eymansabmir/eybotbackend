@@ -41,5 +41,5 @@ if (!global.logger) {
   global.logger = createLogger();
 }
 
-// Named export for files that want an explicit import (e.g. pino-http).
-export { };
+// Explicit export for modules that should not rely on global side effects.
+export const logger = global.logger;

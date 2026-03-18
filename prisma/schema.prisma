@@ -6,76 +6,90 @@ datasource db {
   provider = "postgresql"
 }
 
-
-
 model Flow {
-  id            String     @id @default(uuid())
-  orgId         String
-  name          String
-  description   String?
-  status        FlowStatus @default(draft)
-  version       Int        @default(1)
+  id          String     @id @default(uuid())
+  orgId       String
+  name        String
+  description String?
+  status      FlowStatus @default(draft)
+  version     Int        @default(1)
 
   triggerType   String
   triggerConfig Json
 
-  nodes         Json
-  edges         Json
-  settings      Json
+  nodes    Json
+  edges    Json
+  settings Json
 
-  publishedAt   DateTime?
+  publishedAt DateTime?
 
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  
-  campaigns     Campaign[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
 
   @@index([orgId, status])
 }
 
-model Session {
-  id                String        @id @default(uuid())
+model ChatSession {
+  id String @id @default(uuid())
 
-  flowId            String
-  flowVersion       Int
+  flowId      String @default("")
+  flowVersion Int    @default(1)
 
-  contactId         String?
-  waId              String
-  waBusinessNumber  String
+  contactId        String?
+  waId             String  @default("")
+  waBusinessNumber String  @default("")
 
-  status            SessionStatus @default(active)
+  status SessionStatus @default(active)
 
-  currentNodeId     String
+  currentNodeId String @default("")
 
-  variables         Json?
-  history           Json?
+  variables Json?
+  history   Json?
 
-  waitingFor        Json?
+  waitingFor Json?
 
-  isCurrent         Boolean       @default(true)
+  isCurrent Boolean @default(true)
 
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([waId, status])
   @@index([flowId, status])
   @@index([waBusinessNumber, waId, isCurrent])
+  @@map("chat_session")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
 }
 
 model Contact {
-  id           String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  orgId        String
-  waId         String
-  name         String
+  orgId String
+  waId  String
+  name  String
 
   tags         String[]
   customFields Json?
 
-  optIn        Boolean  @default(true)
+  optIn Boolean @default(true)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([orgId, waId])
   @@index([orgId])
@@ -90,12 +104,11 @@ model Campaign {
   status          CampaignStatus @default(draft)
   activeVersionId String?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  
-  flow            Flow          @relation(fields: [flowId], references: [id])
-  versions        CampaignVersion[]
-  stats           CampaignStats?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  flow      Flow              @relation(fields: [flowId], references: [id])
+  versions  CampaignVersion[]
+  stats     CampaignStats?
 
   @@index([orgId, status])
 }
@@ -107,44 +120,44 @@ model CampaignVersion {
   versionNumber Int
   status        CampaignVersionStatus @default(draft)
 
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  campaign      Campaign              @relation(fields: [campaignId], references: [id])
-  recipients    CampaignRecipient[]
+  campaign   Campaign            @relation(fields: [campaignId], references: [id])
+  recipients CampaignRecipient[]
 
   @@index([campaignId])
 }
 
 model CampaignRecipient {
-  id                String            @id @default(uuid())
+  id                String          @id @default(uuid())
   campaignVersionId String
   waId              String
   variables         Json?
-  status            RecipientStatus   @default(pending)
-  attempts          Int               @default(0)
+  status            RecipientStatus @default(pending)
+  attempts          Int             @default(0)
   sentAt            DateTime?
 
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  version           CampaignVersion   @relation(fields: [campaignVersionId], references: [id])
+  version CampaignVersion @relation(fields: [campaignVersionId], references: [id])
 
   @@index([campaignVersionId, status])
   @@index([waId])
 }
 
 model CampaignStats {
-  campaignId String   @id
-  total      Int      @default(0)
-  sent       Int      @default(0)
-  failed     Int      @default(0)
-  pending    Int      @default(0)
-  completed  Int      @default(0)
+  campaignId String @id
+  total      Int    @default(0)
+  sent       Int    @default(0)
+  failed     Int    @default(0)
+  pending    Int    @default(0)
+  completed  Int    @default(0)
 
-  updatedAt  DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
-  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 }
 
 enum FlowStatus {
@@ -180,4 +193,85 @@ enum RecipientStatus {
   sent
   failed
   completed
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  sessions      Session[]
+  accounts      Account[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+enum CredentialType {
+  OPENAI
+  GOOGLE_SHEETS
+  NOCODB
+  ELEVENLABS
+  ZAPIER
+  HTTP_REQUEST
+  ANTHROPIC
+  MAKE
+  DEEPSEEK
+}
+
+model Credential {
+  id           String         @id @default(uuid())
+  orgId        String
+  name         String
+  type         CredentialType
+  ciphertext   Bytes
+  iv           Bytes
+  authTag      Bytes
+  keyVersion   Int            @default(1)
+  metadata     Json? // baseUrl, projectId, etc (non-secret)
+  isActive     Boolean        @default(true)
+  lastTestedAt DateTime?
+  revokedAt    DateTime?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([orgId, type, name])
+  @@index([orgId, type, isActive])
+  @@map("credentials")
 }
