@@ -12,6 +12,7 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   private _sender!: IWhatsAppSender;
   private _normalizer!: WhatsAppNormalizer;
   private _deduplicator!: WhatsAppDeduplicator;
+  private _apiConfig?: WhatsAppConfig;
 
   get sender(): IWhatsAppSender {
     return this._sender;
@@ -36,6 +37,7 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
     if (apiUrl && apiToken && phoneNumberId) {
       const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
+      this._apiConfig = config;
       this._sender = new DirectWhatsAppSender(config);
       logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
@@ -46,5 +48,32 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
   async shutdown(): Promise<void> {
     // Stateless HTTP client — nothing to close.
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    if (!this._apiConfig) throw new Error('WhatsApp API not configured');
+    const url = `${this._apiConfig.apiUrl}/${mediaId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this._apiConfig.apiToken}` },
+    });
+    if (!response.ok) {
+        throw new Error(`WhatsApp API error: ${response.status}`);
+    }
+    const data = (await response.json()) as any;
+    return data.url;
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    if (!this._apiConfig) throw new Error('WhatsApp API not configured');
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this._apiConfig.apiToken}` },
+    });
+    if (!response.ok) {
+        throw new Error(`WhatsApp API error: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 }

@@ -97,6 +97,13 @@ const AskQuestionDataSchema = z.object({
   timeoutSeconds: z.number(),
 });
 
+const AskFileDataSchema = z.object({
+  message: z.string(),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
+  timeoutSeconds: z.number(),
+});
+
 const ConditionDataSchema = z.object({
   expression: ConditionExpressionSchema,
 });
@@ -209,6 +216,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEMPLATE), ...SendTemplateDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_CAROUSEL), ...SendCarouselDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ASK_FILE), ...AskFileDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),
   z.object({ type: z.literal(NodeType.RANDOM_SPLIT), ...RandomSplitDataSchema.shape }),

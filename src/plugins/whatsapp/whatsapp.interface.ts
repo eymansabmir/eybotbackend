@@ -21,4 +21,6 @@ export interface IWhatsAppPlugin {
   readonly sender: IWhatsAppSender;
   readonly normalizer: WhatsAppNormalizer;
   readonly deduplicator: WhatsAppDeduplicator;
+  getMediaUrl(mediaId: string): Promise<string>;
+  downloadMedia(mediaUrl: string): Promise<Buffer>;
 }
