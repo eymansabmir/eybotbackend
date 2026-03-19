@@ -43,7 +43,7 @@ export interface NodeExecutionInput {
 
 export interface OpenAINodeRequest {
   nodeId: string;
-  mode: 'agent' | 'voice';
+  mode: 'chat_completion' | 'voice' | 'assistant' | 'generate_variables' | 'image';
   voiceAction?: 'create_speech' | 'create_transcription';
   credentialId: string;
   model: string;
@@ -61,6 +61,16 @@ export interface OpenAINodeRequest {
   resultScope: 'session' | 'contact';
   sendResponseToUser: boolean;
   fallbackText?: string;
+  // Assistant mode
+  assistantId?: string;
+  threadId?: string;
+  additionalInstructions?: string;
+  functions?: { name: string; code: string }[];
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
+  // Image mode
+  imageSize?: string;
+  imageQuality?: string;
 }
 
 export interface ElevenLabsNodeRequest {
@@ -237,10 +247,17 @@ export class NodeExecutor {
     const base = this.defaultResult(node, 'default', enteredAt, traverser);
     const data = node.data as Record<string, unknown>;
 
+    const modeRaw = data['mode'] as string | undefined;
+    let mode: OpenAINodeRequest['mode'] = 'chat_completion';
+    if (modeRaw === 'voice') mode = 'voice';
+    else if (modeRaw === 'assistant') mode = 'assistant';
+    else if (modeRaw === 'generate_variables') mode = 'generate_variables';
+    else if (modeRaw === 'image') mode = 'image';
+
     const request: OpenAINodeRequest = {
       nodeId: node.id,
-      mode: data['mode'] === 'voice' ? 'voice' : 'agent',
-      ...(data['mode'] === 'voice'
+      mode,
+      ...(mode === 'voice'
         ? {
             voiceAction:
               data['voiceAction'] === 'create_transcription'
@@ -272,6 +289,20 @@ export class NodeExecutor {
       ...(typeof data['fallbackText'] === 'string'
         ? { fallbackText: this.text(data['fallbackText'], ctx) }
         : {}),
+      // Assistant mode fields
+      ...(typeof data['assistantId'] === 'string' ? { assistantId: data['assistantId'] } : {}),
+      ...(typeof data['threadId'] === 'string' ? { threadId: data['threadId'] } : {}),
+      ...(typeof data['additionalInstructions'] === 'string'
+        ? { additionalInstructions: this.text(data['additionalInstructions'], ctx) }
+        : {}),
+      ...(Array.isArray(data['functions']) ? { functions: data['functions'] as { name: string; code: string }[] } : {}),
+      // Generate Variables mode fields
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[] }
+        : {}),
+      // Image mode fields
+      ...(typeof data['imageSize'] === 'string' ? { imageSize: data['imageSize'] } : {}),
+      ...(typeof data['imageQuality'] === 'string' ? { imageQuality: data['imageQuality'] } : {}),
     };
 
     return {

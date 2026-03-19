@@ -15,7 +15,7 @@ const OrgIdBodySchema = z.object({
 const ListModelsQuerySchema = z.object({
   orgId: z.preprocess(pickFirst, z.string().min(1)),
   credentialId: z.preprocess(pickFirst, z.string().min(1)),
-  actionMode: z.preprocess(pickFirst, z.enum(['agent']).optional()),
+  actionMode: z.preprocess(pickFirst, z.enum(['chat_completion', 'assistant', 'generate_variables', 'image']).optional()),
 });
 
 const OpenAIMessageSchema = z.object({
@@ -75,8 +75,60 @@ const CreateTranscriptionBodySchema = z.object({
     .optional(),
 });
 
+// ── New schemas ─────────────────────────────────────────────────────────
+
+const ListAssistantsQuerySchema = z.object({
+  orgId: z.preprocess(pickFirst, z.string().min(1)),
+  credentialId: z.preprocess(pickFirst, z.string().min(1)),
+});
+
+const FunctionSchema = z.object({
+  name: z.string().min(1),
+  code: z.string().min(1),
+});
+
+const AskAssistantBodySchema = z.object({
+  orgId: z.string().min(1),
+  credentialId: z.string().min(1),
+  assistantId: z.string().min(1),
+  message: z.string().min(1),
+  threadId: z.string().optional(),
+  additionalInstructions: z.string().optional(),
+  functions: z.array(FunctionSchema).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
+const VariableToExtractSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  type: z.enum(['string', 'number', 'boolean']).optional(),
+});
+
+const GenerateVariablesBodySchema = z.object({
+  orgId: z.string().min(1),
+  credentialId: z.string().min(1),
+  model: z.string().min(1),
+  prompt: z.string().min(1),
+  variablesToExtract: z.array(VariableToExtractSchema).min(1),
+  temperature: z.number().min(0).max(2).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
+const CreateImageBodySchema = z.object({
+  orgId: z.string().min(1),
+  credentialId: z.string().min(1),
+  prompt: z.string().min(1),
+  model: z.string().optional(),
+  size: z.string().optional(),
+  quality: z.string().optional(),
+  n: z.number().int().min(1).max(10).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 export class OpenAIController {
   constructor(private readonly service: IOpenAIIntegrationService) {}
+
+  // ── Existing endpoints ──────────────────────────────────────────────────
 
   testCredential = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -185,4 +237,45 @@ export class OpenAIController {
     }
   };
 
+  // ── New endpoints ───────────────────────────────────────────────────────
+
+  listAssistants = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { orgId, credentialId } = ListAssistantsQuerySchema.parse(req.query);
+      const assistants = await this.service.listAssistants(orgId, credentialId);
+      res.json(assistants);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  askAssistant = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = AskAssistantBodySchema.parse(req.body);
+      const result = await this.service.askAssistant(body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  generateVariables = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = GenerateVariablesBodySchema.parse(req.body);
+      const result = await this.service.generateVariables(body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  createImage = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = CreateImageBodySchema.parse(req.body);
+      const result = await this.service.createImage(body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

@@ -7,6 +7,11 @@ import type {
   OpenAIModelInfo,
   OpenAISpeechModelInfo,
   OpenAITestResult,
+  OpenAIAssistantInfo,
+  OpenAIThreadInfo,
+  OpenAIRunInfo,
+  OpenAIThreadMessage,
+  OpenAIImageResult,
 } from './openai.types';
 import { AppError } from '../../utils/errors';
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
@@ -140,7 +145,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       .filter((item) => typeof item.id === 'string' && item.id.length > 0)
       .filter((item) => {
         if (!input.actionMode) return true;
-        if (input.actionMode === 'agent') return this.isAgentModelId(item.id);
+        if (input.actionMode === 'chat_completion' || input.actionMode === 'generate_variables' || input.actionMode === 'assistant') {
+          return this.isChatCompletionModelId(item.id);
+        }
+        if (input.actionMode === 'image') {
+          const id = item.id.toLowerCase();
+          return id.includes('dall') || id.includes('image');
+        }
         return true;
       })
       .map((item) => ({
@@ -454,7 +465,7 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     return new OpenAIProviderError('provider_error', status, 'OpenAI request failed');
   }
 
-  private isAgentModelId(modelId: string): boolean {
+  private isChatCompletionModelId(modelId: string): boolean {
     const id = modelId.toLowerCase();
 
     if (
@@ -471,6 +482,360 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     }
 
     return id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+  }
+
+  // ── Assistants API (beta) ──────────────────────────────────────────────
+
+  async listAssistants(input: {
+    credential: OpenAICredentialMaterial;
+    limit?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIAssistantInfo[]> {
+    const payload = await this.betaJsonRequest<{ data: Array<{ id: string; name: string | null; model: string }> }>({
+      credential: input.credential,
+      path: '/assistants',
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      throw new OpenAIProviderError('provider_error', 502, 'Invalid assistant list response from OpenAI');
+    }
+
+    return payload.data.map((a) => ({
+      id: a.id,
+      name: a.name,
+      model: a.model,
+    }));
+  }
+
+  async createThread(input: {
+    credential: OpenAICredentialMaterial;
+    timeoutMs?: number;
+  }): Promise<OpenAIThreadInfo> {
+    const payload = await this.betaJsonRequest<{ id: string }>({
+      credential: input.credential,
+      path: '/threads',
+      method: 'POST',
+      body: {},
+      timeoutMs: input.timeoutMs,
+    });
+
+    return { id: payload.id };
+  }
+
+  async createThreadMessage(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timeoutMs?: number;
+  }): Promise<void> {
+    await this.betaJsonRequest<unknown>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/messages`,
+      method: 'POST',
+      body: { role: input.role, content: input.content },
+      timeoutMs: input.timeoutMs,
+    });
+  }
+
+  async createRun(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    assistantId: string;
+    additionalInstructions?: string;
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs`,
+      method: 'POST',
+      body: {
+        assistant_id: input.assistantId,
+        ...(input.additionalInstructions
+          ? { additional_instructions: input.additionalInstructions }
+          : {}),
+      },
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async retrieveRun(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    runId: string;
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs/${input.runId}`,
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async submitToolOutputs(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    runId: string;
+    toolOutputs: { tool_call_id: string; output: string }[];
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs/${input.runId}/submit_tool_outputs`,
+      method: 'POST',
+      body: { tool_outputs: input.toolOutputs },
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async listMessages(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    limit?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIThreadMessage[]> {
+    const limitParam = input.limit ?? 10;
+    const payload = await this.betaJsonRequest<{
+      data: Array<{
+        role: string;
+        content: Array<{ type: string; text?: { value: string } }>;
+      }>;
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/messages?limit=${limitParam}`,
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      return [];
+    }
+
+    return payload.data.map((m) => {
+      const textParts = (m.content ?? [])
+        .filter((c) => c.type === 'text' && c.text?.value)
+        .map((c) => c.text!.value);
+
+      return {
+        role: m.role,
+        content: textParts.join('\n'),
+      };
+    });
+  }
+
+  // ── JSON / Structured Completion ───────────────────────────────────────
+
+  async createJsonCompletion(input: {
+    credential: OpenAICredentialMaterial;
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+    jsonSchema: Record<string, unknown>;
+    temperature?: number;
+    timeoutMs?: number;
+  }): Promise<{ parsed: Record<string, unknown>; model: string; raw?: unknown }> {
+    const body: Record<string, unknown> = {
+      model: input.model,
+      messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
+      response_format: {
+        type: 'json_schema',
+        json_schema: input.jsonSchema,
+      },
+    };
+
+    if (input.temperature !== undefined) body.temperature = input.temperature;
+
+    const payload = await this.jsonRequest<{
+      id: string;
+      model: string;
+      choices: Array<{ message?: { content?: string } }>;
+    }>({
+      credential: input.credential,
+      path: '/chat/completions',
+      method: 'POST',
+      body,
+      timeoutMs: input.timeoutMs ?? 45_000,
+    });
+
+    const rawContent = payload.choices?.[0]?.message?.content;
+    if (!rawContent) {
+      throw new OpenAIProviderError('provider_error', 502, 'OpenAI returned an empty JSON completion');
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(rawContent) as Record<string, unknown>;
+    } catch {
+      throw new OpenAIProviderError('provider_error', 502, 'OpenAI response was not valid JSON');
+    }
+
+    return { parsed, model: payload.model, raw: payload };
+  }
+
+  // ── Image Generation ──────────────────────────────────────────────────
+
+  async createImage(input: {
+    credential: OpenAICredentialMaterial;
+    model?: string;
+    prompt: string;
+    size?: string;
+    quality?: string;
+    n?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIImageResult[]> {
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      model: input.model ?? 'dall-e-3',
+      n: input.n ?? 1,
+    };
+
+    if (input.size) body.size = input.size;
+    if (input.quality) body.quality = input.quality;
+
+    const payload = await this.jsonRequest<{
+      data: Array<{ url?: string; revised_prompt?: string }>;
+    }>({
+      credential: input.credential,
+      path: '/images/generations',
+      method: 'POST',
+      body,
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      throw new OpenAIProviderError('provider_error', 502, 'Invalid image generation response from OpenAI');
+    }
+
+    return payload.data
+      .filter((item) => typeof item.url === 'string')
+      .map((item) => ({
+        url: item.url!,
+        revisedPrompt: item.revised_prompt,
+      }));
+  }
+
+  // ── Beta request helper (Assistants API v2 header) ────────────────────
+
+  private async betaJsonRequest<T>(options: RequestOptions): Promise<T> {
+    const attempt = options.attempt ?? 0;
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const url = this.buildUrl(options.credential, options.path);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const headers = this.buildHeaders(options.credential);
+      headers['OpenAI-Beta'] = 'assistants=v2';
+
+      const response = await fetch(url, {
+        method: options.method,
+        headers,
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        signal: controller.signal,
+      });
+
+      const responseText = await response.text();
+      const parsed = this.parseJson(responseText);
+
+      if (!response.ok) {
+        const mappedError = this.mapHttpError(response.status);
+
+        if (this.shouldRetry(response.status) && attempt < MAX_RETRIES) {
+          await sleep((attempt + 1) * 250);
+          return this.betaJsonRequest<T>({ ...options, attempt: attempt + 1 });
+        }
+
+        throw mappedError;
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new OpenAIProviderError('provider_error', response.status, 'Invalid JSON response from OpenAI');
+      }
+
+      return parsed as T;
+    } catch (error) {
+      if (error instanceof OpenAIProviderError) throw error;
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new OpenAIProviderError('timeout', 504, `OpenAI request timed out after ${timeoutMs}ms`);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await sleep((attempt + 1) * 250);
+        return this.betaJsonRequest<T>({ ...options, attempt: attempt + 1 });
+      }
+
+      throw new OpenAIProviderError('network_error', undefined, 'Could not reach OpenAI');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private mapRunPayload(payload: {
+    id: string;
+    status: string;
+    required_action?: {
+      type: string;
+      submit_tool_outputs?: {
+        tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+      };
+    };
+  }): OpenAIRunInfo {
+    const info: OpenAIRunInfo = {
+      id: payload.id,
+      status: payload.status,
+    };
+
+    if (
+      payload.required_action?.type === 'submit_tool_outputs' &&
+      payload.required_action.submit_tool_outputs?.tool_calls
+    ) {
+      info.requiredAction = {
+        toolCalls: payload.required_action.submit_tool_outputs.tool_calls.map((tc) => ({
+          id: tc.id,
+          functionName: tc.function.name,
+          arguments: tc.function.arguments,
+        })),
+      };
+    }
+
+    return info;
   }
 
   private extractText(content: unknown): string {

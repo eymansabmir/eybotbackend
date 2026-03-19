@@ -85,6 +85,16 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           frequencyPenalty: request.frequencyPenalty,
           presencePenalty: request.presencePenalty,
           timeoutMs: request.timeoutMs,
+          // Assistant mode
+          assistantId: request.assistantId,
+          threadId: request.threadId,
+          additionalInstructions: request.additionalInstructions,
+          functions: request.functions,
+          // Generate Variables mode
+          variablesToExtract: request.variablesToExtract,
+          // Image mode
+          imageSize: request.imageSize,
+          imageQuality: request.imageQuality,
         });
 
         if (output.outputType === 'audio') {
@@ -92,6 +102,16 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
             value: output.content,
             message: {
               type: NodeType.SEND_AUDIO,
+              payload: { url: output.content },
+            },
+          };
+        }
+
+        if (output.outputType === 'image') {
+          return {
+            value: output.content,
+            message: {
+              type: NodeType.SEND_IMAGE,
               payload: { url: output.content },
             },
           };
