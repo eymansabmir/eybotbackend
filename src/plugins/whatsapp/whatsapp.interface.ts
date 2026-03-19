@@ -6,6 +6,7 @@ export const WHATSAPP_PLUGIN = 'whatsapp' as const;
 
 export interface IWhatsAppSender {
   sendMessages(waId: string, messages: OutboundMessage[], sessionId?: string): Promise<void>;
+  uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string>;
 }
 
 /**
