@@ -24,6 +24,7 @@ export enum NodeType {
 
   // Integration Nodes
   WEBHOOK = 'webhook',
+  HTTP_REQUEST = 'http_request',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
    OPENAI = 'openai',
@@ -58,6 +59,7 @@ export const FLOW_CONTROL_NODE_TYPES = [
 
 export const INTEGRATION_NODE_TYPES = [
   NodeType.WEBHOOK,
+  NodeType.HTTP_REQUEST,
   NodeType.GOOGLE_SHEETS,
   NodeType.NOCODB,
   NodeType.OPENAI,

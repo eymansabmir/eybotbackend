@@ -7,7 +7,12 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-import type { ElevenLabsNodeRequest, OpenAINodeRequest, VariableMutation } from './node-executor';
+import type {
+  ElevenLabsNodeRequest,
+  HttpRequestNodeRequest,
+  OpenAINodeRequest,
+  VariableMutation,
+} from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
 
@@ -22,6 +27,7 @@ export interface OpenAINodeExecutionInput {
 export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
 }
 
 export interface ElevenLabsNodeExecutionInput {
@@ -30,6 +36,14 @@ export interface ElevenLabsNodeExecutionInput {
   session: SessionEntity;
   contact: ContactInfo;
   request: ElevenLabsNodeRequest;
+}
+
+export interface HttpRequestNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: HttpRequestNodeRequest;
 }
 
 /**
@@ -108,11 +122,7 @@ export class FlowOrchestrator {
     let stepCount = 0;
     let isFirstStep = true;
 
-    while (true) {
-      if (stepCount >= MAX_LOOP_STEPS) {
-        session.updateStatus('error');
-        throw new FlowExecutionError(`Execution loop exceeded ${MAX_LOOP_STEPS} steps`, session.currentNodeId);
-      }
+    while (stepCount < MAX_LOOP_STEPS) {
 
       const currentNode = traverser.getNode(session.currentNodeId);
       const execInput = isFirstStep && userInput !== undefined
@@ -169,6 +179,20 @@ export class FlowOrchestrator {
         }
       }
 
+      if (stepResult.httpRequest) {
+        const httpRequestOutput = await this.executeHttpRequest(
+          flow,
+          session,
+          contact,
+          stepResult.httpRequest,
+          runtime,
+        );
+
+        for (const mutation of httpRequestOutput.mutations) {
+          this.applyMutation(mutation, session, contact, allContactMutations);
+        }
+      }
+
       session.addToHistory(stepResult.historyStep);
 
       if (stepResult.nextNodeId) {
@@ -200,6 +224,9 @@ export class FlowOrchestrator {
         };
       }
     }
+
+    session.updateStatus('error');
+    throw new FlowExecutionError(`Execution loop exceeded ${MAX_LOOP_STEPS} steps`, session.currentNodeId);
   }
 
   private async executeOpenAIRequest(
@@ -335,6 +362,33 @@ export class FlowOrchestrator {
         throw new FlowExecutionError(error.message, request.nodeId);
       }
       throw new FlowExecutionError('ElevenLabs runtime execution failed', request.nodeId);
+    }
+  }
+
+  private async executeHttpRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: HttpRequestNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ mutations: VariableMutation[] }> {
+    try {
+      if (!runtime?.executeHttpRequest) {
+        throw new FlowExecutionError('HTTP request runtime executor is not configured', request.nodeId);
+      }
+
+      return await runtime.executeHttpRequest({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('HTTP request runtime execution failed', request.nodeId);
     }
   }
 }

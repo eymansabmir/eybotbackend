@@ -5,10 +5,13 @@ import type { SessionEntity } from '../../features/session/session.entity';
 import { NodeType } from '../../schemas/node-types.enum';
 import { CREDENTIAL_SERVICE } from '../../features/repositories.interface';
 import type { ICredentialService } from '../../features/credentials';
+import type { HttpRequestMappedMutation } from '../http-request';
 import { OpenAIIntegrationService } from '../openai';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from '../openai';
 import { ElevenLabsIntegrationService } from '../elevenlabs';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from '../elevenlabs';
+import { HttpRequestIntegrationService } from '../http-request';
+import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from '../http-request';
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
@@ -19,6 +22,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _orchestrator!: FlowOrchestrator;
   private _openAIService?: OpenAIIntegrationService;
   private _elevenLabsService?: ElevenLabsIntegrationService;
+  private _httpRequestService?: HttpRequestIntegrationService;
 
   async initialize(registry: IPluginRegistry): Promise<void> {
     this._registry = registry;
@@ -73,6 +77,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           model: request.model,
           voice: request.voice,
           prompt: request.prompt,
+          audioUrl: request.audioUrl,
           systemPrompt: request.systemPrompt,
           temperature: request.temperature,
           maxTokens: request.maxTokens,
@@ -120,6 +125,29 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           },
         };
       },
+      executeHttpRequest: async ({ orgId, request }) => {
+        const service = this.httpRequestService();
+        const output = await service.executeNode({
+          orgId,
+          url: request.url,
+          method: request.method,
+          headers: request.headers,
+          queryParams: request.queryParams,
+          body: request.body,
+          timeoutMs: request.timeoutMs,
+          credentialId: request.credentialId,
+          proxyCredentialsId: request.proxyCredentialsId,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation: HttpRequestMappedMutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
     };
   }
 
@@ -141,5 +169,14 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._elevenLabsService = new ElevenLabsIntegrationService(credentials, provider, storage);
     }
     return this._elevenLabsService;
+  }
+
+  private httpRequestService(): HttpRequestIntegrationService {
+    if (!this._httpRequestService) {
+      const provider = this._registry.get<IHttpRequestPlugin>(HTTP_REQUEST_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._httpRequestService = new HttpRequestIntegrationService(credentials, provider);
+    }
+    return this._httpRequestService;
   }
 }

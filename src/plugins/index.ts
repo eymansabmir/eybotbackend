@@ -29,3 +29,6 @@ export type { IOpenAIPlugin } from './openai';
 
 export { ELEVENLABS_PLUGIN } from './elevenlabs';
 export type { IElevenLabsPlugin } from './elevenlabs';
+
+export { HTTP_REQUEST_PLUGIN } from './http-request';
+export type { IHttpRequestPlugin } from './http-request';

@@ -132,6 +132,7 @@ export interface ExecuteOpenAINodePayload {
   voiceAction?: OpenAIVoiceActionMode;
   voice?: string;
   prompt: string;
+  audioUrl?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;

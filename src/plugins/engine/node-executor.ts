@@ -29,6 +29,7 @@ export interface NodeExecutionResult {
   variableMutations: VariableMutation[];
   openAIRequest?: OpenAINodeRequest;
   elevenLabsRequest?: ElevenLabsNodeRequest;
+  httpRequest?: HttpRequestNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -48,6 +49,7 @@ export interface OpenAINodeRequest {
   model: string;
   voice?: string;
   prompt: string;
+  audioUrl?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
@@ -73,6 +75,25 @@ export interface ElevenLabsNodeRequest {
   resultScope: 'session' | 'contact';
   sendResponseToUser: boolean;
   fallbackText?: string;
+}
+
+export interface HttpRequestResponseMapping {
+  jsonPath: string;
+  variableName: string;
+  scope: 'session' | 'contact';
+}
+
+export interface HttpRequestNodeRequest {
+  nodeId: string;
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  body?: string;
+  timeoutMs?: number;
+  credentialId?: string;
+  proxyCredentialsId?: string;
+  responseMapping?: HttpRequestResponseMapping[];
 }
 
 const LOGIC_TYPES = new Set<NodeType>([
@@ -192,6 +213,9 @@ export class NodeExecutor {
       case NodeType.ELEVENLABS:
         return this.handleElevenLabs(currentNode, context, enteredAt, traverser);
 
+      case NodeType.HTTP_REQUEST:
+        return this.handleHttpRequest(currentNode, context, enteredAt, traverser);
+
 
       default:
         throw new FlowExecutionError(`Unsupported node type: ${(currentNode as Node).type}`, currentNode.id);
@@ -228,6 +252,7 @@ export class NodeExecutor {
       model: String(data['model'] ?? ''),
       ...(typeof data['voice'] === 'string' ? { voice: this.text(data['voice'], ctx) } : {}),
       prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['audioUrl'] === 'string' ? { audioUrl: this.text(data['audioUrl'], ctx) } : {}),
       ...(typeof data['systemPrompt'] === 'string'
         ? { systemPrompt: this.text(data['systemPrompt'], ctx) }
         : {}),
@@ -301,6 +326,58 @@ export class NodeExecutor {
       variableMutations: mutations,
       isTerminal: false,
       historyStep: { nodeId: node.id, nodeType: node.type, enteredAt, exitedAt: new Date(), branchTaken: branchKey },
+    };
+  }
+
+  private handleHttpRequest(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const resolveRecord = (value: unknown): Record<string, string> | undefined => {
+      if (!value || typeof value !== 'object') return undefined;
+      const out: Record<string, string> = {};
+      for (const [key, raw] of Object.entries(value)) {
+        if (typeof raw === 'string') {
+          out[key] = this.text(raw, ctx);
+        }
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
+    };
+
+    const responseMapping = Array.isArray(data['responseMapping'])
+      ? (data['responseMapping'] as Array<Record<string, unknown>>)
+          .filter((item) => typeof item['jsonPath'] === 'string' && typeof item['variableName'] === 'string')
+          .map((item) => ({
+            jsonPath: item['jsonPath'] as string,
+            variableName: item['variableName'] as string,
+            scope: (item['scope'] === 'contact' ? 'contact' : 'session') as 'session' | 'contact',
+          }))
+      : undefined;
+
+    const resolvedHeaders = resolveRecord(data['headers']);
+    const resolvedQueryParams = resolveRecord(data['queryParams']);
+
+    const request: HttpRequestNodeRequest = {
+      nodeId: node.id,
+      url: this.text(String(data['url'] ?? ''), ctx),
+      method: ((data['method'] as string) ?? 'GET').toUpperCase() as HttpRequestNodeRequest['method'],
+      ...(resolvedHeaders ? { headers: resolvedHeaders } : {}),
+      ...(resolvedQueryParams ? { queryParams: resolvedQueryParams } : {}),
+      ...(typeof data['body'] === 'string' ? { body: this.text(data['body'], ctx) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(typeof data['credentialId'] === 'string' ? { credentialId: data['credentialId'] } : {}),
+      ...(typeof data['proxyCredentialsId'] === 'string' ? { proxyCredentialsId: data['proxyCredentialsId'] } : {}),
+      ...(responseMapping && responseMapping.length > 0 ? { responseMapping } : {}),
+    };
+
+    return {
+      ...base,
+      httpRequest: request,
     };
   }
 

@@ -116,6 +116,24 @@ const WebhookDataSchema = z.object({
   ).optional(),
 });
 
+const HttpRequestDataSchema = z.object({
+  url: z.string().url(),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+  headers: z.record(z.string()).optional(),
+  queryParams: z.record(z.string()).optional(),
+  body: z.string().optional(),
+  timeoutMs: z.number().int().positive().default(15000),
+  responseMapping: z.array(
+    z.object({
+      jsonPath: z.string(),
+      variableName: z.string(),
+      scope: z.enum(['session', 'contact']),
+    })
+  ).optional(),
+  credentialId: z.string().min(1).optional(),
+  proxyCredentialsId: z.string().min(1).optional(),
+});
+
 const GoogleSheetsDataSchema = z.object({
   spreadsheetId: z.string(),
   sheetName: z.string(),
@@ -144,7 +162,8 @@ const OpenAIDataSchema = z.object({
   credentialId: z.string().min(1),
   model: z.string().min(1),
   voice: z.string().optional(),
-  prompt: z.string().min(1),
+  prompt: z.string().optional(),
+  audioUrl: z.string().optional(),
   systemPrompt: z.string().optional(),
 
   temperature: z.number().min(0).max(2).optional(),
@@ -193,6 +212,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.JUMP_TO_FLOW), ...JumpToFlowDataSchema.shape }),
   z.object({ type: z.literal(NodeType.HUMAN_HANDOFF), ...HumanHandoffDataSchema.shape }),
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.HTTP_REQUEST), ...HttpRequestDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),

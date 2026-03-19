@@ -417,7 +417,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
         };
       }
 
-      const audioUrl = input.prompt.trim();
+      const audioUrl = (input.audioUrl ?? input.prompt).trim();
       if (!audioUrl) {
         throw new ValidationError('audio URL is required for create_transcription mode');
       }
