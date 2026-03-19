@@ -47,6 +47,8 @@ import { createNodeTypesRouter } from './features/node-types/node-types.route';
 import { createWhatsAppWebhookRouter } from './features/whatsapp-webhook/whatsapp-webhook.route';
 import { createStorageRouter } from './features/storage/storage.route';
 import { createCampaignRouter } from './features/campaign/campaign.route';
+import { WhatsAppController } from './features/whatsapp/whatsapp.controller';
+import { createWhatsAppRouter } from './features/whatsapp/whatsapp.route';
 import { createOpenAIRouter } from './features/integrations/openai/openai.route';
 import { createElevenLabsRouter } from './features/integrations/elevenlabs/elevenlabs.route';
 import { createCredentialRouter } from './features/credentials';
@@ -129,6 +131,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const webhookController = new WhatsAppWebhookController(whatsappPlugin, workerPlugin);
   const storageController = new StorageController(storagePlugin);
   const campaignController = new CampaignController(campaignService);
+  const whatsappController = new WhatsAppController(whatsappPlugin);
   const openAIController = new OpenAIController(openAIService);
   const elevenLabsController = new ElevenLabsController(elevenLabsService);
   const credentialController = new CredentialController(credentialService);
@@ -139,6 +142,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/node-types', createNodeTypesRouter(nodeTypesController));
   app.use('/api/storage', createStorageRouter(storageController));
   app.use('/api/campaigns', createCampaignRouter(campaignController));
+  app.use('/api/whatsapp', createWhatsAppRouter(whatsappController));
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
   app.use('/api/integrations/elevenlabs', createElevenLabsRouter(elevenLabsController));

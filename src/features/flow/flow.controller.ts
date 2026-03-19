@@ -13,7 +13,7 @@ const FlowListQuerySchema = z.object({
 const FlowUpdateSchema = FlowSchema.partial();
 
 export class FlowController {
-  constructor(private readonly flowService: IFlowService) {}
+  constructor(private readonly flowService: IFlowService) { }
 
   createFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

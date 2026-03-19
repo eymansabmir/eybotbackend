@@ -116,10 +116,12 @@ export class NodeExecutor {
       case NodeType.SEND_VIDEO:
       case NodeType.SEND_AUDIO:
       case NodeType.SEND_DOCUMENT:
+      case NodeType.SEND_STICKER:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            url: this.text(currentNode.data['url'] as string, context),
+            url: currentNode.data['url'] ? this.text(currentNode.data['url'] as string, context) : undefined,
+            mediaId: currentNode.data['mediaId'] ? this.text(currentNode.data['mediaId'] as string, context) : undefined,
             ...(currentNode.data['caption'] ? { caption: this.text(currentNode.data['caption'] as string, context) } : {}),
             ...(currentNode.data['filename'] ? { filename: currentNode.data['filename'] } : {}),
           },
@@ -158,6 +160,9 @@ export class NodeExecutor {
       case NodeType.ASK_QUESTION:
         return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
 
+      case NodeType.NPS:
+        return this.handleNps(currentNode, context, enteredAt, traverser, userInput);
+
       case NodeType.CONDITION:
         return this.handleCondition(currentNode, context, enteredAt, traverser);
 
@@ -189,6 +194,8 @@ export class NodeExecutor {
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
 
+      case NodeType.SEND_CARDS:
+        return this.handleCards(currentNode, context, enteredAt, traverser, userInput);
       case NodeType.OPENAI:
         return this.handleOpenAI(currentNode, context, enteredAt, traverser);
 
@@ -307,6 +314,74 @@ export class NodeExecutor {
     };
   }
 
+  private handleCards(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const interaction = node.data['interaction'] as any;
+    const items = (node.data['items'] ?? []) as any[];
+
+    if (interaction?.mode === 'input' && userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      
+      const options = items.flatMap((item: any) => 
+        (item.buttons ?? []).map((b: any) => ({ id: b.id, label: b.text, branchKey: b.branchKey }))
+      );
+
+      const messages: OutboundMessage[] = items.map((item: any) => ({
+        type: node.type,
+        payload: {
+          imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+          title: item.title ? this.text(item.title, ctx) : undefined,
+          description: item.description ? this.text(item.description, ctx) : undefined,
+          buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
+        }
+      }));
+
+      return {
+        nextNodeId: node.id,
+        outboundMessages: messages,
+        variableMutations: [], isTerminal: false,
+        waitForInput: { 
+          type: 'choice', 
+          options, 
+          defaultBranchKey: interaction.input?.defaultBranchKey, 
+          variableName: interaction.input?.variableName, 
+          variableScope: interaction.input?.variableScope, 
+          since, 
+          timeoutAt 
+        },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    if (interaction?.mode === 'input' && userInput !== undefined) {
+      const options = items.flatMap((item: any) => 
+        (item.buttons ?? []).map((b: any) => ({ id: b.id, branchKey: b.branchKey }))
+      );
+      const selected = (options as any[]).find((o: any) => o.id === userInput);
+      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
+      const mutations: VariableMutation[] = [];
+      if (interaction.input?.variableName && interaction.input?.variableScope) {
+        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      }
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+
+    const messages: OutboundMessage[] = items.map((item: any) => ({
+      type: node.type,
+      payload: {
+        imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+        title: item.title ? this.text(item.title, ctx) : undefined,
+        description: item.description ? this.text(item.description, ctx) : undefined,
+        buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
+      }
+    }));
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, messages);
+  }
+
   private handleAskQuestion(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
@@ -320,6 +395,40 @@ export class NodeExecutor {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'text', variableName, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: variableScope as 'session' | 'contact', key: variableName as string, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput } };
+  }
+
+  private handleNps(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { message, variableName, variableScope, timeoutSeconds } = node.data as Record<string, any>;
+    const resolvedMessage = this.text(message as string, ctx);
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? 300) as number) * 1000);
+      
+      // NPS is effectively a choice node with 0-10
+      const length = node.data['length'] ?? 10;
+      const startsAt = node.data['startsAt'] ?? 1;
+      const options = [];
+      for (let i = 0; i < length; i++) {
+        const val = (startsAt + i).toString();
+        options.push({ id: val, branchKey: 'default', label: val });
+      }
+
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: node.type, payload: { ...node.data, message: resolvedMessage } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'choice', options, variableName, variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }

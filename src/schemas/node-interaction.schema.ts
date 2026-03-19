@@ -5,7 +5,7 @@ export const InteractionModeSchema = z.enum(['output', 'input']);
 export const NodeInteractionSchema = z.object({
   mode: InteractionModeSchema,
   input: z.object({
-    type: z.enum(['text', 'choice']),
+    type: z.enum(['text', 'choice']).optional().default('choice'),
     variableName: z.string().optional(),
     variableScope: z.enum(['session', 'contact']).optional(),
     timeoutSeconds: z.number().optional(),
