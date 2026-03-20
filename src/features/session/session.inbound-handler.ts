@@ -4,6 +4,8 @@ import type { IFlowRepository } from '../flow/flow.repository';
 import type { ISessionRepository } from './session.repository';
 import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
+import type { IStoragePlugin } from '../../plugins/storage';
+import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
 import { ValidationError } from '../../utils/errors';
 
 const LOCK_PREFIX = 'wa:lock:';
@@ -15,6 +17,8 @@ export class SessionInboundHandler implements IInboundHandler {
     private readonly sessionRepo: ISessionRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly redisPlugin: IRedisPlugin,
+    private readonly storagePlugin: IStoragePlugin,
+    private readonly whatsappPlugin: IWhatsAppPlugin,
   ) {}
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
@@ -50,6 +54,26 @@ export class SessionInboundHandler implements IInboundHandler {
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
+        }
+
+        if (activeSession.waitingFor?.type === 'file' && message.mediaId) {
+          logger.info({ waId, mediaId: message.mediaId }, 'SessionInboundHandler: downloading media...');
+          const metaUrl = await this.whatsappPlugin.getMediaUrl(message.mediaId);
+          const buffer = await this.whatsappPlugin.downloadMedia(metaUrl);
+          
+          const uploadResult = await this.storagePlugin.uploadFile({
+            buffer,
+            originalname: message.mediaFilename ?? `file_${message.mediaId}`,
+            mimetype: message.mediaMimeType ?? 'application/octet-stream',
+            fieldname: 'file',
+            encoding: '7bit',
+            size: buffer.length,
+            stream: null as any,
+            destination: '',
+            filename: '',
+            path: ''
+          });
+          userInput = uploadResult.url;
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);

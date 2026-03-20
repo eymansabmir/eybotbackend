@@ -12,6 +12,7 @@ export enum NodeType {
   SEND_STICKER = 'send_sticker',
   SEND_CAROUSEL = 'send_carousel',
   ASK_QUESTION = 'ask_question',
+  ASK_FILE = 'ask_file',
   NPS = 'nps',
   SEND_CARDS = 'send_cards',
 
@@ -47,6 +48,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.SEND_STICKER,
   NodeType.SEND_CAROUSEL,
   NodeType.ASK_QUESTION,
+  NodeType.ASK_FILE,
   NodeType.NPS,
   NodeType.SEND_CARDS,
 ];
