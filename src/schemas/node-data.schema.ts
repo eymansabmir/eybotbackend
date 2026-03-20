@@ -11,6 +11,7 @@ const SendTextDataSchema = z.object({
 const SendMediaDataSchema = z.object({
   url: z.string().url(),
   caption: z.string().optional(),
+  mediaId: z.string().optional(),
 });
 
 const SendLocationDataSchema = z.object({
@@ -65,6 +66,29 @@ const SendTemplateDataSchema = z.object({
   components: z.array(z.any()).optional(),
 });
 
+const SendCarouselDataSchema = z.object({
+  bodyText: z.string().max(1024).optional(),
+  cards: z.array(
+    z.object({
+      headerType: z.enum(['image', 'video']),
+      url: z.string().url(),
+      bodyText: z.string().max(160).optional(),
+      buttonType: z.enum(['cta_url', 'quick_reply']).optional(),
+      ctaUrlButton: z.object({
+        displayText: z.string().max(20),
+        url: z.string().url(),
+      }).optional(),
+      quickReplyButtons: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string().max(20),
+        })
+      ).max(2).optional(),
+    })
+  ).min(1).max(10),
+  interaction: NodeInteractionSchema.optional(),
+});
+
 const AskQuestionDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
@@ -72,6 +96,18 @@ const AskQuestionDataSchema = z.object({
   inputType: InputTypeSchema,
   validation: ValidationRuleSchema.optional(),
   timeoutSeconds: z.number(),
+});
+
+const NpsDataSchema = z.object({
+  message: z.string(),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
+  length: z.number().default(10),
+  startsAt: z.number().default(0),
+  leftLabel: z.string().optional(),
+  rightLabel: z.string().optional(),
+  buttonLabel: z.string().optional(),
+  timeoutSeconds: z.number().optional(),
 });
 
 const ConditionDataSchema = z.object({
@@ -156,6 +192,25 @@ const NocoDBDataSchema = z.object({
   resultScope: z.enum(['session', 'contact']).optional(),
 });
 
+const SendCardsDataSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      imageUrl: z.string().optional(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      buttons: z.array(
+        z.object({
+          id: z.string(),
+          text: z.string(),
+          branchKey: z.string(),
+        })
+      ).max(3),
+    })
+  ).min(1),
+  interaction: NodeInteractionSchema.optional(),
+});
+
 const OpenAIDataSchema = z.object({
   mode: z.enum(['agent', 'voice']).default('agent'),
   voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
@@ -203,7 +258,10 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_BUTTONS), ...SendButtonsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_LIST), ...SendListDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_TEMPLATE), ...SendTemplateDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_STICKER), ...SendMediaDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_CAROUSEL), ...SendCarouselDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.NPS), ...NpsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),
   z.object({ type: z.literal(NodeType.RANDOM_SPLIT), ...RandomSplitDataSchema.shape }),
@@ -215,6 +273,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.HTTP_REQUEST), ...HttpRequestDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
 ]);

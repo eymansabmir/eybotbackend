@@ -42,14 +42,68 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendList(waId, p['body'] as string, p['buttonTitle'] as string, p['sections'] as any[], p['footer'] as string | undefined);
       case NodeType.SEND_TEMPLATE:
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
+      case NodeType.SEND_STICKER:
+        return this.api.sendSticker(waId, (p['mediaId'] as string) || (p['url'] as string));
+      case NodeType.NPS: {
+        const message = p['message'] as string;
+        const buttonLabel = (p['buttonLabel'] as string) || 'Rate';
+        const length = Math.min((p['length'] as number) ?? 10, 10);
+        const startsAt = (p['startsAt'] as number) ?? 0;
+        const leftLabel = p['leftLabel'] as string | undefined;
+        const rightLabel = p['rightLabel'] as string | undefined;
+
+        const rows = [];
+        for (let i = 0; i < length; i++) {
+          const value = (startsAt + i).toString();
+          const row: any = { id: value, title: value };
+          if (i === 0 && leftLabel) row.description = leftLabel.slice(0, 72);
+          if (i === length - 1 && rightLabel) row.description = rightLabel.slice(0, 72);
+          rows.push(row);
+        }
+
+        return this.api.sendList(waId, message, buttonLabel, [{ title: 'Score', rows }]);
+      }
+      case NodeType.SEND_CARDS: {
+        const imageUrl = p['imageUrl'] as string | undefined;
+        const title = p['title'] as string | undefined;
+        const description = p['description'] as string | undefined;
+        const buttons = p['buttons'] as any[];
+
+        let body = '';
+        if (title) body += `*${title}*\n`;
+        if (description) body += description;
+        if (!body) body = '―';
+
+        let header;
+        if (imageUrl) {
+          const isId = !imageUrl.startsWith('http');
+          header = {
+            type: 'image',
+            image: isId ? { id: imageUrl } : { link: imageUrl },
+          };
+        }
+
+        return this.api.sendButtons(waId, body, buttons, undefined, header);
+      }
+      case NodeType.SEND_CAROUSEL:
+        return this.api.sendCarousel(waId, p['bodyText'] as string | undefined, p['cards'] as any[]);
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
     }
+  }
+
+  async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    return this.api.uploadMedia(url, type);
   }
 }
 
 export class StubWhatsAppSender implements IWhatsAppSender {
   async sendMessages(waId: string, messages: OutboundMessage[]): Promise<void> {
     logger.debug({ waId, messages }, 'StubWhatsAppSender: would send message(s)');
+  }
+
+  async uploadMedia(_url: string, _type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    logger.debug({ _url, _type }, 'StubWhatsAppSender: would upload media');
+    return 'stub-media-id';
   }
 }

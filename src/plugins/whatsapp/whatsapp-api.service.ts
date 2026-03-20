@@ -43,11 +43,16 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
-  async sendButtons(to: string, body: string, buttons: Array<{ id: string; title: string }>, footer?: string): Promise<void> {
+  async sendButtons(to: string, body: string, buttons: Array<{ id: string; title: string }>, footer?: string, header?: any): Promise<void> {
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
-      interactive: { type: 'button', body: { text: body }, action: { buttons: buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: b.title } })) } },
+      interactive: {
+        type: 'button',
+        body: { text: body },
+        action: { buttons: buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: b.title } })) }
+      },
     };
+    if (header) payload.interactive.header = header;
     if (footer) payload.interactive.footer = { text: footer };
     await this.call(payload);
   }
@@ -65,7 +70,50 @@ export class WhatsAppAPIService {
       },
     };
     if (footer) payload.interactive.footer = { text: footer };
-    await this.call(payload);  }
+    await this.call(payload);
+  }
+
+  async sendCarousel(to: string, bodyText: string | undefined, cards: any[]): Promise<void> {
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'carousel',
+        body: { text: bodyText || 'Choose an option below:' },
+        action: {
+          cards: cards.map((card, index) => ({
+            card_index: index,
+            type: 'cta_url',
+            header: {
+              type: card.headerType,
+              [card.headerType]: { link: card.url },
+            },
+            body: card.bodyText ? { text: card.bodyText.slice(0, 160) } : undefined,
+            action: card.buttonType === 'cta_url'
+              ? {
+                  name: 'cta_url',
+                  parameters: {
+                    display_text: card.ctaUrlButton.displayText?.slice(0, 20) || 'Visit',
+                    url: card.ctaUrlButton.url,
+                  },
+                }
+              : {
+                  buttons: (card.quickReplyButtons || []).slice(0, 2).map((btn: any) => ({
+                    type: 'quick_reply',
+                    quick_reply: {
+                      id: btn.id,
+                      title: btn.title.slice(0, 20),
+                    },
+                  })),
+                },
+          })),
+        },
+      },
+    };
+    await this.call(payload);
+  }
 
   async sendTemplate(to: string, templateName: string, languageCode: string, components?: unknown[]): Promise<void> {
     const payload: any = {

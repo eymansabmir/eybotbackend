@@ -16,7 +16,7 @@ export interface IFlowService {
 }
 
 export class FlowService implements IFlowService {
-  constructor(private readonly flowRepo: IFlowRepository) {}
+  constructor(private readonly flowRepo: IFlowRepository) { }
 
   async createFlow(data: Partial<FlowProperties>): Promise<FlowEntity> {
     const entity = new FlowEntity({
@@ -124,12 +124,27 @@ export class FlowService implements IFlowService {
         case NodeType.SEND_VIDEO:
         case NodeType.SEND_AUDIO:
         case NodeType.SEND_DOCUMENT:
+        case NodeType.SEND_STICKER:
           if (node.data.url && typeof node.data.url === 'string') {
             const url = node.data.url as string;
             if (url.startsWith('http')) {
               node.data.url = new URL(url).pathname.replace(/^\/+/, '');
             } else if (base && url.startsWith(base)) {
               node.data.url = url.replace(`${base}/`, '');
+            }
+          }
+          break;
+        case NodeType.SEND_CARDS:
+          if (node.data.items && Array.isArray(node.data.items)) {
+            for (const item of node.data.items) {
+              if (item.imageUrl && typeof item.imageUrl === 'string') {
+                const url = item.imageUrl as string;
+                if (url.startsWith('http')) {
+                  item.imageUrl = new URL(url).pathname.replace(/^\/+/, '');
+                } else if (base && url.startsWith(base)) {
+                  item.imageUrl = url.replace(`${base}/`, '');
+                }
+              }
             }
           }
           break;
