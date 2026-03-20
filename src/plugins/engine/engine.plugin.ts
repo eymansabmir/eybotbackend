@@ -34,6 +34,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
     input: StartFlowInput,
     flow: FlowEntity,
     contact: ContactInfo,
+    getTranslation?: (language: string) => Promise<any[] | null>,
   ): Promise<OrchestratorResult> {
     return this._orchestrator.startFlow(
       flow,
@@ -42,7 +43,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       input.flowId,
       input.waId,
       input.waBusinessNumber,
-      this.runtimeIntegrations(),
+      this.runtimeIntegrations(getTranslation),
     );
   }
 
@@ -51,18 +52,20 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
     flow: FlowEntity,
     contact: ContactInfo,
     session: SessionEntity,
+    getTranslation?: (language: string) => Promise<any[] | null>,
   ): Promise<OrchestratorResult> {
     return this._orchestrator.resumeFlow(
       flow,
       contact,
       session,
       input.userInput,
-      this.runtimeIntegrations(),
+      this.runtimeIntegrations(getTranslation),
     );
   }
 
-  private runtimeIntegrations(): RuntimeIntegrations {
+  private runtimeIntegrations(getTranslation?: (language: string) => Promise<any[] | null>): RuntimeIntegrations {
     return {
+      getTranslation,
       executeOpenAI: async ({ orgId, request }) => {
         const service = this.openAIService();
         const output = await service.executeNode({

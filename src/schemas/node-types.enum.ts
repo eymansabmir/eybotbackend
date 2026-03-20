@@ -26,10 +26,10 @@ export enum NodeType {
   JUMP_TO_FLOW = 'jump_to_flow',
   HUMAN_HANDOFF = 'human_handoff',
 
-  // Integration Nodes
   WEBHOOK = 'webhook',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
+  LANGUAGE = 'language',
    OPENAI = 'openai',
   ELEVENLABS = 'elevenlabs',
 }

@@ -48,6 +48,7 @@ export interface IEnginePlugin {
     input: StartFlowInput,
     flow: FlowEntity,
     contact: ContactInfo,
+    getTranslation?: (language: string) => Promise<any[] | null>,
   ): Promise<OrchestratorResult>;
 
   resumeFlow(
@@ -55,5 +56,6 @@ export interface IEnginePlugin {
     flow: FlowEntity,
     contact: ContactInfo,
     session: SessionEntity,
+    getTranslation?: (language: string) => Promise<any[] | null>,
   ): Promise<OrchestratorResult>;
 }

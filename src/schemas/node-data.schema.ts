@@ -228,6 +228,11 @@ const ElevenLabsDataSchema = z.object({
   fallbackText: z.string().optional(),
 });
 
+const LanguageDataSchema = z.object({
+  message: z.string(),
+  variable: z.string(),
+  timeoutSeconds: z.number().optional(),
+});
 
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
@@ -256,6 +261,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.LANGUAGE), ...LanguageDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

@@ -86,4 +86,8 @@ export class FlowEntity {
             updatedAt: this.updatedAt,
         };
     }
+
+    public clone(): FlowEntity {
+        return new FlowEntity(this.toJSON() as any);
+    }
 }

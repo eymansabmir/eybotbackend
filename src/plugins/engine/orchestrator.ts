@@ -22,6 +22,7 @@ export interface OpenAINodeExecutionInput {
 export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  getTranslation?(language: string): Promise<any[] | null>;
 }
 
 export interface ElevenLabsNodeExecutionInput {
@@ -127,6 +128,13 @@ export class FlowOrchestrator {
 
       for (const m of stepResult.variableMutations) {
         this.applyMutation(m, session, contact, allContactMutations);
+      }
+
+      if (stepResult.languageChanged && runtime?.getTranslation) {
+        const translatedNodes = await runtime.getTranslation(stepResult.languageChanged);
+        if (translatedNodes) {
+          traverser.updateNodes(translatedNodes as any);
+        }
       }
 
       if (stepResult.openAIRequest) {
