@@ -37,6 +37,7 @@ import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
 import { ElevenLabsPlugin } from './plugins/elevenlabs/elevenlabs.plugin';
 import { HttpRequestPlugin } from './plugins/http-request/http-request.plugin';
+import { GoogleSheetsPlugin } from './plugins/google-sheets/google-sheets.plugin';
 import { CredentialService, PrismaCredentialRepository } from './features/credentials';
 
 
@@ -61,6 +62,7 @@ async function startServer(): Promise<void> {
   registry.register(new OpenAIPlugin());
   registry.register(new ElevenLabsPlugin());
   registry.register(new HttpRequestPlugin());
+  registry.register(new GoogleSheetsPlugin());
 
   // ── Phase 2: Initialize all plugins (sequential, order above) ────────────
   await registry.initializeAll();

@@ -11,6 +11,7 @@ import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,
   OpenAINodeRequest,
+  GoogleSheetsNodeRequest,
   VariableMutation,
 } from './node-executor';
 
@@ -28,6 +29,7 @@ export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
+  executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
 }
 
 export interface ElevenLabsNodeExecutionInput {
@@ -44,6 +46,14 @@ export interface HttpRequestNodeExecutionInput {
   session: SessionEntity;
   contact: ContactInfo;
   request: HttpRequestNodeRequest;
+}
+
+export interface GoogleSheetsNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: GoogleSheetsNodeRequest;
 }
 
 /**

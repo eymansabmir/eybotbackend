@@ -39,6 +39,7 @@ import { StorageController } from './features/storage/storage.controller';
 import { CampaignController } from './features/campaign/campaign.controller';
 import { OpenAIController } from './features/integrations/openai/openai.controller';
 import { ElevenLabsController } from './features/integrations/elevenlabs/elevenlabs.controller';
+import { GoogleSheetsController } from './features/integrations/google-sheets/google-sheets.controller';
 import { CredentialController } from './features/credentials';
 
 import { createFlowRouter } from './features/flow/flow.route';
@@ -51,9 +52,11 @@ import { WhatsAppController } from './features/whatsapp/whatsapp.controller';
 import { createWhatsAppRouter } from './features/whatsapp/whatsapp.route';
 import { createOpenAIRouter } from './features/integrations/openai/openai.route';
 import { createElevenLabsRouter } from './features/integrations/elevenlabs/elevenlabs.route';
+import { createGoogleSheetsRouter } from './features/integrations/google-sheets/google-sheets.route';
 import { createCredentialRouter } from './features/credentials';
 
 import { errorHandler } from './middleware/error.middleware';
+import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
 
 export function createApp(registry: IPluginRegistry): Application {
   const app = express();
@@ -120,6 +123,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
+  const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
 
   // Start background scheduler
   campaignService.startScheduler();
@@ -134,6 +138,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const whatsappController = new WhatsAppController(whatsappPlugin);
   const openAIController = new OpenAIController(openAIService);
   const elevenLabsController = new ElevenLabsController(elevenLabsService);
+  const googleSheetsController = new GoogleSheetsController(googleSheetsService);
   const credentialController = new CredentialController(credentialService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -146,6 +151,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
   app.use('/api/integrations/elevenlabs', createElevenLabsRouter(elevenLabsController));
+  app.use('/api/integrations/google-sheets', createGoogleSheetsRouter(googleSheetsController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

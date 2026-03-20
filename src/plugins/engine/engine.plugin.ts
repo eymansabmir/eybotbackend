@@ -10,8 +10,9 @@ import { OpenAIIntegrationService } from '../openai';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from '../openai';
 import { ElevenLabsIntegrationService } from '../elevenlabs';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from '../elevenlabs';
-import { HttpRequestIntegrationService } from '../http-request';
 import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from '../http-request';
+import { HttpRequestIntegrationService } from '../http-request';
+import { GoogleSheetsIntegrationService } from '../google-sheets/google-sheets.service';
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
@@ -23,6 +24,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _openAIService?: OpenAIIntegrationService;
   private _elevenLabsService?: ElevenLabsIntegrationService;
   private _httpRequestService?: HttpRequestIntegrationService;
+  private _googleSheetsService?: GoogleSheetsIntegrationService;
 
   async initialize(registry: IPluginRegistry): Promise<void> {
     this._registry = registry;
@@ -168,6 +170,29 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           })),
         };
       },
+      executeGoogleSheets: async ({ orgId, request }) => {
+        const service = this.googleSheetsService();
+        const output = await service.executeNode({
+          orgId,
+          credentialId: request.credentialId,
+          action: request.action,
+          spreadsheetId: request.spreadsheetId,
+          sheetId: request.sheetId,
+          rowId: request.rowId,
+          values: request.values,
+          filter: request.filter,
+          timeoutMs: request.timeoutMs,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
     };
   }
 
@@ -198,5 +223,13 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._httpRequestService = new HttpRequestIntegrationService(credentials, provider);
     }
     return this._httpRequestService;
+  }
+
+  private googleSheetsService(): GoogleSheetsIntegrationService {
+    if (!this._googleSheetsService) {
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._googleSheetsService = new GoogleSheetsIntegrationService(credentials, this._registry);
+    }
+    return this._googleSheetsService;
   }
 }

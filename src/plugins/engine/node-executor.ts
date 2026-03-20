@@ -30,6 +30,7 @@ export interface NodeExecutionResult {
   openAIRequest?: OpenAINodeRequest;
   elevenLabsRequest?: ElevenLabsNodeRequest;
   httpRequest?: HttpRequestNodeRequest;
+  googleSheetsRequest?: GoogleSheetsNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -103,6 +104,19 @@ export interface HttpRequestNodeRequest {
   timeoutMs?: number;
   credentialId?: string;
   proxyCredentialsId?: string;
+  responseMapping?: HttpRequestResponseMapping[];
+}
+
+export interface GoogleSheetsNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  action: 'insert_row' | 'update_row' | 'get_row';
+  spreadsheetId: string;
+  sheetId: string;
+  rowId?: number;
+  values?: Record<string, unknown>;
+  filter?: Record<string, unknown>;
+  timeoutMs?: number;
   responseMapping?: HttpRequestResponseMapping[];
 }
 
@@ -219,11 +233,13 @@ export class NodeExecutor {
       }
 
       case NodeType.WEBHOOK:
-      case NodeType.GOOGLE_SHEETS:
       case NodeType.NOCODB:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
+
+      case NodeType.GOOGLE_SHEETS:
+        return this.handleGoogleSheets(currentNode, context, enteredAt, traverser);
 
       case NodeType.SEND_CARDS:
         return this.handleCards(currentNode, context, enteredAt, traverser, userInput);
@@ -419,6 +435,49 @@ export class NodeExecutor {
     return {
       ...base,
       httpRequest: request,
+    };
+  }
+
+  private handleGoogleSheets(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const resolveRecord = (value: unknown): Record<string, unknown> | undefined => {
+      if (!value || typeof value !== 'object') return undefined;
+      const out: Record<string, unknown> = {};
+      for (const [key, raw] of Object.entries(value)) {
+        if (typeof raw === 'string') {
+           out[key] = this.text(raw, ctx);
+        } else {
+           out[key] = raw;
+        }
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
+    };
+
+    const action = (data['action'] as string) || 'insert_row';
+
+    const request: GoogleSheetsNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      action: action as 'insert_row' | 'update_row' | 'get_row',
+      spreadsheetId: this.text(String(data['spreadsheetId'] ?? ''), ctx),
+      sheetId: String(data['sheetId'] ?? ''),
+      ...(data['rowId'] !== undefined ? { rowId: Number(this.text(String(data['rowId']), ctx)) } : {}),
+      ...(data['values'] ? { values: resolveRecord(data['values']) } : {}),
+      ...(data['filter'] ? { filter: resolveRecord(data['filter']) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(data['responseMapping'] ? { responseMapping: data['responseMapping'] as HttpRequestResponseMapping[] } : {}),
+    };
+
+    return {
+      ...base,
+      googleSheetsRequest: request,
     };
   }
 
