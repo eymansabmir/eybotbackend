@@ -15,6 +15,7 @@ import type {
   NocoDBNodeRequest,
   VariableMutation,
   AnthropicNodeRequest,
+  DeepSeekNodeRequest,
 } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
@@ -30,10 +31,19 @@ export interface OpenAINodeExecutionInput {
 export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeAnthropic?(input: AnthropicNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  executeDeepSeek?(input: DeepSeekNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
+}
+
+export interface DeepSeekNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: DeepSeekNodeRequest;
 }
 
 export interface ElevenLabsNodeExecutionInput {
@@ -206,6 +216,26 @@ export class FlowOrchestrator {
 
         if (stepResult.anthropicRequest.sendResponseToUser) {
           allMessages.push(anthropicOutput.message);
+        }
+      }
+
+      if (stepResult.deepSeekRequest) {
+        const deepSeekOutput = await this.executeDeepSeekRequest(
+          flow,
+          session,
+          contact,
+          stepResult.deepSeekRequest,
+          runtime,
+        );
+
+        this.applyMutation({
+          scope: stepResult.deepSeekRequest.resultScope,
+          key: stepResult.deepSeekRequest.resultVariable,
+          value: deepSeekOutput.value,
+        }, session, contact, allContactMutations);
+
+        if (stepResult.deepSeekRequest.sendResponseToUser) {
+          allMessages.push(deepSeekOutput.message);
         }
       }
 
@@ -481,6 +511,86 @@ export class FlowOrchestrator {
         throw new FlowExecutionError(error.message, request.nodeId);
       }
       throw new FlowExecutionError('Anthropic runtime execution failed', request.nodeId);
+    }
+  }
+
+  private async executeDeepSeekRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: DeepSeekNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ value: string; message: OutboundMessage }> {
+    try {
+      if (!runtime?.executeDeepSeek) {
+        throw new FlowExecutionError('DeepSeek runtime executor is not configured', request.nodeId);
+      }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          model: request.model,
+          mode: request.mode,
+          action: 'runtime.executeDeepSeek',
+        },
+        'STEP 5: Executing DeepSeek runtime request',
+      );
+
+      const response = await runtime.executeDeepSeek({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+
+      if (!response.value.trim()) {
+        throw new FlowExecutionError('DeepSeek runtime returned empty response', request.nodeId);
+      }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          outputType: response.message.type,
+          outputChars: response.value.length,
+          action: 'runtime.executeDeepSeek',
+        },
+        'STEP 6: DeepSeek runtime response received',
+      );
+
+      return response;
+    } catch (error) {
+      logger.warn(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          action: 'runtime.executeDeepSeek',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'DeepSeek runtime execution failed in orchestrator',
+      );
+
+      if (request.fallbackText) {
+        return {
+          value: request.fallbackText,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: request.fallbackText },
+          },
+        };
+      }
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('DeepSeek runtime execution failed', request.nodeId);
     }
   }
 

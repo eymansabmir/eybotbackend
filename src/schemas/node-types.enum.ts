@@ -34,6 +34,7 @@ export enum NodeType {
    OPENAI = 'openai',
   ELEVENLABS = 'elevenlabs',
   ANTHROPIC = 'anthropic',
+  DEEPSEEK = 'deepseek',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -74,4 +75,5 @@ export const INTEGRATION_NODE_TYPES = [
   NodeType.OPENAI,
   NodeType.ELEVENLABS,
   NodeType.ANTHROPIC,
+  NodeType.DEEPSEEK,
 ];

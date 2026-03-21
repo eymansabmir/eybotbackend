@@ -32,3 +32,9 @@ export type { IElevenLabsPlugin } from './elevenlabs';
 
 export { HTTP_REQUEST_PLUGIN } from './http-request';
 export type { IHttpRequestPlugin } from './http-request';
+
+export { ANTHROPIC_PLUGIN } from './anthropic';
+export type { IAnthropicPlugin } from './anthropic';
+
+export { DEEPSEEK_PLUGIN } from './deepseek';
+export type { IDeepSeekPlugin } from './deepseek';

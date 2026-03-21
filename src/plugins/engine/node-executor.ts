@@ -30,6 +30,7 @@ export interface NodeExecutionResult {
   openAIRequest?: OpenAINodeRequest;
   elevenLabsRequest?: ElevenLabsNodeRequest;
   anthropicRequest?: AnthropicNodeRequest;
+  deepSeekRequest?: DeepSeekNodeRequest;
   httpRequest?: HttpRequestNodeRequest;
   googleSheetsRequest?: GoogleSheetsNodeRequest;
   nocoDBRequest?: NocoDBNodeRequest;
@@ -91,6 +92,24 @@ export interface ElevenLabsNodeRequest {
 }
 
 export interface AnthropicNodeRequest {
+  nodeId: string;
+  mode: 'chat_completion' | 'generate_variables';
+  credentialId: string;
+  model: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
+}
+
+export interface DeepSeekNodeRequest {
   nodeId: string;
   mode: 'chat_completion' | 'generate_variables';
   credentialId: string;
@@ -285,6 +304,9 @@ export class NodeExecutor {
       case NodeType.ANTHROPIC:
         return this.handleAnthropic(currentNode, context, enteredAt, traverser);
 
+      case NodeType.DEEPSEEK:
+        return this.handleDeepSeek(currentNode, context, enteredAt, traverser);
+
       case NodeType.HTTP_REQUEST:
         return this.handleHttpRequest(currentNode, context, enteredAt, traverser);
 
@@ -406,6 +428,42 @@ export class NodeExecutor {
     return {
       ...base,
       anthropicRequest: request,
+    };
+  }
+
+  private handleDeepSeek(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const mode = (data['mode'] as 'chat_completion' | 'generate_variables') || 'chat_completion';
+
+    const request: DeepSeekNodeRequest = {
+      nodeId: node.id,
+      mode,
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string' ? { systemPrompt: this.text(data['systemPrompt'], ctx) } : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as any }
+        : {}),
+    };
+
+    return {
+      ...base,
+      deepSeekRequest: request,
     };
   }
 

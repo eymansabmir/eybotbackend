@@ -15,6 +15,11 @@ import {
   ANTHROPIC_PLUGIN,
   type IAnthropicPlugin,
 } from '../anthropic';
+import {
+  DeepSeekIntegrationService,
+  DEEPSEEK_PLUGIN,
+  type IDeepSeekPlugin,
+} from '../deepseek';
 import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from '../http-request';
 import { HttpRequestIntegrationService } from '../http-request';
 import { GoogleSheetsIntegrationService } from '../google-sheets/google-sheets.service';
@@ -30,6 +35,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _openAIService?: OpenAIIntegrationService;
   private _elevenLabsService?: ElevenLabsIntegrationService;
   private _anthropicService?: AnthropicIntegrationService;
+  private _deepSeekService?: DeepSeekIntegrationService;
   private _httpRequestService?: HttpRequestIntegrationService;
   private _googleSheetsService?: GoogleSheetsIntegrationService;
   private _nocoDBService?: NocoDBIntegrationService;
@@ -178,6 +184,29 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           },
         };
       },
+      executeDeepSeek: async ({ orgId, request }) => {
+        const service = this.deepSeekService();
+        const output = await service.executeNode({
+          orgId,
+          mode: request.mode,
+          credentialId: request.credentialId,
+          model: request.model,
+          prompt: request.prompt,
+          systemPrompt: request.systemPrompt,
+          temperature: request.temperature,
+          maxTokens: request.maxTokens,
+          timeoutMs: request.timeoutMs,
+          variablesToExtract: request.variablesToExtract,
+        });
+
+        return {
+          value: output.content || '',
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: output.content || '' },
+          },
+        };
+      },
       executeHttpRequest: async ({ orgId, request }) => {
         const service = this.httpRequestService();
         const output = await service.executeNode({
@@ -275,6 +304,15 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._anthropicService = new AnthropicIntegrationService(credentials, provider);
     }
     return this._anthropicService;
+  }
+
+  private deepSeekService(): DeepSeekIntegrationService {
+    if (!this._deepSeekService) {
+      const provider = this._registry.get<IDeepSeekPlugin>(DEEPSEEK_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._deepSeekService = new DeepSeekIntegrationService(provider, credentials);
+    }
+    return this._deepSeekService;
   }
 
   private httpRequestService(): HttpRequestIntegrationService {
