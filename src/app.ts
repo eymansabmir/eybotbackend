@@ -12,6 +12,7 @@ import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
 import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from './plugins/openai';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from './plugins/elevenlabs';
+import { ANTHROPIC_PLUGIN, type IAnthropicPlugin } from './plugins/anthropic';
 
 import {
   FLOW_REPOSITORY,
@@ -30,6 +31,7 @@ import { SessionService } from './features/session/session.service';
 import { CampaignService } from './features/campaign/campaign.service';
 import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
+import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -39,6 +41,7 @@ import { StorageController } from './features/storage/storage.controller';
 import { CampaignController } from './features/campaign/campaign.controller';
 import { OpenAIController } from './features/integrations/openai/openai.controller';
 import { ElevenLabsController } from './features/integrations/elevenlabs/elevenlabs.controller';
+import { AnthropicController } from './features/integrations/anthropic/anthropic.controller';
 import { GoogleSheetsController } from './features/integrations/google-sheets/google-sheets.controller';
 import { NocoDBController } from './features/integrations/nocodb/nocodb.controller';
 import { CredentialController } from './features/credentials';
@@ -53,6 +56,7 @@ import { WhatsAppController } from './features/whatsapp/whatsapp.controller';
 import { createWhatsAppRouter } from './features/whatsapp/whatsapp.route';
 import { createOpenAIRouter } from './features/integrations/openai/openai.route';
 import { createElevenLabsRouter } from './features/integrations/elevenlabs/elevenlabs.route';
+import { createAnthropicRouter } from './features/integrations/anthropic/anthropic.route';
 import { createGoogleSheetsRouter } from './features/integrations/google-sheets/google-sheets.route';
 import { createNocoDBRouter } from './features/integrations/nocodb/nocodb.route';
 import { createCredentialRouter } from './features/credentials';
@@ -112,6 +116,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const storagePlugin = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
   const openAIPlugin = registry.get<IOpenAIPlugin>(OPENAI_PLUGIN);
   const elevenLabsPlugin = registry.get<IElevenLabsPlugin>(ELEVENLABS_PLUGIN);
+  const anthropicPlugin = registry.get<IAnthropicPlugin>(ANTHROPIC_PLUGIN);
 
   // ── Repositories ───────────────────────────────────────────────────────────
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
@@ -125,6 +130,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
+  const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
 
   // Start background scheduler
@@ -140,6 +146,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const whatsappController = new WhatsAppController(whatsappPlugin);
   const openAIController = new OpenAIController(openAIService);
   const elevenLabsController = new ElevenLabsController(elevenLabsService);
+  const anthropicController = new AnthropicController(anthropicService);
   const googleSheetsController = new GoogleSheetsController(googleSheetsService);
   const nocodbController = new NocoDBController(registry, credentialService);
   const credentialController = new CredentialController(credentialService);
@@ -154,6 +161,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
   app.use('/api/integrations/elevenlabs', createElevenLabsRouter(elevenLabsController));
+  app.use('/api/integrations/anthropic', createAnthropicRouter(anthropicController));
   app.use('/api/integrations/google-sheets', createGoogleSheetsRouter(googleSheetsController));
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
 

@@ -29,6 +29,7 @@ export interface NodeExecutionResult {
   variableMutations: VariableMutation[];
   openAIRequest?: OpenAINodeRequest;
   elevenLabsRequest?: ElevenLabsNodeRequest;
+  anthropicRequest?: AnthropicNodeRequest;
   httpRequest?: HttpRequestNodeRequest;
   googleSheetsRequest?: GoogleSheetsNodeRequest;
   nocoDBRequest?: NocoDBNodeRequest;
@@ -87,6 +88,24 @@ export interface ElevenLabsNodeRequest {
   resultScope: 'session' | 'contact';
   sendResponseToUser: boolean;
   fallbackText?: string;
+}
+
+export interface AnthropicNodeRequest {
+  nodeId: string;
+  mode: 'chat_completion' | 'generate_variables';
+  credentialId: string;
+  model: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
 }
 
 export interface HttpRequestResponseMapping {
@@ -263,6 +282,9 @@ export class NodeExecutor {
       case NodeType.ELEVENLABS:
         return this.handleElevenLabs(currentNode, context, enteredAt, traverser);
 
+      case NodeType.ANTHROPIC:
+        return this.handleAnthropic(currentNode, context, enteredAt, traverser);
+
       case NodeType.HTTP_REQUEST:
         return this.handleHttpRequest(currentNode, context, enteredAt, traverser);
 
@@ -348,6 +370,42 @@ export class NodeExecutor {
     return {
       ...base,
       openAIRequest: request,
+    };
+  }
+
+  private handleAnthropic(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const mode = (data['mode'] as 'chat_completion' | 'generate_variables') || 'chat_completion';
+
+    const request: AnthropicNodeRequest = {
+      nodeId: node.id,
+      mode,
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string' ? { systemPrompt: this.text(data['systemPrompt'], ctx) } : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as any }
+        : {}),
+    };
+
+    return {
+      ...base,
+      anthropicRequest: request,
     };
   }
 

@@ -275,6 +275,26 @@ const ElevenLabsDataSchema = z.object({
 });
 
 
+const AnthropicDataSchema = z.object({
+  mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+
+  variablesToExtract: z.array(z.any()).optional(),
+}).passthrough();
+
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_IMAGE), ...SendMediaDataSchema.shape }),
@@ -303,6 +323,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ANTHROPIC), ...AnthropicDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

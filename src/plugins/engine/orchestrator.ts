@@ -14,6 +14,7 @@ import type {
   GoogleSheetsNodeRequest,
   NocoDBNodeRequest,
   VariableMutation,
+  AnthropicNodeRequest,
 } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
@@ -28,6 +29,7 @@ export interface OpenAINodeExecutionInput {
 
 export interface RuntimeIntegrations {
   executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  executeAnthropic?(input: AnthropicNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
@@ -40,6 +42,14 @@ export interface ElevenLabsNodeExecutionInput {
   session: SessionEntity;
   contact: ContactInfo;
   request: ElevenLabsNodeRequest;
+}
+
+export interface AnthropicNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: AnthropicNodeRequest;
 }
 
 export interface HttpRequestNodeExecutionInput {
@@ -176,6 +186,26 @@ export class FlowOrchestrator {
 
         if (stepResult.openAIRequest.sendResponseToUser) {
           allMessages.push(openAIOutput.message);
+        }
+      }
+
+      if (stepResult.anthropicRequest) {
+        const anthropicOutput = await this.executeAnthropicRequest(
+          flow,
+          session,
+          contact,
+          stepResult.anthropicRequest,
+          runtime,
+        );
+
+        this.applyMutation({
+          scope: stepResult.anthropicRequest.resultScope,
+          key: stepResult.anthropicRequest.resultVariable,
+          value: anthropicOutput.value,
+        }, session, contact, allContactMutations);
+
+        if (stepResult.anthropicRequest.sendResponseToUser) {
+          allMessages.push(anthropicOutput.message);
         }
       }
 
@@ -371,6 +401,86 @@ export class FlowOrchestrator {
     } else {
       contact.customFields[mutation.key] = mutation.value;
       contactMutations[mutation.key] = mutation.value;
+    }
+  }
+
+  private async executeAnthropicRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: AnthropicNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ value: string; message: OutboundMessage }> {
+    try {
+      if (!runtime?.executeAnthropic) {
+        throw new FlowExecutionError('Anthropic runtime executor is not configured', request.nodeId);
+      }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          model: request.model,
+          mode: request.mode,
+          action: 'runtime.executeAnthropic',
+        },
+        'STEP 5: Executing Anthropic runtime request',
+      );
+
+      const response = await runtime.executeAnthropic({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+
+      if (!response.value.trim()) {
+        throw new FlowExecutionError('Anthropic runtime returned empty response', request.nodeId);
+      }
+
+      logger.info(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          outputType: response.message.type,
+          outputChars: response.value.length,
+          action: 'runtime.executeAnthropic',
+        },
+        'STEP 6: Anthropic runtime response received',
+      );
+
+      return response;
+    } catch (error) {
+      logger.warn(
+        {
+          orgId: flow.orgId,
+          flowId: flow.id,
+          sessionId: session.id,
+          nodeId: request.nodeId,
+          action: 'runtime.executeAnthropic',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Anthropic runtime execution failed in orchestrator',
+      );
+
+      if (request.fallbackText) {
+        return {
+          value: request.fallbackText,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: request.fallbackText },
+          },
+        };
+      }
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('Anthropic runtime execution failed', request.nodeId);
     }
   }
 

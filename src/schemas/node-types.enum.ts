@@ -33,6 +33,7 @@ export enum NodeType {
   NOCODB = 'nocodb',
    OPENAI = 'openai',
   ELEVENLABS = 'elevenlabs',
+  ANTHROPIC = 'anthropic',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -72,4 +73,5 @@ export const INTEGRATION_NODE_TYPES = [
   NodeType.NOCODB,
   NodeType.OPENAI,
   NodeType.ELEVENLABS,
+  NodeType.ANTHROPIC,
 ];
