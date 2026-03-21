@@ -15,6 +15,7 @@ import {
 } from './google-sheets.types';
 import { JWT, OAuth2Client } from 'google-auth-library';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
+import { env } from '../../config/env';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -34,7 +35,13 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
 
   private getAuthClient(credential: GoogleSheetsCredentialMaterial): JWT | OAuth2Client {
     if (credential.tokens) {
-      const client = new OAuth2Client();
+      const client = new OAuth2Client(
+        env.GOOGLE_SHEETS_CLIENT_ID,
+        env.GOOGLE_SHEETS_CLIENT_SECRET,
+        env.BETTER_AUTH_URL
+          ? `${env.BETTER_AUTH_URL}/api/integrations/google-sheets/auth/callback`
+          : undefined,
+      );
       client.setCredentials(credential.tokens);
       return client;
     }

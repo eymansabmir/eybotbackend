@@ -5,6 +5,11 @@ import type { HttpRequestMethod, HttpRequestResponse } from './http-request.type
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const RETRIABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const DEFAULT_HTTP_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+} as const;
 
 export class HttpRequestProviderError extends AppError {
   constructor(
@@ -62,7 +67,7 @@ export class HttpRequestPlugin implements IPlugin, IHttpRequestPlugin {
             continue;
           }
           throw new HttpRequestProviderError(
-            `HTTP request failed with status ${response.statusCode}`,
+            formatHttpErrorMessage(response),
             response.statusCode,
           );
         }
@@ -102,7 +107,7 @@ export class HttpRequestPlugin implements IPlugin, IHttpRequestPlugin {
     try {
       const response = await fetch(input.url, {
         method: input.method,
-        headers: input.headers,
+        headers: withDefaultHeaders(input.headers),
         body: canHaveBody(input.method) ? input.body : undefined,
         signal: controller.signal,
       });
@@ -182,4 +187,82 @@ function sleep(ms: number): Promise<void> {
 
 function backoffMs(attempt: number): number {
   return Math.min(2000, 250 * (attempt + 1));
+}
+
+function formatHttpErrorMessage(response: HttpRequestResponse): string {
+  const challengeHint = detectChallengeBlock(response);
+  if (challengeHint) {
+    return `HTTP request failed with status ${response.statusCode}: ${challengeHint}`;
+  }
+
+  const details = extractErrorDetails(response);
+  return details
+    ? `HTTP request failed with status ${response.statusCode}: ${details}`
+    : `HTTP request failed with status ${response.statusCode}`;
+}
+
+function detectChallengeBlock(response: HttpRequestResponse): string | undefined {
+  const contentType = (response.headers['content-type'] ?? '').toLowerCase();
+  const server = (response.headers['server'] ?? '').toLowerCase();
+  const body = response.bodyText.toLowerCase();
+
+  const looksHtml = contentType.includes('text/html') || body.includes('<html');
+  const cloudflareMarkers =
+    server.includes('cloudflare') ||
+    body.includes('just a moment') ||
+    body.includes('cf-challenge') ||
+    body.includes('cloudflare');
+
+  if (response.statusCode === 403 && looksHtml && cloudflareMarkers) {
+    return 'Request was blocked by Cloudflare bot protection (challenge page). Use an official API endpoint, server allowlisting, or a proxy/session that provides required clearance.';
+  }
+
+  return undefined;
+}
+
+function extractErrorDetails(response: HttpRequestResponse): string | undefined {
+  const fromJson = pickMessageFromJson(response.bodyJson);
+  if (fromJson) return truncate(fromJson, 220);
+
+  const text = response.bodyText?.trim();
+  if (!text) return undefined;
+  return truncate(text.replace(/\s+/g, ' '), 220);
+}
+
+function pickMessageFromJson(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const source = payload as Record<string, unknown>;
+
+  const candidates = [source['message'], source['error'], source['detail'], source['description']];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function truncate(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 1)}…`;
+}
+
+function withDefaultHeaders(input?: Record<string, string>): Record<string, string> {
+  const headers = { ...(input ?? {}) };
+
+  if (!hasHeader(headers, 'user-agent')) {
+    headers['User-Agent'] = DEFAULT_HTTP_HEADERS['User-Agent'];
+  }
+
+  if (!hasHeader(headers, 'accept')) {
+    headers['Accept'] = DEFAULT_HTTP_HEADERS.Accept;
+  }
+
+  return headers;
+}
+
+function hasHeader(headers: Record<string, string>, key: string): boolean {
+  const target = key.toLowerCase();
+  return Object.keys(headers).some((name) => name.toLowerCase() === target);
 }

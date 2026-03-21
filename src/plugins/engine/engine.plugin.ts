@@ -262,6 +262,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           tableId: request.tableId,
           viewId: request.viewId,
           filter: request.filter,
+          filterConditions: request.filterConditions,
           returnType: request.returnType,
           fields: request.fields,
           timeoutMs: request.timeoutMs,

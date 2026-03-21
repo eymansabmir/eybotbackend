@@ -42,7 +42,7 @@ export class HttpRequestIntegrationService implements IHttpRequestIntegrationSer
     const queryParams = mergeStringMaps(credentialMaterial?.queryParams, inlineQuery);
 
     if (credentialMaterial?.bearerToken && !hasHeader(headers, 'authorization')) {
-      headers.Authorization = `Bearer ${credentialMaterial.bearerToken}`;
+      headers.Authorization = toAuthorizationHeaderValue(credentialMaterial.bearerToken);
     }
 
     const resolvedUrl = resolveRequestUrl(input.url, credentialMaterial?.baseUrl);
@@ -117,6 +117,18 @@ function mergeStringMaps(
 function hasHeader(headers: Record<string, string>, key: string): boolean {
   const target = key.toLowerCase();
   return Object.keys(headers).some((header) => header.toLowerCase() === target);
+}
+
+function toAuthorizationHeaderValue(rawToken: string): string {
+  const token = rawToken.trim();
+  if (!token) return '';
+
+  // Preserve explicit auth schemes if user stored full Authorization value.
+  if (/^[A-Za-z][A-Za-z0-9_-]*\s+.+$/.test(token)) {
+    return token;
+  }
+
+  return `Bearer ${token}`;
 }
 
 function ensureStringRecord(value: unknown): Record<string, string> | undefined {

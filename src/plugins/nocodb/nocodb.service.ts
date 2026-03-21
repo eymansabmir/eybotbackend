@@ -17,6 +17,7 @@ export interface INocoDBIntegrationService {
     tableId: string;
     viewId?: string;
     filter?: string;
+    filterConditions?: Array<{ field: string; operator: string; value: string }>;
     returnType?: 'All' | 'First' | 'Last' | 'Random';
     fields?: Array<{ key: string; value: string }>;
     timeoutMs?: number;
@@ -69,6 +70,7 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
     tableId: string;
     viewId?: string;
     filter?: string;
+    filterConditions?: Array<{ field: string; operator: string; value: string }>;
     returnType?: 'All' | 'First' | 'Last' | 'Random';
     fields?: Array<{ key: string; value: string }>;
     timeoutMs?: number;
@@ -91,6 +93,7 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
         tableId: input.tableId,
         viewId: input.viewId,
         filter: input.filter,
+        filterConditions: input.filterConditions,
         fields: input.fields || [],
       });
       resultPayload = result;
@@ -100,6 +103,7 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
         tableId: input.tableId,
         viewId: input.viewId,
         filter: input.filter,
+        filterConditions: input.filterConditions,
         returnType: input.returnType,
         fields: input.fields || [],
       });

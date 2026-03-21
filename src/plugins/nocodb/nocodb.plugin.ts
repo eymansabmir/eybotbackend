@@ -98,8 +98,8 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
         throw new NocoDBProviderError(`Failed to create record: ${await response.text()}`, response.status);
       }
 
-      const data = await response.json() as { Id: string | number };
-      return { success: true, recordId: data.Id };
+      const data = await response.json() as { Id?: string | number; id?: string | number };
+      return { success: true, recordId: data.Id ?? data.id };
     } catch (err: any) {
       if (err instanceof NocoDBProviderError) throw err;
       throw new NocoDBProviderError(err.message || 'Failed to create record');
@@ -215,7 +215,7 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
       }
 
       const rows = list.map(r => ({
-        id: r.Id,
+        id: r.Id ?? r.id ?? r.ID,
         values: r,
       }));
 

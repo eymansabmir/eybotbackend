@@ -143,6 +143,7 @@ export interface HttpRequestNodeRequest {
   queryParams?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  fallbackText?: string;
   credentialId?: string;
   proxyCredentialsId?: string;
   responseMapping?: HttpRequestResponseMapping[];
@@ -569,6 +570,7 @@ export class NodeExecutor {
       ...(resolvedQueryParams ? { queryParams: resolvedQueryParams } : {}),
       ...(typeof data['body'] === 'string' ? { body: this.text(data['body'], ctx) } : {}),
       ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
       ...(typeof data['credentialId'] === 'string' ? { credentialId: data['credentialId'] } : {}),
       ...(typeof data['proxyCredentialsId'] === 'string' ? { proxyCredentialsId: data['proxyCredentialsId'] } : {}),
       ...(responseMapping && responseMapping.length > 0 ? { responseMapping } : {}),

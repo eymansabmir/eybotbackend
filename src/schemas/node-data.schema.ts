@@ -159,6 +159,7 @@ const HttpRequestDataSchema = z.object({
   queryParams: z.record(z.string()).optional(),
   body: z.string().optional(),
   timeoutMs: z.number().int().positive().default(15000),
+  fallbackText: z.string().optional(),
   responseMapping: z.array(
     z.object({
       jsonPath: z.string(),

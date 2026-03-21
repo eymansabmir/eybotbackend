@@ -16,8 +16,13 @@ import type {
 import { AppError } from '../../utils/errors';
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import type { IOpenAIPlugin } from './openai.interface';
+import {
+  isTextChatCompletionModel,
+  usesMaxCompletionTokensParam,
+} from './openai-model-capabilities';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_CHAT_COMPLETION_TIMEOUT_MS = 90_000;
 const MAX_RETRIES = 2;
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -44,8 +49,18 @@ interface OpenAIChatCompletionResponse {
   model: string;
   choices: Array<{
     finish_reason?: string;
+    text?: string;
     message?: {
       content?: unknown;
+      refusal?: string;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
     };
   }>;
   usage?: {
@@ -147,7 +162,7 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       .filter((item) => {
         if (!input.actionMode) return true;
         if (input.actionMode === 'chat_completion' || input.actionMode === 'generate_variables' || input.actionMode === 'assistant') {
-          return this.isChatCompletionModelId(item.id);
+          return isTextChatCompletionModel(item.id);
         }
         if (input.actionMode === 'image') {
           const id = item.id.toLowerCase();
@@ -191,7 +206,17 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     }
 
     if (input.temperature !== undefined) body.temperature = input.temperature;
-    if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
+    const safeMaxTokens =
+      typeof input.maxTokens === 'number' && Number.isFinite(input.maxTokens) && input.maxTokens > 0
+        ? Math.floor(input.maxTokens)
+        : undefined;
+    if (safeMaxTokens !== undefined) {
+      if (usesMaxCompletionTokensParam(input.model)) {
+        body.max_completion_tokens = safeMaxTokens;
+      } else {
+        body.max_tokens = safeMaxTokens;
+      }
+    }
     if (input.topP !== undefined) body.top_p = input.topP;
     if (input.frequencyPenalty !== undefined) body.frequency_penalty = input.frequencyPenalty;
     if (input.presencePenalty !== undefined) body.presence_penalty = input.presencePenalty;
@@ -201,14 +226,18 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       path: '/chat/completions',
       method: 'POST',
       body,
-      timeoutMs: input.timeoutMs ?? 45_000,
+      timeoutMs: input.timeoutMs ?? DEFAULT_CHAT_COMPLETION_TIMEOUT_MS,
     });
 
     const firstChoice = payload.choices?.[0];
-    const content = this.extractText(firstChoice?.message?.content);
+    const content = this.normalizeChatCompletionText(firstChoice);
 
     if (!content) {
-      throw new OpenAIProviderError('provider_error', 502, 'OpenAI returned an empty completion');
+      throw new OpenAIProviderError(
+        'provider_error',
+        502,
+        `OpenAI returned an empty completion (finish_reason=${firstChoice?.finish_reason ?? 'unknown'})`,
+      );
     }
 
     return {
@@ -502,25 +531,6 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     return new OpenAIProviderError('provider_error', status, message || 'OpenAI request failed');
   }
 
-  private isChatCompletionModelId(modelId: string): boolean {
-    const id = modelId.toLowerCase();
-
-    if (
-      id.includes('audio') ||
-      id.includes('tts') ||
-      id.includes('transcribe') ||
-      id.includes('whisper') ||
-      id.includes('embedding') ||
-      id.includes('moderation') ||
-      id.includes('dall') ||
-      id.includes('image')
-    ) {
-      return false;
-    }
-
-    return id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
-  }
-
   // ── Assistants API (beta) ──────────────────────────────────────────────
 
   async listAssistants(input: {
@@ -726,7 +736,7 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       path: '/chat/completions',
       method: 'POST',
       body,
-      timeoutMs: input.timeoutMs ?? 45_000,
+      timeoutMs: input.timeoutMs ?? DEFAULT_CHAT_COMPLETION_TIMEOUT_MS,
     });
 
     const rawContent = payload.choices?.[0]?.message?.content;
@@ -899,6 +909,31 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
           const text = record['text'];
           if (typeof text === 'string') {
             parts.push(text);
+            continue;
+          }
+
+          // Handles shapes like { text: { value: "..." } }
+          if (text && typeof text === 'object') {
+            const value = (text as Record<string, unknown>)['value'];
+            if (typeof value === 'string') {
+              parts.push(value);
+              continue;
+            }
+          }
+
+          // Handles shapes like { type: "output_text", content: "..." }
+          const contentValue = record['content'];
+          if (typeof contentValue === 'string') {
+            parts.push(contentValue);
+            continue;
+          }
+
+          // Handles nested shape { content: [{ text: "..." }, ...] }
+          if (Array.isArray(contentValue)) {
+            const nested = this.extractText(contentValue);
+            if (nested) {
+              parts.push(nested);
+            }
           }
         }
       }
@@ -906,6 +941,102 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       return parts.join('\n').trim();
     }
 
+    if (content && typeof content === 'object') {
+      const record = content as Record<string, unknown>;
+
+      if (typeof record['text'] === 'string') {
+        return record['text'].trim();
+      }
+
+      if (typeof record['refusal'] === 'string') {
+        return record['refusal'].trim();
+      }
+
+      const text = record['text'];
+      if (text && typeof text === 'object') {
+        const value = (text as Record<string, unknown>)['value'];
+        if (typeof value === 'string') {
+          return value.trim();
+        }
+      }
+
+      if (typeof record['content'] === 'string') {
+        return record['content'].trim();
+      }
+
+      if (Array.isArray(record['content'])) {
+        return this.extractText(record['content']);
+      }
+
+      if (Array.isArray(record['output'])) {
+        return this.extractText(record['output']);
+      }
+    }
+
     return '';
+  }
+
+  private extractFallbackText(content: unknown): string {
+    const extracted = this.extractText(content);
+    if (extracted) return extracted;
+
+    // Final fallback: preserve something meaningful instead of failing hard.
+    if (content && typeof content === 'object') {
+      try {
+        return JSON.stringify(content);
+      } catch {
+        return '';
+      }
+    }
+
+    return '';
+  }
+
+  private normalizeChatCompletionText(
+    choice:
+      | {
+          finish_reason?: string;
+          text?: string;
+          message?: {
+            content?: unknown;
+            refusal?: string;
+            tool_calls?: Array<{
+              id?: string;
+              type?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+        }
+      | undefined,
+  ): string {
+    if (!choice) return '';
+
+    const content = this.extractText(choice.message?.content);
+    if (content) return content;
+
+    if (typeof choice.message?.refusal === 'string' && choice.message.refusal.trim()) {
+      return choice.message.refusal.trim();
+    }
+
+    if (typeof choice.text === 'string' && choice.text.trim()) {
+      return choice.text.trim();
+    }
+
+    if (Array.isArray(choice.message?.tool_calls) && choice.message.tool_calls.length > 0) {
+      const firstToolName = choice.message.tool_calls[0]?.function?.name;
+      return firstToolName
+        ? `Model requested tool call: ${firstToolName}.`
+        : 'Model requested a tool call but returned no direct text.';
+    }
+
+    // Graceful handling for token truncation/content filtering outcomes with no text payload.
+    if (choice.finish_reason === 'length') {
+      return 'Model output was truncated due to token limits.';
+    }
+    if (choice.finish_reason === 'content_filter') {
+      return 'Model response was blocked by content filtering.';
+    }
+
+    return this.extractFallbackText(choice.message?.content);
   }
 }

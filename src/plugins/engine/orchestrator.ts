@@ -655,6 +655,22 @@ export class FlowOrchestrator {
         request,
       });
     } catch (error) {
+      if (request.fallbackText) {
+        logger.warn(
+          {
+            orgId: flow.orgId,
+            flowId: flow.id,
+            sessionId: session.id,
+            nodeId: request.nodeId,
+            message: error instanceof Error ? error.message : String(error),
+            action: 'runtime.executeHttpRequest',
+          },
+          'HTTP request failed; continuing flow because fallback text is configured',
+        );
+
+        return { mutations: [] };
+      }
+
       if (error instanceof Error) {
         throw new FlowExecutionError(error.message, request.nodeId);
       }
