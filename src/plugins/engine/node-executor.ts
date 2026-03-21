@@ -164,7 +164,10 @@ export interface NocoDBNodeRequest {
   credentialId: string;
   action: 'create_record' | 'update_record' | 'search_records';
   tableId: string;
-  rowId?: string;
+  viewId?: string;
+  filter?: string;
+  filterConditions?: Array<{ field: string; operator: string; value: string }>;
+  returnType?: 'All' | 'First' | 'Last' | 'Random';
   fields?: Array<{ key: string; value: string }>;
   timeoutMs?: number;
   responseMapping?: HttpRequestResponseMapping[];
@@ -669,7 +672,16 @@ export class NodeExecutor {
       credentialId: String(data['credentialId'] ?? ''),
       action: action as 'create_record' | 'update_record' | 'search_records',
       tableId: this.text(String(data['tableId'] ?? ''), ctx),
-      ...(data['rowId'] !== undefined ? { rowId: this.text(String(data['rowId']), ctx) } : {}),
+      viewId: data['viewId'] ? this.text(String(data['viewId']), ctx) : undefined,
+      filter: data['filter'] ? this.text(String(data['filter']), ctx) : undefined,
+      filterConditions: Array.isArray(data['filterConditions']) 
+        ? data['filterConditions'].map((c: any) => ({
+            field: c.field,
+            operator: c.operator,
+            value: this.text(String(c.value ?? ''), ctx)
+          }))
+        : undefined,
+      returnType: data['returnType'] as any,
       ...(data['fields'] ? { fields: resolveFields(data['fields']) } : {}),
       ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
       ...(data['responseMapping'] ? { responseMapping: data['responseMapping'] as HttpRequestResponseMapping[] } : {}),

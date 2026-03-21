@@ -25,7 +25,10 @@ export interface NocoDBInsertResult {
 export interface NocoDBUpdateRowInput {
   credential: NocoDBCredentialMaterial;
   tableId: string;
-  rowId: string | number;
+  rowId?: string | number;
+  filter?: string;
+  filterConditions?: Array<{ field: string; operator: string; value: string }>;
+  viewId?: string;
   fields: Array<{ key: string; value: string }>;
 }
 
@@ -36,6 +39,10 @@ export interface NocoDBUpdateResult {
 export interface NocoDBSearchRecordsInput {
   credential: NocoDBCredentialMaterial;
   tableId: string;
+  viewId?: string;
+  filter?: string;
+  filterConditions?: Array<{ field: string; operator: string; value: string }>;
+  returnType?: 'All' | 'First' | 'Last' | 'Random';
   fields: Array<{ key: string; value: string }>;
 }
 

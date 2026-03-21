@@ -15,7 +15,9 @@ export interface INocoDBIntegrationService {
     credentialId: string;
     action: NocoDBNodeRequest['action'];
     tableId: string;
-    rowId?: string;
+    viewId?: string;
+    filter?: string;
+    returnType?: 'All' | 'First' | 'Last' | 'Random';
     fields?: Array<{ key: string; value: string }>;
     timeoutMs?: number;
     responseMapping?: NocoDBNodeRequest['responseMapping'];
@@ -65,7 +67,9 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
     credentialId: string;
     action: NocoDBNodeRequest['action'];
     tableId: string;
-    rowId?: string;
+    viewId?: string;
+    filter?: string;
+    returnType?: 'All' | 'First' | 'Last' | 'Random';
     fields?: Array<{ key: string; value: string }>;
     timeoutMs?: number;
     responseMapping?: NocoDBNodeRequest['responseMapping'];
@@ -82,11 +86,11 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
       });
       resultPayload = result;
     } else if (input.action === 'update_record') {
-      if (!input.rowId) throw new Error('rowId is required for update_record action');
       const result = await this.plugin.updateRecord({
         credential: cred,
         tableId: input.tableId,
-        rowId: input.rowId,
+        viewId: input.viewId,
+        filter: input.filter,
         fields: input.fields || [],
       });
       resultPayload = result;
@@ -94,13 +98,18 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
       const result = await this.plugin.searchRecords({
         credential: cred,
         tableId: input.tableId,
+        viewId: input.viewId,
+        filter: input.filter,
+        returnType: input.returnType,
         fields: input.fields || [],
       });
       // Flatten the payload slightly so mapping is easier
       resultPayload = {
         success: result.success,
         firstRow: result.rows.length > 0 ? result.rows[0]?.values : null,
+        lastRow: result.rows.length > 0 ? result.rows[result.rows.length - 1]?.values : null,
         rowsLength: result.rows.length,
+        rows: result.rows.map(r => r.values),
       };
     } else {
       throw new Error(`Unsupported NocoDB action: ${input.action}`);

@@ -67,6 +67,19 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
     return json;
   }
 
+  private buildWhereClause(conditions?: Array<{ field: string; operator: string; value: string }>): string {
+    if (!conditions || conditions.length === 0) return '';
+    return conditions
+      .filter(c => c.field)
+      .map((c) => {
+        if (c.operator === 'isnotnull' || c.operator === 'isnull') {
+          return `(${c.field},${c.operator})`;
+        }
+        return `(${c.field},${c.operator},${c.value})`;
+      })
+      .join('~and~');
+  }
+
   async createRecord(input: NocoDBInsertRowInput): Promise<NocoDBInsertResult> {
     try {
       const response = await fetch(
@@ -95,6 +108,37 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
 
   async updateRecord(input: NocoDBUpdateRowInput): Promise<NocoDBUpdateResult> {
     try {
+      let targetIds: Array<string | number> = [];
+      
+      if (input.rowId) {
+        targetIds = [input.rowId];
+      } else {
+        const whereClause = this.buildWhereClause(input.filterConditions) || input.filter;
+        if (whereClause) {
+          // Find records matching the filter first
+          const searchResult = await this.searchRecords({
+            credential: input.credential,
+            tableId: input.tableId,
+            viewId: input.viewId,
+            filter: whereClause,
+            fields: [], // We only need IDs
+          });
+          targetIds = searchResult.rows.map(r => r.id);
+        }
+      }
+
+      if (targetIds.length === 0) {
+        return { success: true }; // Nothing to update
+      }
+
+      // NocoDB supports bulk update via POST/PATCH with multiple records
+      // Construct payload for each ID
+      const fields = this.parseFields(input.fields);
+      const payload = targetIds.map(id => ({
+        Id: id,
+        ...fields
+      }));
+
       const response = await fetch(
         `${input.credential.baseUrl}/api/v2/tables/${input.tableId}/records`,
         {
@@ -103,15 +147,12 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
             'xc-token': input.credential.apiKey,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            Id: input.rowId,
-            ...this.parseFields(input.fields)
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
       if (!response.ok) {
-        throw new NocoDBProviderError(`Failed to update record: ${await response.text()}`, response.status);
+        throw new NocoDBProviderError(`Failed to update records: ${await response.text()}`, response.status);
       }
 
       return { success: true };
@@ -124,18 +165,30 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
   async searchRecords(input: NocoDBSearchRecordsInput): Promise<NocoDBSearchResult> {
     try {
       // Build nocodb where clause
-      // Autobot logic: filter conditions where key = value. 
-      // NocoDB where string format: (key,eq,value)~and~(key,eq,value)
-      const conditions = input.fields
-        .filter(f => f.key)
-        .map(f => `(${f.key},eq,${f.value})`);
+      let whereClause = this.buildWhereClause(input.filterConditions) || input.filter || '';
       
-      const whereClause = conditions.length > 0 ? conditions.join('~and~') : '';
+      if (!whereClause && input.fields && input.fields.length > 0) {
+        const conditions = input.fields
+          .filter(f => f.key)
+          .map(f => `(${f.key},eq,${f.value})`);
+        whereClause = conditions.join('~and~');
+      }
+      
       const url = new URL(`${input.credential.baseUrl}/api/v2/tables/${input.tableId}/records`);
       if (whereClause) {
         url.searchParams.append('where', whereClause);
       }
-      url.searchParams.append('limit', '100'); // Some reasonable limit
+      if (input.viewId) {
+        url.searchParams.append('viewId', input.viewId);
+      }
+
+      // Respect returnType for limiting/ordering if needed
+      // Default is All (100 as per current plugin)
+      let limit = 100;
+      if (input.returnType === 'First' || input.returnType === 'Last' || input.returnType === 'Random') {
+         limit = 100; // Still fetch a batch, we'll slice later or use sort
+      }
+      url.searchParams.append('limit', limit.toString());
 
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -149,7 +202,19 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
       }
 
       const data = await response.json() as { list: any[] };
-      const rows = (data.list || []).map(r => ({
+      let list = data.list || [];
+      
+      // Handle returnType
+      if (input.returnType === 'First' && list.length > 0) {
+        list = [list[0]];
+      } else if (input.returnType === 'Last' && list.length > 0) {
+        list = [list[list.length - 1]];
+      } else if (input.returnType === 'Random' && list.length > 0) {
+        const randomIndex = Math.floor(Math.random() * list.length);
+        list = [list[randomIndex]];
+      }
+
+      const rows = list.map(r => ({
         id: r.Id,
         values: r,
       }));
