@@ -25,11 +25,11 @@ export interface IGoogleSheetsIntegrationService {
   testCredential(orgId: string, credentialId: string): Promise<GoogleSheetsTestResult>;
   listSpreadsheets(orgId: string, credentialId: string): Promise<GoogleSpreadsheetInfo[]>;
   listSheets(orgId: string, credentialId: string, spreadsheetId: string): Promise<GoogleSheetInfo[]>;
+  getAccessToken(orgId: string, credentialId: string): Promise<string>;
   insertRow(orgId: string, credentialId: string, payload: Omit<GoogleSheetsInsertRowInput, 'credential'>): Promise<GoogleSheetsInsertResult>;
   updateRow(orgId: string, credentialId: string, payload: Omit<GoogleSheetsUpdateRowInput, 'credential'>): Promise<GoogleSheetsUpdateResult>;
   getRow(orgId: string, credentialId: string, payload: Omit<GoogleSheetsGetRowInput, 'credential'>): Promise<GoogleSheetsGetResult>;
   getColumns(orgId: string, credentialId: string, spreadsheetId: string, sheetId: string): Promise<string[]>;
   getAuthUrl(orgId: string): string;
-  handleAuthCallback(orgId: string, code: string): Promise<void>;
-  getAccessToken(orgId: string, credentialId: string): Promise<string>;
+  handleAuthCallback(stateToken: string, code: string): Promise<void>;
 }

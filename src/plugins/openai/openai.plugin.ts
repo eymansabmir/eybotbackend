@@ -79,7 +79,8 @@ export class OpenAIProviderError extends AppError {
     public readonly providerStatus?: number,
     message?: string,
   ) {
-    super(message ?? 'OpenAI request failed', toStatusCode(code, providerStatus));
+    const defaultMsg = providerStatus ? `OpenAI request failed with status ${providerStatus}` : 'OpenAI request failed';
+    super(message || defaultMsg, toStatusCode(code, providerStatus));
   }
 }
 
@@ -277,7 +278,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const responseText = await response.text();
+        const parsed = this.parseJson(responseText);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        throw this.mapHttpError(response.status, errorMessage);
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -337,7 +344,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const responseText = await response.text();
+        const parsed = this.parseJson(responseText);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        throw this.mapHttpError(response.status, errorMessage);
       }
 
       const payload = (await response.json()) as OpenAITranscriptionResponse;
@@ -382,7 +395,12 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       const parsed = this.parseJson(responseText);
 
       if (!response.ok) {
-        const mappedError = this.mapHttpError(response.status);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        
+        const mappedError = this.mapHttpError(response.status, errorMessage);
 
         if (this.shouldRetry(response.status) && attempt < MAX_RETRIES) {
           await sleep((attempt + 1) * 250);
@@ -452,17 +470,17 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     return RETRYABLE_STATUS_CODES.has(status);
   }
 
-  private mapHttpError(status: number): OpenAIProviderError {
+  private mapHttpError(status: number, message?: string): OpenAIProviderError {
     if (status === 401 || status === 403) {
-      return new OpenAIProviderError('auth_error', status, 'OpenAI authentication failed');
+      return new OpenAIProviderError('auth_error', status, message || 'OpenAI authentication failed');
     }
     if (status === 429) {
-      return new OpenAIProviderError('quota_error', status, 'OpenAI rate limit or quota exceeded');
+      return new OpenAIProviderError('quota_error', status, message || 'OpenAI rate limit or quota exceeded');
     }
     if (status === 408 || status === 504) {
-      return new OpenAIProviderError('timeout', status, 'OpenAI request timed out');
+      return new OpenAIProviderError('timeout', status, message || 'OpenAI request timed out');
     }
-    return new OpenAIProviderError('provider_error', status, 'OpenAI request failed');
+    return new OpenAIProviderError('provider_error', status, message || 'OpenAI request failed');
   }
 
   private isChatCompletionModelId(modelId: string): boolean {
@@ -774,7 +792,12 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       const parsed = this.parseJson(responseText);
 
       if (!response.ok) {
-        const mappedError = this.mapHttpError(response.status);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        
+        const mappedError = this.mapHttpError(response.status, errorMessage);
 
         if (this.shouldRetry(response.status) && attempt < MAX_RETRIES) {
           await sleep((attempt + 1) * 250);

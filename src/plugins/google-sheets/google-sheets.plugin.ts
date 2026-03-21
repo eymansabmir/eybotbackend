@@ -20,6 +20,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.readonly',
 ];
+const DEFAULT_TIMEOUT_MS = 20_000;
+const ROW_BATCH_SIZE = 500;
 
 export class GoogleSheetsProviderError extends AppError {
   constructor(message: string, statusCode: number = 502) {
@@ -122,7 +124,7 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
     try {
       const auth = this.getAuthClient(input.credential);
       const doc = new GoogleSpreadsheet(input.spreadsheetId, auth);
-      await doc.loadInfo();
+      await this.withTimeout(doc.loadInfo(), input.timeoutMs, 'Loading spreadsheet info timed out');
 
       const sheets: GoogleSheetInfo[] = [];
       for (let i = 0; i < doc.sheetCount; i++) {
@@ -145,14 +147,14 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
     try {
       const auth = this.getAuthClient(input.credential);
       const doc = new GoogleSpreadsheet(input.spreadsheetId, auth);
-      await doc.loadInfo();
+      await this.withTimeout(doc.loadInfo(), input.timeoutMs, 'Loading spreadsheet info timed out');
 
       const sheet = doc.sheetsById[Number(input.sheetId)];
       if (!sheet) {
         throw new GoogleSheetsProviderError('Sheet not found');
       }
 
-      await sheet.addRow(input.values as any);
+      await this.withTimeout(sheet.addRow(input.values as any), input.timeoutMs, 'Insert row request timed out');
 
       return {
         success: true,
@@ -166,18 +168,20 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
     try {
       const auth = this.getAuthClient(input.credential);
       const doc = new GoogleSpreadsheet(input.spreadsheetId, auth);
-      await doc.loadInfo();
+      await this.withTimeout(doc.loadInfo(), input.timeoutMs, 'Loading spreadsheet info timed out');
 
       const sheet = doc.sheetsById[Number(input.sheetId)];
       if (!sheet) {
         throw new GoogleSheetsProviderError('Sheet not found');
       }
 
-      const rows = await sheet.getRows();
-      if (input.rowId < 1 || input.rowId > rows.length) {
-         throw new GoogleSheetsProviderError('Row index out of bounds');
-      }
-      const rowToEdit = rows[input.rowId - 1]; // rowId is 1-indexed
+      const rowOffset = input.rowId - 1;
+      const rows = await this.withTimeout(
+        sheet.getRows({ offset: rowOffset, limit: 1 }),
+        input.timeoutMs,
+        'Update row request timed out',
+      );
+      const rowToEdit = rows[0]; // rowId is 1-indexed
       if (!rowToEdit) {
          throw new GoogleSheetsProviderError('Row index out of bounds or not found');
       }
@@ -185,7 +189,7 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
       for (const [key, value] of Object.entries(input.values)) {
         rowToEdit.set(key, value);
       }
-      await rowToEdit.save();
+      await this.withTimeout(rowToEdit.save(), input.timeoutMs, 'Saving updated row timed out');
 
       return {
         success: true,
@@ -199,37 +203,71 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
     try {
       const auth = this.getAuthClient(input.credential);
       const doc = new GoogleSpreadsheet(input.spreadsheetId, auth);
-      await doc.loadInfo();
+      await this.withTimeout(doc.loadInfo(), input.timeoutMs, 'Loading spreadsheet info timed out');
 
       const sheet = doc.sheetsById[Number(input.sheetId)];
       if (!sheet) {
         throw new GoogleSheetsProviderError('Sheet not found');
       }
 
-      const rows = await sheet.getRows();
-      let matchedRows = rows;
-
       if (input.rowId !== undefined) {
-         if (input.rowId < 1 || input.rowId > rows.length) {
-            return { success: true, rows: [] };
-         }
-         const r = rows[input.rowId - 1];
-         matchedRows = r ? [r] : [];
-      } else if (input.filter) {
-        matchedRows = rows.filter(row => {
-          for (const [key, val] of Object.entries(input.filter!)) {
-            if (row.get(key) !== val) return false;
+        const rows = await this.withTimeout(
+          sheet.getRows({ offset: input.rowId - 1, limit: 1 }),
+          input.timeoutMs,
+          'Get row request timed out',
+        );
+        const row = rows[0];
+        if (!row) return { success: true, rows: [] };
+
+        return {
+          success: true,
+          rows: [{
+            id: String(input.rowId),
+            values: row.toObject(),
+          }],
+        };
+      }
+
+      const matchedRows: Array<{ id: string; values: Record<string, unknown> }> = [];
+      let offset = 0;
+
+      while (true) {
+        const batch = await this.withTimeout(
+          sheet.getRows({ offset, limit: ROW_BATCH_SIZE }),
+          input.timeoutMs,
+          'Scanning rows timed out',
+        );
+
+        if (batch.length === 0) break;
+
+        for (let batchIndex = 0; batchIndex < batch.length; batchIndex++) {
+          const row = batch[batchIndex];
+          if (!row) continue;
+
+          if (input.filter) {
+            let isMatch = true;
+            for (const [key, val] of Object.entries(input.filter)) {
+              if (row.get(key) !== val) {
+                isMatch = false;
+                break;
+              }
+            }
+            if (!isMatch) continue;
           }
-          return true;
-        });
+
+          matchedRows.push({
+            id: this.rowOutputId(row, offset + batchIndex + 1),
+            values: row.toObject(),
+          });
+        }
+
+        offset += batch.length;
+        if (batch.length < ROW_BATCH_SIZE) break;
       }
 
       return {
         success: true,
-        rows: matchedRows.map((r, index) => ({
-          id: String((input.rowId || index + 1)), // Row numbers usually start from 1, though with filters it's a bit ambiguous, just returning string.
-          values: r.toObject(),
-        })),
+        rows: matchedRows,
       };
     } catch (err: any) {
       throw new GoogleSheetsProviderError(err.message || 'Failed to get row');
@@ -240,17 +278,48 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
     try {
       const auth = this.getAuthClient(input.credential);
       const doc = new GoogleSpreadsheet(input.spreadsheetId, auth);
-      await doc.loadInfo();
+      await this.withTimeout(doc.loadInfo(), input.timeoutMs, 'Loading spreadsheet info timed out');
 
       const sheet = doc.sheetsById[Number(input.sheetId)];
       if (!sheet) {
         throw new GoogleSheetsProviderError('Sheet not found');
       }
 
-      await sheet.loadHeaderRow();
+      await this.withTimeout(sheet.loadHeaderRow(), input.timeoutMs, 'Loading sheet headers timed out');
       return sheet.headerValues;
     } catch (err: any) {
       throw new GoogleSheetsProviderError(err.message || 'Failed to get columns');
     }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs?: number, timeoutMessage = 'Google Sheets request timed out'): Promise<T> {
+    const effectiveTimeoutMs = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new GoogleSheetsProviderError(timeoutMessage, 504));
+          }, effectiveTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  private rowOutputId(row: unknown, fallbackIndex: number): string {
+    if (row && typeof row === 'object') {
+      const maybeRowNumber = (row as { rowNumber?: unknown }).rowNumber;
+      if (typeof maybeRowNumber === 'number' && Number.isInteger(maybeRowNumber)) {
+        return String(maybeRowNumber);
+      }
+    }
+
+    return String(fallbackIndex);
   }
 }

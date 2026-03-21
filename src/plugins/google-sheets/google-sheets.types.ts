@@ -1,7 +1,7 @@
 export interface GoogleSheetsCredentialMaterial {
   clientEmail?: string;
   privateKey?: string;
-  tokens?: any; // Google API Credentials object
+  tokens?: Record<string, unknown>;
 }
 
 export type GoogleSheetsActionMode = 'insert_row' | 'update_row' | 'get_row';

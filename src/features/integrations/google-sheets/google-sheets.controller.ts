@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { IGoogleSheetsIntegrationService } from '../../../plugins/google-sheets/google-sheets.interface';
 
 const pickFirst = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 const PathSchema = z.object({
   id: z.string().min(1),
@@ -13,6 +14,11 @@ const OrgIdBodySchema = z.object({
 });
 
 const ListSpreadsheetsQuerySchema = z.object({
+  orgId: z.preprocess(pickFirst, z.string().min(1)),
+  credentialId: z.preprocess(pickFirst, z.string().min(1)),
+});
+
+const GetAccessTokenQuerySchema = z.object({
   orgId: z.preprocess(pickFirst, z.string().min(1)),
   credentialId: z.preprocess(pickFirst, z.string().min(1)),
 });
@@ -54,6 +60,16 @@ export class GoogleSheetsController {
     }
   };
 
+  getAccessToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { orgId, credentialId } = GetAccessTokenQuerySchema.parse(req.query);
+      const accessToken = await this.service.getAccessToken(orgId, credentialId);
+      res.json({ accessToken });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   listSheets = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { orgId, credentialId, spreadsheetId } = ListSheetsQuerySchema.parse(req.query);
@@ -86,9 +102,10 @@ export class GoogleSheetsController {
 
   handleAuthCallback = async (req: Request, res: Response): Promise<void> => {
     try {
-      const code = z.string().parse(req.query.code || req.body.code);
-      const state = z.string().parse(req.query.state || req.body.state);
-      // state is the orgId
+      const code = z.preprocess(pickFirst, z.string().min(1)).parse(req.query.code ?? req.body.code);
+      const state = z.preprocess(pickFirst, z.string().min(1)).parse(req.query.state ?? req.body.state);
+      const safeFrontendOrigin = JSON.stringify(FRONTEND_URL);
+
       await this.service.handleAuthCallback(state, code);
       // Return HTML to close popup
       res.send(`
@@ -112,7 +129,7 @@ export class GoogleSheetsController {
             </div>
             <script>
               if (window.opener) {
-                window.opener.postMessage("google-sheets-oauth-success", "*");
+                window.opener.postMessage("google-sheets-oauth-success", ${safeFrontendOrigin});
                 setTimeout(() => window.close(), 100);
               }
             </script>
@@ -120,26 +137,19 @@ export class GoogleSheetsController {
         </html>
       `);
     } catch (err) {
+      const safeFrontendOrigin = JSON.stringify(FRONTEND_URL);
       res.status(400).send(`
         <html>
           <body>
             <h2>Authentication Failed</h2>
             <script>
-              window.opener.postMessage("google-sheets-oauth-failure", "*");
+              if (window.opener) {
+                window.opener.postMessage("google-sheets-oauth-failure", ${safeFrontendOrigin});
+              }
             </script>
           </body>
         </html>
       `);
-    }
-  };
-
-  getAccessToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { orgId, credentialId } = ListSpreadsheetsQuerySchema.parse(req.query);
-      const accessToken = await this.service.getAccessToken(orgId, credentialId);
-      res.json({ accessToken });
-    } catch (err) {
-      next(err);
     }
   };
 }

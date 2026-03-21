@@ -1,3 +1,6 @@
+import { CredentialType } from '@prisma/client';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { z } from 'zod';
 import { IPluginRegistry } from '../plugin.interface';
 import { IGoogleSheetsPlugin, IGoogleSheetsIntegrationService } from './google-sheets.interface';
 import { OAuth2Client } from 'google-auth-library';
@@ -20,7 +23,15 @@ import {
 } from './google-sheets.types';
 import { AppError } from '../../utils/errors';
 
+const ResponseMappingSchema = z.object({
+  jsonPath: z.string().min(1),
+  variableName: z.string().min(1),
+  scope: z.enum(['session', 'contact']),
+});
+
 export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationService {
+  private static readonly OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
   constructor(
     private readonly credentials: ICredentialService,
     private readonly registry: IPluginRegistry
@@ -31,10 +42,11 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
   }
 
   private async fetchCredentialMaterial(orgId: string, credentialId: string): Promise<GoogleSheetsCredentialMaterial> {
-    const secret = await this.credentials.decryptSecret(orgId, credentialId, 'GOOGLE_SHEETS' as any);
+    const secret = await this.credentials.decryptSecret(orgId, credentialId, CredentialType.GOOGLE_SHEETS);
     
-    if (secret['tokens']) {
-      return { tokens: secret['tokens'] };
+    const tokens = secret['tokens'];
+    if (tokens && typeof tokens === 'object' && !Array.isArray(tokens)) {
+      return { tokens: tokens as Record<string, unknown> };
     }
 
     if (typeof secret['clientEmail'] !== 'string' || typeof secret['privateKey'] !== 'string') {
@@ -66,6 +78,23 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
     return this.plugin.listSheets({ credential: cred, spreadsheetId });
   }
 
+  async getAccessToken(orgId: string, credentialId: string): Promise<string> {
+    const cred = await this.fetchCredentialMaterial(orgId, credentialId);
+    if (!cred.tokens) {
+      throw new AppError('Google Picker requires OAuth-based Google Sheets credentials', 400);
+    }
+
+    const oAuth2Client = this.createOAuthClient();
+    oAuth2Client.setCredentials(cred.tokens);
+
+    const token = await oAuth2Client.getAccessToken();
+    if (!token.token) {
+      throw new AppError('Unable to generate Google access token', 502);
+    }
+
+    return token.token;
+  }
+
   async insertRow(orgId: string, credentialId: string, payload: Omit<GoogleSheetsInsertRowInput, 'credential'>): Promise<GoogleSheetsInsertResult> {
     const cred = await this.fetchCredentialMaterial(orgId, credentialId);
     return this.plugin.insertRow({ credential: cred, ...payload });
@@ -87,11 +116,7 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
   }
 
   getAuthUrl(orgId: string): string {
-    const oAuth2Client = new OAuth2Client(
-      env.GOOGLE_SHEETS_CLIENT_ID,
-      env.GOOGLE_SHEETS_CLIENT_SECRET,
-      `${env.BETTER_AUTH_URL}/api/integrations/google-sheets/auth/callback`
-    );
+    const oAuth2Client = this.createOAuthClient();
 
     return oAuth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -101,16 +126,14 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/userinfo.email',
       ],
-      state: orgId,
+      state: this.buildOAuthState(orgId),
     });
   }
 
-  async handleAuthCallback(orgId: string, code: string): Promise<void> {
-    const oAuth2Client = new OAuth2Client(
-      env.GOOGLE_SHEETS_CLIENT_ID,
-      env.GOOGLE_SHEETS_CLIENT_SECRET,
-      `${env.BETTER_AUTH_URL}/api/integrations/google-sheets/auth/callback`
-    );
+  async handleAuthCallback(stateToken: string, code: string): Promise<void> {
+    const orgId = this.parseAndValidateOAuthState(stateToken);
+
+    const oAuth2Client = this.createOAuthClient();
 
     const { tokens } = await oAuth2Client.getToken(code);
     oAuth2Client.setCredentials(tokens);
@@ -119,55 +142,11 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
       const response = await oAuth2Client.request({ url: 'https://www.googleapis.com/oauth2/v2/userinfo' });
       const email = (response.data as any).email || 'Google Sheets User';
 
-      await this.credentials.createCredential({
-        orgId,
-        name: email,
-        type: 'GOOGLE_SHEETS' as any,
-        secret: { tokens },
-      });
+      await this.createOAuthCredential(orgId, email, tokens);
     } catch (error) {
        console.error("Failed to fetch userinfo during Google Sheets auth", error);
-       // Fallback name if unable to get email
-       await this.credentials.createCredential({
-        orgId,
-        name: 'Google Sheets Account',
-        type: 'GOOGLE_SHEETS' as any,
-        secret: { tokens },
-      });
+      await this.createOAuthCredential(orgId, 'Google Sheets Account', tokens);
     }
-  }
-
-  async getAccessToken(orgId: string, credentialId: string): Promise<string> {
-    const cred = await this.fetchCredentialMaterial(orgId, credentialId);
-    
-    if (cred.tokens) {
-      const oAuth2Client = new OAuth2Client(
-        env.GOOGLE_SHEETS_CLIENT_ID,
-        env.GOOGLE_SHEETS_CLIENT_SECRET,
-      );
-      oAuth2Client.setCredentials(cred.tokens);
-      const { token } = await oAuth2Client.getAccessToken();
-      if (!token) throw new AppError('Failed to get access token', 502);
-      return token;
-    }
-
-    // For service account credentials, get token via JWT
-    const { JWT: JWTAuth } = await import('google-auth-library');
-    let privateKey = cred.privateKey;
-    if (privateKey) {
-      privateKey = privateKey.replace(/\\n/g, '\n');
-    }
-    const jwt = new JWTAuth({
-      email: cred.clientEmail,
-      key: privateKey,
-      scopes: [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive.readonly',
-      ],
-    });
-    const { token } = await jwt.getAccessToken();
-    if (!token) throw new AppError('Failed to get access token', 502);
-    return token;
   }
 
   async executeNode(input: ExecuteGoogleSheetsNodePayload): Promise<ExecuteGoogleSheetsNodeResult> {
@@ -186,18 +165,23 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
       });
       resultData = { success: res.success, rowId: res.rowId };
     } else if (input.action === 'update_row') {
-      if (!input.rowId) throw new AppError('RowId is required for update_row action', 400);
+      if (!Number.isInteger(input.rowId) || (input.rowId as number) < 1) {
+        throw new AppError('RowId must be a positive integer for update_row action', 400);
+      }
       if (!input.values) throw new AppError('Values are required for update_row action', 400);
       const res = await this.plugin.updateRow({
         credential: cred,
         spreadsheetId: input.spreadsheetId,
         sheetId: input.sheetId,
-        rowId: input.rowId,
+        rowId: input.rowId as number,
         values: input.values,
         timeoutMs: input.timeoutMs,
       });
       resultData = { success: res.success };
     } else if (input.action === 'get_row') {
+      if (input.rowId !== undefined && (!Number.isInteger(input.rowId) || input.rowId < 1)) {
+        throw new AppError('RowId must be a positive integer for get_row action', 400);
+      }
       const res = await this.plugin.getRow({
         credential: cred,
         spreadsheetId: input.spreadsheetId,
@@ -212,8 +196,13 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
     }
 
     const mutations: ExecuteGoogleSheetsMappedMutation[] = [];
-    if (input.responseMapping && input.responseMapping.length > 0) {
-      for (const map of input.responseMapping) {
+    const responseMapping = ResponseMappingSchema.array().safeParse(input.responseMapping ?? []);
+    if (!responseMapping.success) {
+      throw new AppError('Invalid responseMapping payload for Google Sheets node', 400);
+    }
+
+    if (responseMapping.data.length > 0) {
+      for (const map of responseMapping.data) {
         const value = extractJsonPath(resultData, map.jsonPath);
         if (value !== undefined) {
           mutations.push({
@@ -229,6 +218,105 @@ export class GoogleSheetsIntegrationService implements IGoogleSheetsIntegrationS
       success: true,
       mappedMutations: mutations,
     };
+  }
+
+  private buildOAuthState(orgId: string): string {
+    const payload = {
+      orgId,
+      nonce: randomBytes(12).toString('hex'),
+      issuedAt: Date.now(),
+    };
+
+    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const signature = createHmac('sha256', env.BETTER_AUTH_SECRET).update(encoded).digest('base64url');
+    return `${encoded}.${signature}`;
+  }
+
+  private parseAndValidateOAuthState(stateToken: string): string {
+    const parts = stateToken.split('.');
+    if (parts.length !== 2) {
+      throw new AppError('Invalid OAuth state', 400);
+    }
+
+    const [encoded, signature] = parts;
+    if (!encoded || !signature) {
+      throw new AppError('Invalid OAuth state', 400);
+    }
+
+    const expectedSignature = createHmac('sha256', env.BETTER_AUTH_SECRET).update(encoded).digest();
+    let providedSignature: Buffer;
+    try {
+      providedSignature = Buffer.from(signature, 'base64url');
+    } catch {
+      throw new AppError('Invalid OAuth state signature', 400);
+    }
+
+    if (
+      expectedSignature.length !== providedSignature.length ||
+      !timingSafeEqual(expectedSignature, providedSignature)
+    ) {
+      throw new AppError('Invalid OAuth state signature', 400);
+    }
+
+    let parsed: { orgId?: string; issuedAt?: number };
+    try {
+      parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    } catch {
+      throw new AppError('Invalid OAuth state payload', 400);
+    }
+
+    if (!parsed.orgId || typeof parsed.orgId !== 'string') {
+      throw new AppError('Invalid OAuth state orgId', 400);
+    }
+
+    if (typeof parsed.issuedAt !== 'number') {
+      throw new AppError('Invalid OAuth state timestamp', 400);
+    }
+
+    if (Date.now() - parsed.issuedAt > GoogleSheetsIntegrationService.OAUTH_STATE_TTL_MS) {
+      throw new AppError('OAuth state expired, please retry', 400);
+    }
+
+    return parsed.orgId;
+  }
+
+  private async createOAuthCredential(orgId: string, preferredName: string, tokens: unknown): Promise<void> {
+    const trimmedBaseName = preferredName.trim() || 'Google Sheets Account';
+
+    try {
+      await this.credentials.createCredential({
+        orgId,
+        name: trimmedBaseName,
+        type: CredentialType.GOOGLE_SHEETS,
+        secret: { tokens },
+      });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('already exists')) {
+        throw error;
+      }
+    }
+
+    const fallbackName = `${trimmedBaseName} ${Date.now()}`;
+    await this.credentials.createCredential({
+      orgId,
+      name: fallbackName,
+      type: CredentialType.GOOGLE_SHEETS,
+      secret: { tokens },
+    });
+  }
+
+  private createOAuthClient(): OAuth2Client {
+    if (!env.GOOGLE_SHEETS_CLIENT_ID || !env.GOOGLE_SHEETS_CLIENT_SECRET || !env.BETTER_AUTH_URL) {
+      throw new AppError('Google Sheets OAuth is not configured correctly', 500);
+    }
+
+    return new OAuth2Client(
+      env.GOOGLE_SHEETS_CLIENT_ID,
+      env.GOOGLE_SHEETS_CLIENT_SECRET,
+      `${env.BETTER_AUTH_URL}/api/integrations/google-sheets/auth/callback`,
+    );
   }
 }
 

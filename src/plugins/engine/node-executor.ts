@@ -31,6 +31,7 @@ export interface NodeExecutionResult {
   elevenLabsRequest?: ElevenLabsNodeRequest;
   httpRequest?: HttpRequestNodeRequest;
   googleSheetsRequest?: GoogleSheetsNodeRequest;
+  nocoDBRequest?: NocoDBNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -116,6 +117,17 @@ export interface GoogleSheetsNodeRequest {
   rowId?: number;
   values?: Record<string, unknown>;
   filter?: Record<string, unknown>;
+  timeoutMs?: number;
+  responseMapping?: HttpRequestResponseMapping[];
+}
+
+export interface NocoDBNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  action: 'create_record' | 'update_record' | 'search_records';
+  tableId: string;
+  rowId?: string;
+  fields?: Array<{ key: string; value: string }>;
   timeoutMs?: number;
   responseMapping?: HttpRequestResponseMapping[];
 }
@@ -233,10 +245,12 @@ export class NodeExecutor {
       }
 
       case NodeType.WEBHOOK:
-      case NodeType.NOCODB:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
+
+      case NodeType.NOCODB:
+        return this.handleNocoDB(currentNode, context, enteredAt, traverser);
 
       case NodeType.GOOGLE_SHEETS:
         return this.handleGoogleSheets(currentNode, context, enteredAt, traverser);
@@ -447,8 +461,21 @@ export class NodeExecutor {
     const base = this.defaultResult(node, 'default', enteredAt, traverser);
     const data = node.data as Record<string, unknown>;
 
-    const resolveRecord = (value: unknown): Record<string, unknown> | undefined => {
-      if (!value || typeof value !== 'object') return undefined;
+    const parseRecord = (value: unknown): Record<string, unknown> | undefined => {
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(this.text(value, ctx));
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            value = parsed;
+          } else {
+            return undefined;
+          }
+        } catch {
+          return undefined;
+        }
+      }
+
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
       const out: Record<string, unknown> = {};
       for (const [key, raw] of Object.entries(value)) {
         if (typeof raw === 'string') {
@@ -460,6 +487,21 @@ export class NodeExecutor {
       return Object.keys(out).length > 0 ? out : undefined;
     };
 
+    const responseMapping = Array.isArray(data['responseMapping'])
+      ? (data['responseMapping'] as Array<Record<string, unknown>>)
+          .filter(
+            (item) =>
+              typeof item['jsonPath'] === 'string' &&
+              typeof item['variableName'] === 'string' &&
+              (item['scope'] === 'session' || item['scope'] === 'contact'),
+          )
+          .map((item) => ({
+            jsonPath: item['jsonPath'] as string,
+            variableName: item['variableName'] as string,
+            scope: item['scope'] as 'session' | 'contact',
+          }))
+      : undefined;
+
     const action = (data['action'] as string) || 'insert_row';
 
     const request: GoogleSheetsNodeRequest = {
@@ -469,15 +511,57 @@ export class NodeExecutor {
       spreadsheetId: this.text(String(data['spreadsheetId'] ?? ''), ctx),
       sheetId: String(data['sheetId'] ?? ''),
       ...(data['rowId'] !== undefined ? { rowId: Number(this.text(String(data['rowId']), ctx)) } : {}),
-      ...(data['values'] ? { values: resolveRecord(data['values']) } : {}),
-      ...(data['filter'] ? { filter: resolveRecord(data['filter']) } : {}),
+      ...(data['values'] ? { values: parseRecord(data['values']) } : {}),
+      ...(data['filter'] ? { filter: parseRecord(data['filter']) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(responseMapping && responseMapping.length > 0 ? { responseMapping } : {}),
+    };
+
+    return {
+      ...base,
+      googleSheetsRequest: request,
+    };
+  }
+
+  private handleNocoDB(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const resolveFields = (value: unknown): Array<{ key: string; value: string }> | undefined => {
+      if (!Array.isArray(value)) return undefined;
+      const out: Array<{ key: string; value: string }> = [];
+      for (const item of value) {
+        if (item && typeof item === 'object' && typeof item.key === 'string' && typeof item.value === 'string') {
+          out.push({
+            key: this.text(item.key, ctx),
+            value: this.text(item.value, ctx),
+          });
+        }
+      }
+      return out.length > 0 ? out : undefined;
+    };
+
+    const action = (data['action'] as string) || 'create_record';
+
+    const request: NocoDBNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      action: action as 'create_record' | 'update_record' | 'search_records',
+      tableId: this.text(String(data['tableId'] ?? ''), ctx),
+      ...(data['rowId'] !== undefined ? { rowId: this.text(String(data['rowId']), ctx) } : {}),
+      ...(data['fields'] ? { fields: resolveFields(data['fields']) } : {}),
       ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
       ...(data['responseMapping'] ? { responseMapping: data['responseMapping'] as HttpRequestResponseMapping[] } : {}),
     };
 
     return {
       ...base,
-      googleSheetsRequest: request,
+      nocoDBRequest: request,
     };
   }
 

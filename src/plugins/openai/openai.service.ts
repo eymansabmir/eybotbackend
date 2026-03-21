@@ -951,10 +951,17 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   private toPublicError(error: unknown): AppError {
-    if (error instanceof AppError) {
-      return error;
+    const message = error instanceof Error ? error.message : String(error);
+    const prefix = 'OpenAI request failed: ';
+    
+    // If it's already an AppError, we might want to preserve its status code
+    const statusCode = (error as any)?.statusCode || 502;
+
+    if (message.startsWith(prefix)) {
+      return error instanceof AppError ? error : new AppError(message, statusCode);
     }
-    return new AppError('OpenAI request failed', 502);
+    
+    return new AppError(`${prefix}${message}`, statusCode);
   }
 
   private shouldUseModelFallback(error: AppError): boolean {

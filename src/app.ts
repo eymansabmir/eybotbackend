@@ -40,6 +40,7 @@ import { CampaignController } from './features/campaign/campaign.controller';
 import { OpenAIController } from './features/integrations/openai/openai.controller';
 import { ElevenLabsController } from './features/integrations/elevenlabs/elevenlabs.controller';
 import { GoogleSheetsController } from './features/integrations/google-sheets/google-sheets.controller';
+import { NocoDBController } from './features/integrations/nocodb/nocodb.controller';
 import { CredentialController } from './features/credentials';
 
 import { createFlowRouter } from './features/flow/flow.route';
@@ -53,6 +54,7 @@ import { createWhatsAppRouter } from './features/whatsapp/whatsapp.route';
 import { createOpenAIRouter } from './features/integrations/openai/openai.route';
 import { createElevenLabsRouter } from './features/integrations/elevenlabs/elevenlabs.route';
 import { createGoogleSheetsRouter } from './features/integrations/google-sheets/google-sheets.route';
+import { createNocoDBRouter } from './features/integrations/nocodb/nocodb.route';
 import { createCredentialRouter } from './features/credentials';
 
 import { errorHandler } from './middleware/error.middleware';
@@ -139,6 +141,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const openAIController = new OpenAIController(openAIService);
   const elevenLabsController = new ElevenLabsController(elevenLabsService);
   const googleSheetsController = new GoogleSheetsController(googleSheetsService);
+  const nocodbController = new NocoDBController(registry, credentialService);
   const credentialController = new CredentialController(credentialService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -152,6 +155,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
   app.use('/api/integrations/elevenlabs', createElevenLabsRouter(elevenLabsController));
   app.use('/api/integrations/google-sheets', createGoogleSheetsRouter(googleSheetsController));
+  app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

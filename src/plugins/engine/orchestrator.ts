@@ -12,6 +12,7 @@ import type {
   HttpRequestNodeRequest,
   OpenAINodeRequest,
   GoogleSheetsNodeRequest,
+  NocoDBNodeRequest,
   VariableMutation,
 } from './node-executor';
 
@@ -30,6 +31,7 @@ export interface RuntimeIntegrations {
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
+  executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
 }
 
 export interface ElevenLabsNodeExecutionInput {
@@ -54,6 +56,14 @@ export interface GoogleSheetsNodeExecutionInput {
   session: SessionEntity;
   contact: ContactInfo;
   request: GoogleSheetsNodeRequest;
+}
+
+export interface NocoDBNodeExecutionInput {
+  orgId: string;
+  flow: FlowEntity;
+  session: SessionEntity;
+  contact: ContactInfo;
+  request: NocoDBNodeRequest;
 }
 
 /**
@@ -203,6 +213,34 @@ export class FlowOrchestrator {
         }
       }
 
+      if (stepResult.googleSheetsRequest) {
+        const output = await this.executeGoogleSheetsRequest(
+          flow,
+          session,
+          contact,
+          stepResult.googleSheetsRequest,
+          runtime,
+        );
+
+        for (const mutation of output.mutations) {
+          this.applyMutation(mutation, session, contact, allContactMutations);
+        }
+      }
+
+      if (stepResult.nocoDBRequest) {
+        const output = await this.executeNocoDBRequest(
+          flow,
+          session,
+          contact,
+          stepResult.nocoDBRequest,
+          runtime,
+        );
+
+        for (const mutation of output.mutations) {
+          this.applyMutation(mutation, session, contact, allContactMutations);
+        }
+      }
+
       session.addToHistory(stepResult.historyStep);
 
       if (stepResult.nextNodeId) {
@@ -259,7 +297,9 @@ export class FlowOrchestrator {
           nodeId: request.nodeId,
           model: request.model,
           mode: request.mode,
-          hasFallbackText: Boolean(request.fallbackText),
+          imageSize: request.imageSize,
+          imageQuality: request.imageQuality,
+          hasFallbackText: !!request.fallbackText,
           action: 'runtime.executeOpenAI',
         },
         'STEP 5: Executing OpenAI runtime request',
@@ -399,6 +439,60 @@ export class FlowOrchestrator {
         throw new FlowExecutionError(error.message, request.nodeId);
       }
       throw new FlowExecutionError('HTTP request runtime execution failed', request.nodeId);
+    }
+  }
+
+  private async executeGoogleSheetsRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: GoogleSheetsNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ mutations: VariableMutation[] }> {
+    try {
+      if (!runtime?.executeGoogleSheets) {
+        throw new FlowExecutionError('Google Sheets runtime executor is not configured', request.nodeId);
+      }
+
+      return await runtime.executeGoogleSheets({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('Google Sheets runtime execution failed', request.nodeId);
+    }
+  }
+
+  private async executeNocoDBRequest(
+    flow: FlowEntity,
+    session: SessionEntity,
+    contact: ContactInfo,
+    request: NocoDBNodeRequest,
+    runtime?: RuntimeIntegrations,
+  ): Promise<{ mutations: VariableMutation[] }> {
+    try {
+      if (!runtime?.executeNocoDB) {
+        throw new FlowExecutionError('NocoDB runtime executor is not configured', request.nodeId);
+      }
+
+      return await runtime.executeNocoDB({
+        orgId: flow.orgId,
+        flow,
+        session,
+        contact,
+        request,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new FlowExecutionError(error.message, request.nodeId);
+      }
+      throw new FlowExecutionError('NocoDB runtime execution failed', request.nodeId);
     }
   }
 }

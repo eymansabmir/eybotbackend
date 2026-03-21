@@ -171,26 +171,40 @@ const HttpRequestDataSchema = z.object({
 });
 
 const GoogleSheetsDataSchema = z.object({
-  spreadsheetId: z.string(),
-  sheetName: z.string(),
-  action: z.enum(['read_row', 'append_row', 'find_row']),
+  credentialId: z.string().optional(),
+  action: z.enum(['insert_row', 'update_row', 'get_row']),
+  spreadsheetId: z.string().optional(),
+  spreadsheetName: z.string().optional(),
+  sheetId: z.string().optional(),
+  sheetName: z.string().optional(),
+  rowId: z.union([z.string(), z.number()]).optional(),
+  values: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+  filter: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   data: z.record(z.string()).optional(),
   searchColumn: z.string().optional(),
   searchValue: z.string().optional(),
   resultVariable: z.string().optional(),
   resultScope: z.enum(['session', 'contact']).optional(),
-});
+  timeoutMs: z.number().int().positive().optional(),
+  responseMapping: z.array(z.any()).optional(),
+}).passthrough();
 
 const NocoDBDataSchema = z.object({
-  baseId: z.string(),
-  tableId: z.string(),
-  action: z.enum(['create', 'read', 'update', 'find']),
+  credentialId: z.string().optional(),
+  baseId: z.string().optional(),
+  tableId: z.string().optional(),
+  tableName: z.string().optional(),
+  action: z.enum(['create', 'read', 'update', 'find', 'create_record', 'update_record', 'search_records']),
+  rowId: z.string().optional(),
+  fields: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
   data: z.record(z.string()).optional(),
   filterField: z.string().optional(),
   filterValue: z.string().optional(),
   resultVariable: z.string().optional(),
   resultScope: z.enum(['session', 'contact']).optional(),
-});
+  responseMapping: z.array(z.any()).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+}).passthrough();
 
 const SendCardsDataSchema = z.object({
   items: z.array(
@@ -212,10 +226,10 @@ const SendCardsDataSchema = z.object({
 });
 
 const OpenAIDataSchema = z.object({
-  mode: z.enum(['agent', 'voice']).default('agent'),
+  mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).default('agent'),
   voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
   credentialId: z.string().min(1),
-  model: z.string().min(1),
+  model: z.string().optional(),
   voice: z.string().optional(),
   prompt: z.string().optional(),
   audioUrl: z.string().optional(),
@@ -228,11 +242,24 @@ const OpenAIDataSchema = z.object({
   presencePenalty: z.number().min(-2).max(2).optional(),
   timeoutMs: z.number().int().positive().optional(),
 
-  resultVariable: z.string().min(1),
+  resultVariable: z.string().optional(),
   resultScope: z.enum(['session', 'contact']).default('session'),
   sendResponseToUser: z.boolean().optional(),
   fallbackText: z.string().optional(),
-});
+
+  // Assistant mode
+  assistantId: z.string().optional(),
+  threadId: z.string().optional(),
+  additionalInstructions: z.string().optional(),
+  functions: z.array(z.any()).optional(),
+
+  // Generate Variables mode
+  variablesToExtract: z.array(z.any()).optional(),
+
+  // Image mode
+  imageSize: z.string().optional(),
+  imageQuality: z.string().optional(),
+}).passthrough();
 
 const ElevenLabsDataSchema = z.object({
   credentialId: z.string().min(1),

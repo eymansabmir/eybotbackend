@@ -6,9 +6,9 @@ export function createGoogleSheetsRouter(controller: GoogleSheetsController): Ro
 
   router.post('/credentials/:id/test', controller.testCredential);
   router.get('/spreadsheets', controller.listSpreadsheets);
+  router.get('/access-token', controller.getAccessToken);
   router.get('/sheets', controller.listSheets);
   router.get('/columns', controller.getColumns);
-  router.get('/access-token', controller.getAccessToken);
   
   router.get('/auth/url', controller.getAuthUrl);
   

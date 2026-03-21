@@ -14,6 +14,7 @@ import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from '../http-request';
 import { HttpRequestIntegrationService } from '../http-request';
 import { GoogleSheetsIntegrationService } from '../google-sheets/google-sheets.service';
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
+import { NocoDBIntegrationService } from '../nocodb/nocodb.service';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
 export class EnginePlugin implements IPlugin, IEnginePlugin {
@@ -25,6 +26,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _elevenLabsService?: ElevenLabsIntegrationService;
   private _httpRequestService?: HttpRequestIntegrationService;
   private _googleSheetsService?: GoogleSheetsIntegrationService;
+  private _nocoDBService?: NocoDBIntegrationService;
 
   async initialize(registry: IPluginRegistry): Promise<void> {
     this._registry = registry;
@@ -193,6 +195,27 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           })),
         };
       },
+      executeNocoDB: async ({ orgId, request }) => {
+        const service = this.nocoDBService();
+        const output = await service.executeNode({
+          orgId,
+          credentialId: request.credentialId,
+          action: request.action,
+          tableId: request.tableId,
+          rowId: request.rowId,
+          fields: request.fields,
+          timeoutMs: request.timeoutMs,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
     };
   }
 
@@ -231,5 +254,13 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._googleSheetsService = new GoogleSheetsIntegrationService(credentials, this._registry);
     }
     return this._googleSheetsService;
+  }
+
+  private nocoDBService(): NocoDBIntegrationService {
+    if (!this._nocoDBService) {
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._nocoDBService = new NocoDBIntegrationService(credentials, this._registry);
+    }
+    return this._nocoDBService;
   }
 }
