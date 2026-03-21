@@ -165,11 +165,30 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     const body: Record<string, unknown> = {
       model: input.model,
       messages: input.messages.map((m) => ({
-        role: m.role,
+        role: m.role === 'dialogue' ? 'user' : m.role,
         content: m.content,
         ...(m.name ? { name: m.name } : {}),
       })),
     };
+
+    if (input.tools && input.tools.length > 0) {
+      body.tools = input.tools.map((t: any) => {
+        if (typeof t.function?.parameters === 'string') {
+          try {
+            return {
+              ...t,
+              function: {
+                ...t.function,
+                parameters: JSON.parse(t.function.parameters)
+              }
+            };
+          } catch {
+            return t;
+          }
+        }
+        return t;
+      });
+    }
 
     if (input.temperature !== undefined) body.temperature = input.temperature;
     if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;

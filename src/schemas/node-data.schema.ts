@@ -233,6 +233,8 @@ const OpenAIDataSchema = z.object({
   model: z.string().optional(),
   voice: z.string().optional(),
   prompt: z.string().optional(),
+  messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant', 'dialogue']), content: z.string() })).optional(),
+  tools: z.array(z.any()).optional(),
   audioUrl: z.string().optional(),
   systemPrompt: z.string().optional(),
 

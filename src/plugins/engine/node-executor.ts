@@ -53,6 +53,8 @@ export interface OpenAINodeRequest {
   model: string;
   voice?: string;
   prompt: string;
+  messages?: { role: 'system' | 'user' | 'assistant' | 'dialogue'; content: string }[];
+  tools?: any[];
   audioUrl?: string;
   systemPrompt?: string;
   temperature?: number;
@@ -356,6 +358,13 @@ export class NodeExecutor {
       model: String(data['model'] ?? ''),
       ...(typeof data['voice'] === 'string' ? { voice: this.text(data['voice'], ctx) } : {}),
       prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      messages: Array.isArray(data['messages'])
+        ? data['messages'].map((m: any) => ({
+            role: m.role,
+            content: this.text(String(m.content ?? ''), ctx),
+          }))
+        : undefined,
+      tools: Array.isArray(data['tools']) ? data['tools'] : undefined,
       ...(typeof data['audioUrl'] === 'string' ? { audioUrl: this.text(data['audioUrl'], ctx) } : {}),
       ...(typeof data['systemPrompt'] === 'string'
         ? { systemPrompt: this.text(data['systemPrompt'], ctx) }

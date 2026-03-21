@@ -155,6 +155,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
         credential: material,
         model: input.model,
         messages: input.messages,
+        tools: input.tools,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         topP: input.topP,
@@ -824,16 +825,19 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     }
 
     // ── Chat Completion mode (default) ──
-    const messages: OpenAIMessage[] = [
-      ...(input.systemPrompt ? [{ role: 'system', content: input.systemPrompt } as const] : []),
-      { role: 'user', content: input.prompt },
-    ];
+    const messages: OpenAIMessage[] = input.messages && input.messages.length > 0 
+      ? input.messages 
+      : [
+          ...(input.systemPrompt ? [{ role: 'system', content: input.systemPrompt } as const] : []),
+          { role: 'user', content: input.prompt },
+        ];
 
     const completion = await this.preview({
       orgId: input.orgId,
       credentialId: input.credentialId,
       model: input.model,
       messages,
+      tools: input.tools,
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       topP: input.topP,

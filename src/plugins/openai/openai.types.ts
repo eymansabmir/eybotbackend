@@ -7,7 +7,7 @@ export interface OpenAICredentialMaterial {
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────
-export type OpenAIMessageRole = 'system' | 'user' | 'assistant' | 'tool';
+export type OpenAIMessageRole = 'system' | 'user' | 'assistant' | 'tool' | 'dialogue';
 
 export interface OpenAIMessage {
   role: OpenAIMessageRole;
@@ -44,6 +44,7 @@ export interface OpenAIChatCompletionInput {
   credential: OpenAICredentialMaterial;
   model: string;
   messages: OpenAIMessage[];
+  tools?: any[];
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -240,6 +241,7 @@ export interface OpenAIPreviewPayload {
   credentialId: string;
   model: string;
   messages: OpenAIMessage[];
+  tools?: any[];
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -355,6 +357,8 @@ export interface ExecuteOpenAINodePayload {
   voiceAction?: OpenAIVoiceActionMode;
   voice?: string;
   prompt: string;
+  messages?: OpenAIMessage[];
+  tools?: any[];
   audioUrl?: string;
   systemPrompt?: string;
   temperature?: number;
