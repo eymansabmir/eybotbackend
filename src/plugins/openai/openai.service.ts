@@ -33,18 +33,28 @@ import type {
 } from './openai.types';
 
 export class OpenAIIntegrationService implements IOpenAIIntegrationService {
-  private static readonly DEFAULT_CHAT_MODELS: OpenAIModelInfo[] = [
-    { id: 'gpt-5' },
-    { id: 'gpt-5-mini' },
-    { id: 'gpt-5-nano' },
-    { id: 'gpt-4.1' },
-    { id: 'gpt-4.1-mini' },
-    { id: 'gpt-4.1-nano' },
-    { id: 'gpt-4o' },
-    { id: 'gpt-4o-mini' },
-    { id: 'gpt-4-turbo' },
-    { id: 'gpt-4' },
+  private static readonly DEFAULT_TEXT_MODELS: OpenAIModelInfo[] = [
     { id: 'gpt-3.5-turbo' },
+    { id: 'gpt-4' },
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4o' },
+    { id: 'gpt-4.1-mini' },
+    { id: 'gpt-4.1' },
+    { id: 'gpt-5-mini' },
+    { id: 'gpt-5' },
+  ];
+
+  private static readonly DEFAULT_GENERATE_VARIABLE_MODELS: OpenAIModelInfo[] = [
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4.1-mini' },
+    { id: 'gpt-4.1' },
+    { id: 'gpt-5-mini' },
+    { id: 'gpt-5' },
+  ];
+
+  private static readonly DEFAULT_IMAGE_MODELS: OpenAIModelInfo[] = [
+    { id: 'gpt-image-1' },
+    { id: 'dall-e-3' },
   ];
 
   private static readonly DEFAULT_SPEECH_MODELS: OpenAISpeechModelInfo[] = [
@@ -94,11 +104,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       );
 
       if (this.shouldUseModelFallback(publicError)) {
-        if (actionMode === 'chat_completion') {
-          return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
-        }
-
-        return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
+        return this.getFallbackModels(actionMode);
       }
 
       throw publicError;
@@ -967,6 +973,18 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   private shouldUseModelFallback(error: AppError): boolean {
     return error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 ||
       error.statusCode === 429 || error.statusCode >= 500;
+  }
+
+  private getFallbackModels(actionMode?: OpenAIModelActionMode): OpenAIModelInfo[] {
+    if (actionMode === 'image') {
+      return OpenAIIntegrationService.DEFAULT_IMAGE_MODELS;
+    }
+
+    if (actionMode === 'generate_variables') {
+      return OpenAIIntegrationService.DEFAULT_GENERATE_VARIABLE_MODELS;
+    }
+
+    return OpenAIIntegrationService.DEFAULT_TEXT_MODELS;
   }
 
   private mimeToExtension(mimeType: string, requestedFormat?: string): string {

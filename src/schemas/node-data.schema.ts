@@ -226,9 +226,9 @@ const SendCardsDataSchema = z.object({
 });
 
 const OpenAIDataSchema = z.object({
-  mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).default('agent'),
-  voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
-  credentialId: z.string().min(1),
+  mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).optional(),
+  voiceAction: z.enum(['create_speech', 'create_transcription']).optional(),
+  credentialId: z.string().min(1).optional(),
   model: z.string().optional(),
   voice: z.string().optional(),
   prompt: z.string().optional(),
@@ -243,7 +243,7 @@ const OpenAIDataSchema = z.object({
   timeoutMs: z.number().int().positive().optional(),
 
   resultVariable: z.string().optional(),
-  resultScope: z.enum(['session', 'contact']).default('session'),
+  resultScope: z.enum(['session', 'contact']).optional(),
   sendResponseToUser: z.boolean().optional(),
   fallbackText: z.string().optional(),
 
