@@ -420,6 +420,16 @@ export class NodeExecutor {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'file', variableName, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: variableScope as 'session' | 'contact', key: variableName as string, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput } };
+  }
+
   private handleNps(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {

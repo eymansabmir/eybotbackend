@@ -124,6 +124,23 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
+  async sendSticker(to: string, sticker: string): Promise<void> {
+    const isId = !sticker.startsWith('http');
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'sticker',
+      sticker: isId ? { id: sticker } : { link: sticker },
+    });
+  }
+
+  async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    // Note: A full implementation would fetch from `url` and send as multipart to Meta
+    logger.info({ url, type }, 'WhatsAppAPI: uploadMedia called (placeholder)');
+    return 'placeholder-media-id';
+  }
+
   private async call(payload: any): Promise<void> {
     const msgType = payload.type;
     logger.info(

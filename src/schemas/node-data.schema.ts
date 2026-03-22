@@ -103,6 +103,8 @@ const AskFileDataSchema = z.object({
   variableName: z.string(),
   variableScope: z.enum(['session', 'contact']),
   timeoutSeconds: z.number(),
+});
+
 const NpsDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
