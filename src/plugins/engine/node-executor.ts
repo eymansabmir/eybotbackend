@@ -261,6 +261,8 @@ export class NodeExecutor {
       case NodeType.ASK_QUESTION:
         return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
 
+      case NodeType.ASK_FILE:
+        return this.handleAskFile(currentNode, context, enteredAt, traverser, userInput);
       case NodeType.NPS:
         return this.handleNps(currentNode, context, enteredAt, traverser, userInput);
 
@@ -776,7 +778,7 @@ export class NodeExecutor {
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
     const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
-    const resolvedMessage = this.text(message as string, ctx);
+    const resolvedMessage = this.text((message as string) || '', ctx);
 
     if (userInput === undefined) {
       const since = new Date();
@@ -785,6 +787,29 @@ export class NodeExecutor {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'text', variableName, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: variableScope as 'session' | 'contact', key: variableName as string, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput } };
+  }
+
+  private handleAskFile(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
+    const resolvedMessage = this.text((message as string) || '', ctx);
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      return {
+        nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'file', variableName, variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }

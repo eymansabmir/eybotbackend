@@ -26,6 +26,7 @@ export interface WhatsAppMessage {
   };
   image?: { mime_type?: string; id?: string; url?: string; caption?: string };
   audio?: { mime_type?: string; id?: string; url?: string; voice?: boolean };
+  voice?: { mime_type?: string; id?: string; url?: string };
   video?: { mime_type?: string; id?: string; url?: string; caption?: string };
   document?: { mime_type?: string; id?: string; url?: string; caption?: string; filename?: string };
   sticker?: { mime_type?: string; id?: string; url?: string; animated?: boolean };
@@ -55,7 +56,7 @@ export interface NormalizedInboundMessage {
   reaction?: { messageId: string; emoji?: string };
 }
 
-const MEDIA_TYPES = new Set(['image', 'audio', 'video', 'document', 'sticker']);
+const MEDIA_TYPES = new Set(['image', 'audio', 'video', 'document', 'sticker', 'voice']);
 
 export class WhatsAppNormalizer {
   normalize(orgId: string, payload: WhatsAppWebhookPayload): NormalizedInboundMessage | null {

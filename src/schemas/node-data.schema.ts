@@ -98,6 +98,13 @@ const AskQuestionDataSchema = z.object({
   timeoutSeconds: z.number(),
 });
 
+const AskFileDataSchema = z.object({
+  message: z.string(),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
+  timeoutSeconds: z.number(),
+});
+
 const NpsDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
@@ -332,6 +339,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_STICKER), ...SendMediaDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_CAROUSEL), ...SendCarouselDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ASK_FILE), ...AskFileDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NPS), ...NpsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),

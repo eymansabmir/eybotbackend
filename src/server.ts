@@ -23,6 +23,8 @@ import { SessionInboundHandler } from './features/session/session.inbound-handle
 import { DATABASE_PLUGIN, type IDatabasePlugin } from './plugins/database';
 import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { REDIS_PLUGIN, type IRedisPlugin } from './plugins/redis';
+import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
+import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
 import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
@@ -77,6 +79,8 @@ async function startServer(): Promise<void> {
   const dbPlugin = registry.get<IDatabasePlugin>(DATABASE_PLUGIN);
   const enginePlugin = registry.get<IEnginePlugin>(ENGINE_PLUGIN);
   const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
+  const storagePlugin = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
+  const whatsappPlugin = registry.get<IWhatsAppPlugin>(WHATSAPP_PLUGIN);
   
   const flowRepo = new PrismaFlowRepository(dbPlugin.prisma);
   const sessionRepo = new PrismaSessionRepository(dbPlugin.prisma);
@@ -97,6 +101,8 @@ async function startServer(): Promise<void> {
     sessionRepo,
     enginePlugin,
     redisPlugin,
+    storagePlugin,
+    whatsappPlugin,
   );
   registry.registerValue(INBOUND_HANDLER, inboundHandler);
 
