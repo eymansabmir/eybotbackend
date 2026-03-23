@@ -159,27 +159,61 @@ const WebhookDataSchema = z.object({
   ).optional(),
 });
 
+const HttpRequestDataSchema = z.object({
+  url: z.string().url(),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+  headers: z.record(z.string()).optional(),
+  queryParams: z.record(z.string()).optional(),
+  body: z.string().optional(),
+  timeoutMs: z.number().int().positive().default(15000),
+  fallbackText: z.string().optional(),
+  responseMapping: z.array(
+    z.object({
+      jsonPath: z.string(),
+      variableName: z.string(),
+      scope: z.enum(['session', 'contact']),
+    })
+  ).optional(),
+  credentialId: z.string().min(1).optional(),
+  proxyCredentialsId: z.string().min(1).optional(),
+});
+
 const GoogleSheetsDataSchema = z.object({
-  spreadsheetId: z.string(),
-  sheetName: z.string(),
-  action: z.enum(['read_row', 'append_row', 'find_row']),
+  credentialId: z.string().optional(),
+  action: z.enum(['insert_row', 'update_row', 'get_row']),
+  spreadsheetId: z.string().optional(),
+  spreadsheetName: z.string().optional(),
+  sheetId: z.string().optional(),
+  sheetName: z.string().optional(),
+  rowId: z.union([z.string(), z.number()]).optional(),
+  values: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+  filter: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   data: z.record(z.string()).optional(),
   searchColumn: z.string().optional(),
   searchValue: z.string().optional(),
   resultVariable: z.string().optional(),
   resultScope: z.enum(['session', 'contact']).optional(),
-});
+  timeoutMs: z.number().int().positive().optional(),
+  responseMapping: z.array(z.any()).optional(),
+}).passthrough();
 
 const NocoDBDataSchema = z.object({
-  baseId: z.string(),
-  tableId: z.string(),
-  action: z.enum(['create', 'read', 'update', 'find']),
-  data: z.record(z.string()).optional(),
-  filterField: z.string().optional(),
-  filterValue: z.string().optional(),
-  resultVariable: z.string().optional(),
-  resultScope: z.enum(['session', 'contact']).optional(),
-});
+  credentialId: z.string().optional(),
+  baseId: z.string().optional(),
+  tableId: z.string().optional(),
+  tableName: z.string().optional(),
+  action: z.enum(['create', 'read', 'update', 'find', 'create_record', 'update_record', 'search_records']),
+  filter: z.string().optional(),
+  filterConditions: z.array(z.object({
+    field: z.string(),
+    operator: z.string(),
+    value: z.string(),
+  })).optional(),
+  returnType: z.enum(['All', 'First', 'Last', 'Random']).optional(),
+  fields: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
+  responseMapping: z.array(z.any()).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+}).passthrough();
 
 const SendCardsDataSchema = z.object({
   items: z.array(
@@ -201,12 +235,15 @@ const SendCardsDataSchema = z.object({
 });
 
 const OpenAIDataSchema = z.object({
-  mode: z.enum(['agent', 'voice']).default('agent'),
-  voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
-  credentialId: z.string().min(1),
-  model: z.string().min(1),
+  mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).optional(),
+  voiceAction: z.enum(['create_speech', 'create_transcription']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
   voice: z.string().optional(),
-  prompt: z.string().min(1),
+  prompt: z.string().optional(),
+  messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant', 'dialogue']), content: z.string() })).optional(),
+  tools: z.array(z.any()).optional(),
+  audioUrl: z.string().optional(),
   systemPrompt: z.string().optional(),
 
   temperature: z.number().min(0).max(2).optional(),
@@ -216,11 +253,24 @@ const OpenAIDataSchema = z.object({
   presencePenalty: z.number().min(-2).max(2).optional(),
   timeoutMs: z.number().int().positive().optional(),
 
-  resultVariable: z.string().min(1),
-  resultScope: z.enum(['session', 'contact']).default('session'),
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
   sendResponseToUser: z.boolean().optional(),
   fallbackText: z.string().optional(),
-});
+
+  // Assistant mode
+  assistantId: z.string().optional(),
+  threadId: z.string().optional(),
+  additionalInstructions: z.string().optional(),
+  functions: z.array(z.any()).optional(),
+
+  // Generate Variables mode
+  variablesToExtract: z.array(z.any()).optional(),
+
+  // Image mode
+  imageSize: z.string().optional(),
+  imageQuality: z.string().optional(),
+}).passthrough();
 
 const ElevenLabsDataSchema = z.object({
   credentialId: z.string().min(1),
@@ -235,6 +285,46 @@ const ElevenLabsDataSchema = z.object({
   fallbackText: z.string().optional(),
 });
 
+
+const AnthropicDataSchema = z.object({
+  mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+
+  variablesToExtract: z.array(z.any()).optional(),
+}).passthrough();
+
+const DeepSeekDataSchema = z.object({
+  mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+
+  variablesToExtract: z.array(z.any()).optional(),
+}).passthrough();
 
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
@@ -259,11 +349,14 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.JUMP_TO_FLOW), ...JumpToFlowDataSchema.shape }),
   z.object({ type: z.literal(NodeType.HUMAN_HANDOFF), ...HumanHandoffDataSchema.shape }),
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.HTTP_REQUEST), ...HttpRequestDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
-  z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.NOCODB) }).merge(NocoDBDataSchema),
   z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
+  z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

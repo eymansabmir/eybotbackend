@@ -5,11 +5,26 @@ import type { SessionEntity } from '../../features/session/session.entity';
 import { NodeType } from '../../schemas/node-types.enum';
 import { CREDENTIAL_SERVICE } from '../../features/repositories.interface';
 import type { ICredentialService } from '../../features/credentials';
+import type { HttpRequestMappedMutation } from '../http-request';
 import { OpenAIIntegrationService } from '../openai';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from '../openai';
 import { ElevenLabsIntegrationService } from '../elevenlabs';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from '../elevenlabs';
+import {
+  AnthropicIntegrationService,
+  ANTHROPIC_PLUGIN,
+  type IAnthropicPlugin,
+} from '../anthropic';
+import {
+  DeepSeekIntegrationService,
+  DEEPSEEK_PLUGIN,
+  type IDeepSeekPlugin,
+} from '../deepseek';
+import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from '../http-request';
+import { HttpRequestIntegrationService } from '../http-request';
+import { GoogleSheetsIntegrationService } from '../google-sheets/google-sheets.service';
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
+import { NocoDBIntegrationService } from '../nocodb/nocodb.service';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
 
 export class EnginePlugin implements IPlugin, IEnginePlugin {
@@ -19,6 +34,11 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
   private _orchestrator!: FlowOrchestrator;
   private _openAIService?: OpenAIIntegrationService;
   private _elevenLabsService?: ElevenLabsIntegrationService;
+  private _anthropicService?: AnthropicIntegrationService;
+  private _deepSeekService?: DeepSeekIntegrationService;
+  private _httpRequestService?: HttpRequestIntegrationService;
+  private _googleSheetsService?: GoogleSheetsIntegrationService;
+  private _nocoDBService?: NocoDBIntegrationService;
 
   async initialize(registry: IPluginRegistry): Promise<void> {
     this._registry = registry;
@@ -73,6 +93,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           model: request.model,
           voice: request.voice,
           prompt: request.prompt,
+          audioUrl: request.audioUrl,
           systemPrompt: request.systemPrompt,
           temperature: request.temperature,
           maxTokens: request.maxTokens,
@@ -80,6 +101,16 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           frequencyPenalty: request.frequencyPenalty,
           presencePenalty: request.presencePenalty,
           timeoutMs: request.timeoutMs,
+          // Assistant mode
+          assistantId: request.assistantId,
+          threadId: request.threadId,
+          additionalInstructions: request.additionalInstructions,
+          functions: request.functions,
+          // Generate Variables mode
+          variablesToExtract: request.variablesToExtract,
+          // Image mode
+          imageSize: request.imageSize,
+          imageQuality: request.imageQuality,
         });
 
         if (output.outputType === 'audio') {
@@ -87,6 +118,16 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
             value: output.content,
             message: {
               type: NodeType.SEND_AUDIO,
+              payload: { url: output.content },
+            },
+          };
+        }
+
+        if (output.outputType === 'image') {
+          return {
+            value: output.content,
+            message: {
+              type: NodeType.SEND_IMAGE,
               payload: { url: output.content },
             },
           };
@@ -120,6 +161,122 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           },
         };
       },
+      executeAnthropic: async ({ orgId, request }) => {
+        const service = this.anthropicService();
+        const output = await service.executeNode({
+          orgId,
+          mode: request.mode,
+          credentialId: request.credentialId,
+          model: request.model,
+          prompt: request.prompt,
+          systemPrompt: request.systemPrompt,
+          temperature: request.temperature,
+          maxTokens: request.maxTokens,
+          timeoutMs: request.timeoutMs,
+          variablesToExtract: request.variablesToExtract,
+        });
+
+        return {
+          value: output.content,
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: output.content },
+          },
+        };
+      },
+      executeDeepSeek: async ({ orgId, request }) => {
+        const service = this.deepSeekService();
+        const output = await service.executeNode({
+          orgId,
+          mode: request.mode,
+          credentialId: request.credentialId,
+          model: request.model,
+          prompt: request.prompt,
+          systemPrompt: request.systemPrompt,
+          temperature: request.temperature,
+          maxTokens: request.maxTokens,
+          timeoutMs: request.timeoutMs,
+          variablesToExtract: request.variablesToExtract,
+        });
+
+        return {
+          value: output.content || '',
+          message: {
+            type: NodeType.SEND_TEXT,
+            payload: { message: output.content || '' },
+          },
+        };
+      },
+      executeHttpRequest: async ({ orgId, request }) => {
+        const service = this.httpRequestService();
+        const output = await service.executeNode({
+          orgId,
+          url: request.url,
+          method: request.method,
+          headers: request.headers,
+          queryParams: request.queryParams,
+          body: request.body,
+          timeoutMs: request.timeoutMs,
+          credentialId: request.credentialId,
+          proxyCredentialsId: request.proxyCredentialsId,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation: HttpRequestMappedMutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
+      executeGoogleSheets: async ({ orgId, request }) => {
+        const service = this.googleSheetsService();
+        const output = await service.executeNode({
+          orgId,
+          credentialId: request.credentialId,
+          action: request.action,
+          spreadsheetId: request.spreadsheetId,
+          sheetId: request.sheetId,
+          rowId: request.rowId,
+          values: request.values,
+          filter: request.filter,
+          timeoutMs: request.timeoutMs,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
+      executeNocoDB: async ({ orgId, request }) => {
+        const service = this.nocoDBService();
+        const output = await service.executeNode({
+          orgId,
+          credentialId: request.credentialId,
+          action: request.action,
+          tableId: request.tableId,
+          viewId: request.viewId,
+          filter: request.filter,
+          filterConditions: request.filterConditions,
+          returnType: request.returnType,
+          fields: request.fields,
+          timeoutMs: request.timeoutMs,
+          responseMapping: request.responseMapping,
+        });
+
+        return {
+          mutations: output.mappedMutations.map((mutation) => ({
+            scope: mutation.scope,
+            key: mutation.key,
+            value: mutation.value,
+          })),
+        };
+      },
     };
   }
 
@@ -141,5 +298,48 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       this._elevenLabsService = new ElevenLabsIntegrationService(credentials, provider, storage);
     }
     return this._elevenLabsService;
+  }
+
+  private anthropicService(): AnthropicIntegrationService {
+    if (!this._anthropicService) {
+      const provider = this._registry.get<IAnthropicPlugin>(ANTHROPIC_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._anthropicService = new AnthropicIntegrationService(credentials, provider);
+    }
+    return this._anthropicService;
+  }
+
+  private deepSeekService(): DeepSeekIntegrationService {
+    if (!this._deepSeekService) {
+      const provider = this._registry.get<IDeepSeekPlugin>(DEEPSEEK_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._deepSeekService = new DeepSeekIntegrationService(provider, credentials);
+    }
+    return this._deepSeekService;
+  }
+
+  private httpRequestService(): HttpRequestIntegrationService {
+    if (!this._httpRequestService) {
+      const provider = this._registry.get<IHttpRequestPlugin>(HTTP_REQUEST_PLUGIN);
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._httpRequestService = new HttpRequestIntegrationService(credentials, provider);
+    }
+    return this._httpRequestService;
+  }
+
+  private googleSheetsService(): GoogleSheetsIntegrationService {
+    if (!this._googleSheetsService) {
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._googleSheetsService = new GoogleSheetsIntegrationService(credentials, this._registry);
+    }
+    return this._googleSheetsService;
+  }
+
+  private nocoDBService(): NocoDBIntegrationService {
+    if (!this._nocoDBService) {
+      const credentials = this._registry.get<ICredentialService>(CREDENTIAL_SERVICE);
+      this._nocoDBService = new NocoDBIntegrationService(credentials, this._registry);
+    }
+    return this._nocoDBService;
   }
 }

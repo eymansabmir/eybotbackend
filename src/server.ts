@@ -38,6 +38,11 @@ import { PrismaCampaignRepository } from './features/campaign/campaign.repositor
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
 import { ElevenLabsPlugin } from './plugins/elevenlabs/elevenlabs.plugin';
+import { AnthropicPlugin } from './plugins/anthropic/anthropic.plugin';
+import { DeepSeekPlugin } from './plugins/deepseek/deepseek.plugin';
+import { HttpRequestPlugin } from './plugins/http-request/http-request.plugin';
+import { GoogleSheetsPlugin } from './plugins/google-sheets/google-sheets.plugin';
+import { NocoDBPlugin } from './plugins/nocodb/nocodb.plugin';
 import { CredentialService, PrismaCredentialRepository } from './features/credentials';
 
 
@@ -61,6 +66,11 @@ async function startServer(): Promise<void> {
 
   registry.register(new OpenAIPlugin());
   registry.register(new ElevenLabsPlugin());
+  registry.register(new AnthropicPlugin());
+  registry.register(new DeepSeekPlugin());
+  registry.register(new HttpRequestPlugin());
+  registry.register(new GoogleSheetsPlugin());
+  registry.register(new NocoDBPlugin());
 
   // ── Phase 2: Initialize all plugins (sequential, order above) ────────────
   await registry.initializeAll();
