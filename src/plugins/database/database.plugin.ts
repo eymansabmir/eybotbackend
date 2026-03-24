@@ -20,9 +20,18 @@ export class DatabasePlugin implements IPlugin, IDatabasePlugin {
       throw new Error('[DatabasePlugin] DATABASE_URL environment variable is required');
     }
 
+    const isLocalConnection = (() => {
+      try {
+        const host = new URL(connectionString).hostname;
+        return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      } catch {
+        return connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+      }
+    })();
+
     const pool = new pg.Pool({
       connectionString,
-      ssl: connectionString.includes('localhost') ? false : { rejectUnauthorized: false }
+      ssl: isLocalConnection ? false : { rejectUnauthorized: false }
     });
     const adapter = new PrismaPg(pool);
     this._prisma = new PrismaClient({ adapter });

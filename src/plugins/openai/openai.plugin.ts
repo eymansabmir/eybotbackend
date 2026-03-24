@@ -7,12 +7,22 @@ import type {
   OpenAIModelInfo,
   OpenAISpeechModelInfo,
   OpenAITestResult,
+  OpenAIAssistantInfo,
+  OpenAIThreadInfo,
+  OpenAIRunInfo,
+  OpenAIThreadMessage,
+  OpenAIImageResult,
 } from './openai.types';
 import { AppError } from '../../utils/errors';
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import type { IOpenAIPlugin } from './openai.interface';
+import {
+  isTextChatCompletionModel,
+  usesMaxCompletionTokensParam,
+} from './openai-model-capabilities';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_CHAT_COMPLETION_TIMEOUT_MS = 90_000;
 const MAX_RETRIES = 2;
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -39,8 +49,18 @@ interface OpenAIChatCompletionResponse {
   model: string;
   choices: Array<{
     finish_reason?: string;
+    text?: string;
     message?: {
       content?: unknown;
+      refusal?: string;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
     };
   }>;
   usage?: {
@@ -74,7 +94,8 @@ export class OpenAIProviderError extends AppError {
     public readonly providerStatus?: number,
     message?: string,
   ) {
-    super(message ?? 'OpenAI request failed', toStatusCode(code, providerStatus));
+    const defaultMsg = providerStatus ? `OpenAI request failed with status ${providerStatus}` : 'OpenAI request failed';
+    super(message || defaultMsg, toStatusCode(code, providerStatus));
   }
 }
 
@@ -140,7 +161,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       .filter((item) => typeof item.id === 'string' && item.id.length > 0)
       .filter((item) => {
         if (!input.actionMode) return true;
-        if (input.actionMode === 'agent') return this.isAgentModelId(item.id);
+        if (input.actionMode === 'chat_completion' || input.actionMode === 'generate_variables' || input.actionMode === 'assistant') {
+          return isTextChatCompletionModel(item.id);
+        }
+        if (input.actionMode === 'image') {
+          const id = item.id.toLowerCase();
+          return id.includes('dall') || id.includes('image');
+        }
         return true;
       })
       .map((item) => ({
@@ -153,14 +180,43 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     const body: Record<string, unknown> = {
       model: input.model,
       messages: input.messages.map((m) => ({
-        role: m.role,
+        role: m.role === 'dialogue' ? 'user' : m.role,
         content: m.content,
         ...(m.name ? { name: m.name } : {}),
       })),
     };
 
+    if (input.tools && input.tools.length > 0) {
+      body.tools = input.tools.map((t: any) => {
+        if (typeof t.function?.parameters === 'string') {
+          try {
+            return {
+              ...t,
+              function: {
+                ...t.function,
+                parameters: JSON.parse(t.function.parameters)
+              }
+            };
+          } catch {
+            return t;
+          }
+        }
+        return t;
+      });
+    }
+
     if (input.temperature !== undefined) body.temperature = input.temperature;
-    if (input.maxTokens !== undefined) body.max_tokens = input.maxTokens;
+    const safeMaxTokens =
+      typeof input.maxTokens === 'number' && Number.isFinite(input.maxTokens) && input.maxTokens > 0
+        ? Math.floor(input.maxTokens)
+        : undefined;
+    if (safeMaxTokens !== undefined) {
+      if (usesMaxCompletionTokensParam(input.model)) {
+        body.max_completion_tokens = safeMaxTokens;
+      } else {
+        body.max_tokens = safeMaxTokens;
+      }
+    }
     if (input.topP !== undefined) body.top_p = input.topP;
     if (input.frequencyPenalty !== undefined) body.frequency_penalty = input.frequencyPenalty;
     if (input.presencePenalty !== undefined) body.presence_penalty = input.presencePenalty;
@@ -170,14 +226,18 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       path: '/chat/completions',
       method: 'POST',
       body,
-      timeoutMs: input.timeoutMs ?? 45_000,
+      timeoutMs: input.timeoutMs ?? DEFAULT_CHAT_COMPLETION_TIMEOUT_MS,
     });
 
     const firstChoice = payload.choices?.[0];
-    const content = this.extractText(firstChoice?.message?.content);
+    const content = this.normalizeChatCompletionText(firstChoice);
 
     if (!content) {
-      throw new OpenAIProviderError('provider_error', 502, 'OpenAI returned an empty completion');
+      throw new OpenAIProviderError(
+        'provider_error',
+        502,
+        `OpenAI returned an empty completion (finish_reason=${firstChoice?.finish_reason ?? 'unknown'})`,
+      );
     }
 
     return {
@@ -266,7 +326,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const responseText = await response.text();
+        const parsed = this.parseJson(responseText);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        throw this.mapHttpError(response.status, errorMessage);
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -326,7 +392,13 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const responseText = await response.text();
+        const parsed = this.parseJson(responseText);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        throw this.mapHttpError(response.status, errorMessage);
       }
 
       const payload = (await response.json()) as OpenAITranscriptionResponse;
@@ -371,7 +443,12 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       const parsed = this.parseJson(responseText);
 
       if (!response.ok) {
-        const mappedError = this.mapHttpError(response.status);
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        
+        const mappedError = this.mapHttpError(response.status, errorMessage);
 
         if (this.shouldRetry(response.status) && attempt < MAX_RETRIES) {
           await sleep((attempt + 1) * 250);
@@ -441,36 +518,376 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
     return RETRYABLE_STATUS_CODES.has(status);
   }
 
-  private mapHttpError(status: number): OpenAIProviderError {
+  private mapHttpError(status: number, message?: string): OpenAIProviderError {
     if (status === 401 || status === 403) {
-      return new OpenAIProviderError('auth_error', status, 'OpenAI authentication failed');
+      return new OpenAIProviderError('auth_error', status, message || 'OpenAI authentication failed');
     }
     if (status === 429) {
-      return new OpenAIProviderError('quota_error', status, 'OpenAI rate limit or quota exceeded');
+      return new OpenAIProviderError('quota_error', status, message || 'OpenAI rate limit or quota exceeded');
     }
     if (status === 408 || status === 504) {
-      return new OpenAIProviderError('timeout', status, 'OpenAI request timed out');
+      return new OpenAIProviderError('timeout', status, message || 'OpenAI request timed out');
     }
-    return new OpenAIProviderError('provider_error', status, 'OpenAI request failed');
+    return new OpenAIProviderError('provider_error', status, message || 'OpenAI request failed');
   }
 
-  private isAgentModelId(modelId: string): boolean {
-    const id = modelId.toLowerCase();
+  // ── Assistants API (beta) ──────────────────────────────────────────────
 
-    if (
-      id.includes('audio') ||
-      id.includes('tts') ||
-      id.includes('transcribe') ||
-      id.includes('whisper') ||
-      id.includes('embedding') ||
-      id.includes('moderation') ||
-      id.includes('dall') ||
-      id.includes('image')
-    ) {
-      return false;
+  async listAssistants(input: {
+    credential: OpenAICredentialMaterial;
+    limit?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIAssistantInfo[]> {
+    const payload = await this.betaJsonRequest<{ data: Array<{ id: string; name: string | null; model: string }> }>({
+      credential: input.credential,
+      path: '/assistants',
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      throw new OpenAIProviderError('provider_error', 502, 'Invalid assistant list response from OpenAI');
     }
 
-    return id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+    return payload.data.map((a) => ({
+      id: a.id,
+      name: a.name,
+      model: a.model,
+    }));
+  }
+
+  async createThread(input: {
+    credential: OpenAICredentialMaterial;
+    timeoutMs?: number;
+  }): Promise<OpenAIThreadInfo> {
+    const payload = await this.betaJsonRequest<{ id: string }>({
+      credential: input.credential,
+      path: '/threads',
+      method: 'POST',
+      body: {},
+      timeoutMs: input.timeoutMs,
+    });
+
+    return { id: payload.id };
+  }
+
+  async createThreadMessage(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timeoutMs?: number;
+  }): Promise<void> {
+    await this.betaJsonRequest<unknown>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/messages`,
+      method: 'POST',
+      body: { role: input.role, content: input.content },
+      timeoutMs: input.timeoutMs,
+    });
+  }
+
+  async createRun(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    assistantId: string;
+    additionalInstructions?: string;
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs`,
+      method: 'POST',
+      body: {
+        assistant_id: input.assistantId,
+        ...(input.additionalInstructions
+          ? { additional_instructions: input.additionalInstructions }
+          : {}),
+      },
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async retrieveRun(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    runId: string;
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs/${input.runId}`,
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async submitToolOutputs(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    runId: string;
+    toolOutputs: { tool_call_id: string; output: string }[];
+    timeoutMs?: number;
+  }): Promise<OpenAIRunInfo> {
+    const payload = await this.betaJsonRequest<{
+      id: string;
+      status: string;
+      required_action?: {
+        type: string;
+        submit_tool_outputs?: {
+          tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+        };
+      };
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/runs/${input.runId}/submit_tool_outputs`,
+      method: 'POST',
+      body: { tool_outputs: input.toolOutputs },
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    return this.mapRunPayload(payload);
+  }
+
+  async listMessages(input: {
+    credential: OpenAICredentialMaterial;
+    threadId: string;
+    limit?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIThreadMessage[]> {
+    const limitParam = input.limit ?? 10;
+    const payload = await this.betaJsonRequest<{
+      data: Array<{
+        role: string;
+        content: Array<{ type: string; text?: { value: string } }>;
+      }>;
+    }>({
+      credential: input.credential,
+      path: `/threads/${input.threadId}/messages?limit=${limitParam}`,
+      method: 'GET',
+      timeoutMs: input.timeoutMs,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      return [];
+    }
+
+    return payload.data.map((m) => {
+      const textParts = (m.content ?? [])
+        .filter((c) => c.type === 'text' && c.text?.value)
+        .map((c) => c.text!.value);
+
+      return {
+        role: m.role,
+        content: textParts.join('\n'),
+      };
+    });
+  }
+
+  // ── JSON / Structured Completion ───────────────────────────────────────
+
+  async createJsonCompletion(input: {
+    credential: OpenAICredentialMaterial;
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+    jsonSchema: Record<string, unknown>;
+    temperature?: number;
+    timeoutMs?: number;
+  }): Promise<{ parsed: Record<string, unknown>; model: string; raw?: unknown }> {
+    const body: Record<string, unknown> = {
+      model: input.model,
+      messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
+      response_format: {
+        type: 'json_schema',
+        json_schema: input.jsonSchema,
+      },
+    };
+
+    if (input.temperature !== undefined) body.temperature = input.temperature;
+
+    const payload = await this.jsonRequest<{
+      id: string;
+      model: string;
+      choices: Array<{ message?: { content?: string } }>;
+    }>({
+      credential: input.credential,
+      path: '/chat/completions',
+      method: 'POST',
+      body,
+      timeoutMs: input.timeoutMs ?? DEFAULT_CHAT_COMPLETION_TIMEOUT_MS,
+    });
+
+    const rawContent = payload.choices?.[0]?.message?.content;
+    if (!rawContent) {
+      throw new OpenAIProviderError('provider_error', 502, 'OpenAI returned an empty JSON completion');
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(rawContent) as Record<string, unknown>;
+    } catch {
+      throw new OpenAIProviderError('provider_error', 502, 'OpenAI response was not valid JSON');
+    }
+
+    return { parsed, model: payload.model, raw: payload };
+  }
+
+  // ── Image Generation ──────────────────────────────────────────────────
+
+  async createImage(input: {
+    credential: OpenAICredentialMaterial;
+    model?: string;
+    prompt: string;
+    size?: string;
+    quality?: string;
+    n?: number;
+    timeoutMs?: number;
+  }): Promise<OpenAIImageResult[]> {
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      model: input.model ?? 'dall-e-3',
+      n: input.n ?? 1,
+    };
+
+    if (input.size) body.size = input.size;
+    if (input.quality) body.quality = input.quality;
+
+    const payload = await this.jsonRequest<{
+      data: Array<{ url?: string; revised_prompt?: string }>;
+    }>({
+      credential: input.credential,
+      path: '/images/generations',
+      method: 'POST',
+      body,
+      timeoutMs: input.timeoutMs ?? 60_000,
+    });
+
+    if (!Array.isArray(payload.data)) {
+      throw new OpenAIProviderError('provider_error', 502, 'Invalid image generation response from OpenAI');
+    }
+
+    return payload.data
+      .filter((item) => typeof item.url === 'string')
+      .map((item) => ({
+        url: item.url!,
+        revisedPrompt: item.revised_prompt,
+      }));
+  }
+
+  // ── Beta request helper (Assistants API v2 header) ────────────────────
+
+  private async betaJsonRequest<T>(options: RequestOptions): Promise<T> {
+    const attempt = options.attempt ?? 0;
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const url = this.buildUrl(options.credential, options.path);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const headers = this.buildHeaders(options.credential);
+      headers['OpenAI-Beta'] = 'assistants=v2';
+
+      const response = await fetch(url, {
+        method: options.method,
+        headers,
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        signal: controller.signal,
+      });
+
+      const responseText = await response.text();
+      const parsed = this.parseJson(responseText);
+
+      if (!response.ok) {
+        let errorMessage: string | undefined;
+        if (parsed && typeof parsed === 'object' && (parsed as any).error?.message) {
+          errorMessage = (parsed as any).error.message;
+        }
+        
+        const mappedError = this.mapHttpError(response.status, errorMessage);
+
+        if (this.shouldRetry(response.status) && attempt < MAX_RETRIES) {
+          await sleep((attempt + 1) * 250);
+          return this.betaJsonRequest<T>({ ...options, attempt: attempt + 1 });
+        }
+
+        throw mappedError;
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new OpenAIProviderError('provider_error', response.status, 'Invalid JSON response from OpenAI');
+      }
+
+      return parsed as T;
+    } catch (error) {
+      if (error instanceof OpenAIProviderError) throw error;
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new OpenAIProviderError('timeout', 504, `OpenAI request timed out after ${timeoutMs}ms`);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await sleep((attempt + 1) * 250);
+        return this.betaJsonRequest<T>({ ...options, attempt: attempt + 1 });
+      }
+
+      throw new OpenAIProviderError('network_error', undefined, 'Could not reach OpenAI');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private mapRunPayload(payload: {
+    id: string;
+    status: string;
+    required_action?: {
+      type: string;
+      submit_tool_outputs?: {
+        tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+      };
+    };
+  }): OpenAIRunInfo {
+    const info: OpenAIRunInfo = {
+      id: payload.id,
+      status: payload.status,
+    };
+
+    if (
+      payload.required_action?.type === 'submit_tool_outputs' &&
+      payload.required_action.submit_tool_outputs?.tool_calls
+    ) {
+      info.requiredAction = {
+        toolCalls: payload.required_action.submit_tool_outputs.tool_calls.map((tc) => ({
+          id: tc.id,
+          functionName: tc.function.name,
+          arguments: tc.function.arguments,
+        })),
+      };
+    }
+
+    return info;
   }
 
   private extractText(content: unknown): string {
@@ -492,6 +909,31 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
           const text = record['text'];
           if (typeof text === 'string') {
             parts.push(text);
+            continue;
+          }
+
+          // Handles shapes like { text: { value: "..." } }
+          if (text && typeof text === 'object') {
+            const value = (text as Record<string, unknown>)['value'];
+            if (typeof value === 'string') {
+              parts.push(value);
+              continue;
+            }
+          }
+
+          // Handles shapes like { type: "output_text", content: "..." }
+          const contentValue = record['content'];
+          if (typeof contentValue === 'string') {
+            parts.push(contentValue);
+            continue;
+          }
+
+          // Handles nested shape { content: [{ text: "..." }, ...] }
+          if (Array.isArray(contentValue)) {
+            const nested = this.extractText(contentValue);
+            if (nested) {
+              parts.push(nested);
+            }
           }
         }
       }
@@ -499,6 +941,102 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
       return parts.join('\n').trim();
     }
 
+    if (content && typeof content === 'object') {
+      const record = content as Record<string, unknown>;
+
+      if (typeof record['text'] === 'string') {
+        return record['text'].trim();
+      }
+
+      if (typeof record['refusal'] === 'string') {
+        return record['refusal'].trim();
+      }
+
+      const text = record['text'];
+      if (text && typeof text === 'object') {
+        const value = (text as Record<string, unknown>)['value'];
+        if (typeof value === 'string') {
+          return value.trim();
+        }
+      }
+
+      if (typeof record['content'] === 'string') {
+        return record['content'].trim();
+      }
+
+      if (Array.isArray(record['content'])) {
+        return this.extractText(record['content']);
+      }
+
+      if (Array.isArray(record['output'])) {
+        return this.extractText(record['output']);
+      }
+    }
+
     return '';
+  }
+
+  private extractFallbackText(content: unknown): string {
+    const extracted = this.extractText(content);
+    if (extracted) return extracted;
+
+    // Final fallback: preserve something meaningful instead of failing hard.
+    if (content && typeof content === 'object') {
+      try {
+        return JSON.stringify(content);
+      } catch {
+        return '';
+      }
+    }
+
+    return '';
+  }
+
+  private normalizeChatCompletionText(
+    choice:
+      | {
+          finish_reason?: string;
+          text?: string;
+          message?: {
+            content?: unknown;
+            refusal?: string;
+            tool_calls?: Array<{
+              id?: string;
+              type?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+        }
+      | undefined,
+  ): string {
+    if (!choice) return '';
+
+    const content = this.extractText(choice.message?.content);
+    if (content) return content;
+
+    if (typeof choice.message?.refusal === 'string' && choice.message.refusal.trim()) {
+      return choice.message.refusal.trim();
+    }
+
+    if (typeof choice.text === 'string' && choice.text.trim()) {
+      return choice.text.trim();
+    }
+
+    if (Array.isArray(choice.message?.tool_calls) && choice.message.tool_calls.length > 0) {
+      const firstToolName = choice.message.tool_calls[0]?.function?.name;
+      return firstToolName
+        ? `Model requested tool call: ${firstToolName}.`
+        : 'Model requested a tool call but returned no direct text.';
+    }
+
+    // Graceful handling for token truncation/content filtering outcomes with no text payload.
+    if (choice.finish_reason === 'length') {
+      return 'Model output was truncated due to token limits.';
+    }
+    if (choice.finish_reason === 'content_filter') {
+      return 'Model response was blocked by content filtering.';
+    }
+
+    return this.extractFallbackText(choice.message?.content);
   }
 }
