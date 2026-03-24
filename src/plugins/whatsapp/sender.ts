@@ -1,14 +1,10 @@
 import { NodeType } from '../../schemas/node-types.enum';
 import type { OutboundMessage } from '../engine/engine.interface';
 import type { IWhatsAppSender } from './whatsapp.interface';
-import { WhatsAppAPIService, type WhatsAppConfig } from './whatsapp-api.service';
+import { WhatsAppAPIService } from './whatsapp-api.service';
 
 export class DirectWhatsAppSender implements IWhatsAppSender {
-  private readonly api: WhatsAppAPIService;
-
-  constructor(config: WhatsAppConfig) {
-    this.api = new WhatsAppAPIService(config);
-  }
+  constructor(private readonly api: WhatsAppAPIService) {}
 
   async sendMessages(waId: string, messages: OutboundMessage[], _sessionId?: string): Promise<void> {
     for (const msg of messages) {
@@ -25,6 +21,7 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
     switch (msg.type) {
       case NodeType.SEND_TEXT:
       case NodeType.ASK_QUESTION:
+      case NodeType.ASK_FILE:
         return this.api.sendText(waId, p['message'] as string);
       case NodeType.SEND_IMAGE:
         return this.api.sendImage(waId, p['url'] as string, p['caption'] as string | undefined);

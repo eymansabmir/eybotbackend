@@ -3,39 +3,58 @@ import { Readable } from 'stream';
 import { AppError, ValidationError } from '../../utils/errors';
 import type { ICredentialService } from '../../features/credentials';
 import type { IStoragePlugin } from '../storage';
+import { MAX_TOOL_CALLS } from './openai.constants';
 import type {
+  AskAssistantPayload,
+  AskAssistantResult,
+  CreateImagePayload,
+  CreateImageResult,
   CreateSpeechPayload,
   CreateSpeechResult,
   CreateTranscriptionPayload,
   CreateTranscriptionResult,
   ExecuteOpenAINodePayload,
   ExecuteOpenAINodeResult,
+  GenerateVariablesPayload,
+  GenerateVariablesResult,
   IOpenAIIntegrationService,
   IOpenAIProvider,
   ListSpeechModelsPayload,
   OpenAIModelActionMode,
   OpenAIChatCompletionOutput,
   OpenAICredentialMaterial,
+  OpenAIAssistantInfo,
   OpenAIMessage,
   OpenAIModelInfo,
   OpenAISpeechModelInfo,
   OpenAIPreviewPayload,
   OpenAITestResult,
+  VariableToExtract,
 } from './openai.types';
 
 export class OpenAIIntegrationService implements IOpenAIIntegrationService {
-  private static readonly DEFAULT_CHAT_MODELS: OpenAIModelInfo[] = [
-    { id: 'gpt-5' },
-    { id: 'gpt-5-mini' },
-    { id: 'gpt-5-nano' },
-    { id: 'gpt-4.1' },
-    { id: 'gpt-4.1-mini' },
-    { id: 'gpt-4.1-nano' },
-    { id: 'gpt-4o' },
-    { id: 'gpt-4o-mini' },
-    { id: 'gpt-4-turbo' },
-    { id: 'gpt-4' },
+  private static readonly DEFAULT_TEXT_MODELS: OpenAIModelInfo[] = [
     { id: 'gpt-3.5-turbo' },
+    { id: 'gpt-4' },
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4o' },
+    { id: 'gpt-4.1-mini' },
+    { id: 'gpt-4.1' },
+    { id: 'gpt-5-mini' },
+    { id: 'gpt-5' },
+  ];
+
+  private static readonly DEFAULT_GENERATE_VARIABLE_MODELS: OpenAIModelInfo[] = [
+    { id: 'gpt-4o-mini' },
+    { id: 'gpt-4.1-mini' },
+    { id: 'gpt-4.1' },
+    { id: 'gpt-5-mini' },
+    { id: 'gpt-5' },
+  ];
+
+  private static readonly DEFAULT_IMAGE_MODELS: OpenAIModelInfo[] = [
+    { id: 'gpt-image-1' },
+    { id: 'dall-e-3' },
   ];
 
   private static readonly DEFAULT_SPEECH_MODELS: OpenAISpeechModelInfo[] = [
@@ -51,6 +70,8 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     private readonly provider: IOpenAIProvider,
     private readonly storage?: IStoragePlugin,
   ) {}
+
+  // ── Existing methods ────────────────────────────────────────────────────
 
   async testCredential(orgId: string, credentialId: string): Promise<OpenAITestResult> {
     const material = await this.getCredentialMaterial(orgId, credentialId);
@@ -83,11 +104,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       );
 
       if (this.shouldUseModelFallback(publicError)) {
-        if (actionMode === 'agent') {
-          return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
-        }
-
-        return OpenAIIntegrationService.DEFAULT_CHAT_MODELS;
+        return this.getFallbackModels(actionMode);
       }
 
       throw publicError;
@@ -138,6 +155,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
         credential: material,
         model: input.model,
         messages: input.messages,
+        tools: input.tools,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         topP: input.topP,
@@ -391,7 +409,289 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     }
   }
 
+  // ── New: Assistants API ─────────────────────────────────────────────────
+
+  async listAssistants(orgId: string, credentialId: string): Promise<OpenAIAssistantInfo[]> {
+    const material = await this.getCredentialMaterial(orgId, credentialId);
+    try {
+      return await this.provider.listAssistants({ credential: material, limit: 100 });
+    } catch (error) {
+      throw this.toPublicError(error);
+    }
+  }
+
+  async askAssistant(input: AskAssistantPayload): Promise<AskAssistantResult> {
+    const startedAt = Date.now();
+    try {
+      const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
+
+      // 1. Create or reuse thread
+      let threadId = input.threadId;
+      if (!threadId) {
+        const thread = await this.provider.createThread({ credential: material });
+        threadId = thread.id;
+        logger.info(
+          { orgId: input.orgId, threadId, action: 'askAssistant.createThread' },
+          'Created new OpenAI thread',
+        );
+      }
+
+      // 2. Send user message
+      await this.provider.createThreadMessage({
+        credential: material,
+        threadId,
+        role: 'user',
+        content: input.message,
+      });
+
+      // 3. Create a run
+      let run = await this.provider.createRun({
+        credential: material,
+        threadId,
+        assistantId: input.assistantId,
+        additionalInstructions: input.additionalInstructions,
+        timeoutMs: input.timeoutMs,
+      });
+
+      // 4. Poll until completed (with tool call handling)
+      let toolCallIterations = 0;
+
+      while (run.status !== 'completed' && run.status !== 'failed' && run.status !== 'cancelled' && run.status !== 'expired') {
+        if (run.status === 'requires_action' && run.requiredAction?.toolCalls) {
+          if (toolCallIterations >= MAX_TOOL_CALLS) {
+            throw new AppError(`Assistant exceeded maximum tool call iterations (${MAX_TOOL_CALLS})`, 400);
+          }
+
+          const toolOutputs = await this.executeToolCalls(run.requiredAction.toolCalls, input.functions ?? []);
+
+          run = await this.provider.submitToolOutputs({
+            credential: material,
+            threadId,
+            runId: run.id,
+            toolOutputs,
+            timeoutMs: input.timeoutMs,
+          });
+
+          toolCallIterations++;
+          continue;
+        }
+
+        // Status is 'queued' or 'in_progress' — poll
+        await this.sleep(1000);
+
+        run = await this.provider.retrieveRun({
+          credential: material,
+          threadId,
+          runId: run.id,
+          timeoutMs: input.timeoutMs,
+        });
+      }
+
+      if (run.status !== 'completed') {
+        throw new AppError(`Assistant run ended with status: ${run.status}`, 502);
+      }
+
+      // 5. Fetch assistant response
+      const messages = await this.provider.listMessages({
+        credential: material,
+        threadId,
+        limit: 1,
+      });
+
+      const assistantMessage = messages.find((m) => m.role === 'assistant');
+      const response = assistantMessage?.content ?? '';
+
+      logger.info(
+        {
+          operation: 'openai.ask_assistant',
+          orgId: input.orgId,
+          assistantId: input.assistantId,
+          threadId,
+          latencyMs: Date.now() - startedAt,
+          toolCallIterations,
+          responseLength: response.length,
+        },
+        'OpenAI assistant call completed',
+      );
+
+      return {
+        response,
+        threadId,
+        model: '', // The Assistants API doesn't return the model in the message
+      };
+    } catch (error) {
+      logger.warn(
+        {
+          operation: 'openai.ask_assistant',
+          orgId: input.orgId,
+          assistantId: input.assistantId,
+          latencyMs: Date.now() - startedAt,
+          ...this.buildErrorDebugMeta(error),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI assistant call failed',
+      );
+      throw this.toPublicError(error);
+    }
+  }
+
+  // ── New: Generate Variables ─────────────────────────────────────────────
+
+  async generateVariables(input: GenerateVariablesPayload): Promise<GenerateVariablesResult> {
+    const startedAt = Date.now();
+    try {
+      const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
+
+      const jsonSchema = this.buildExtractionSchema(input.variablesToExtract);
+      const messages = [
+        { role: 'system' as const, content: 'Extract the requested information from the user message. Respond with a JSON object matching the schema.' },
+        { role: 'user' as const, content: input.prompt },
+      ];
+
+      const result = await this.provider.createJsonCompletion({
+        credential: material,
+        model: input.model,
+        messages,
+        jsonSchema,
+        temperature: input.temperature,
+        timeoutMs: input.timeoutMs,
+      });
+
+      logger.info(
+        {
+          operation: 'openai.generate_variables',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: result.model,
+          latencyMs: Date.now() - startedAt,
+          variableCount: input.variablesToExtract.length,
+        },
+        'OpenAI generate variables completed',
+      );
+
+      return {
+        variables: result.parsed,
+        model: result.model,
+      };
+    } catch (error) {
+      logger.warn(
+        {
+          operation: 'openai.generate_variables',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
+          latencyMs: Date.now() - startedAt,
+          ...this.buildErrorDebugMeta(error),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI generate variables failed',
+      );
+      throw this.toPublicError(error);
+    }
+  }
+
+  // ── New: Image Generation ───────────────────────────────────────────────
+
+  async createImage(input: CreateImagePayload): Promise<CreateImageResult> {
+    if (!this.storage) {
+      throw new AppError('Storage plugin is required for image generation', 500);
+    }
+
+    const startedAt = Date.now();
+    try {
+      const material = await this.getCredentialMaterial(input.orgId, input.credentialId);
+
+      logger.info(
+        {
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model ?? 'dall-e-3',
+          promptChars: input.prompt.length,
+          action: 'createImage',
+        },
+        'OpenAI image generation request started',
+      );
+
+      const images = await this.provider.createImage({
+        credential: material,
+        model: input.model,
+        prompt: input.prompt,
+        size: input.size,
+        quality: input.quality,
+        n: input.n,
+        timeoutMs: input.timeoutMs,
+      });
+
+      if (images.length === 0) {
+        throw new AppError('OpenAI returned no images', 502);
+      }
+
+      const firstImage = images[0]!;
+
+      // Download the image and upload to our storage
+      const response = await fetch(firstImage.url);
+      if (!response.ok) {
+        throw new AppError('Failed to download generated image from OpenAI', 502);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const imageBuffer = Buffer.from(arrayBuffer);
+      const mimeType = response.headers.get('content-type') || 'image/png';
+
+      const upload = await this.storage.uploadFile(
+        {
+          fieldname: 'image',
+          originalname: `openai-image-${Date.now()}.png`,
+          encoding: '7bit',
+          mimetype: mimeType,
+          size: imageBuffer.length,
+          destination: '',
+          filename: '',
+          path: '',
+          buffer: imageBuffer,
+          stream: Readable.from([]),
+        },
+        `integrations/openai/${input.orgId}/images`,
+      );
+
+      logger.info(
+        {
+          operation: 'openai.create_image',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model ?? 'dall-e-3',
+          latencyMs: Date.now() - startedAt,
+          imageUrl: upload.url,
+        },
+        'OpenAI image generation completed',
+      );
+
+      return {
+        imageUrl: upload.url,
+        revisedPrompt: firstImage.revisedPrompt,
+        model: input.model ?? 'dall-e-3',
+      };
+    } catch (error) {
+      logger.warn(
+        {
+          operation: 'openai.create_image',
+          orgId: input.orgId,
+          credentialId: input.credentialId,
+          model: input.model,
+          latencyMs: Date.now() - startedAt,
+          ...this.buildErrorDebugMeta(error),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'OpenAI image generation failed',
+      );
+      throw this.toPublicError(error);
+    }
+  }
+
+  // ── Node execution (engine integration) ─────────────────────────────────
+
   async executeNode(input: ExecuteOpenAINodePayload): Promise<ExecuteOpenAINodeResult> {
+    // ── Voice mode ──
     if (input.mode === 'voice') {
       const actionMode = input.voiceAction ?? 'create_speech';
 
@@ -417,7 +717,7 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
         };
       }
 
-      const audioUrl = input.prompt.trim();
+      const audioUrl = (input.audioUrl ?? input.prompt).trim();
       if (!audioUrl) {
         throw new ValidationError('audio URL is required for create_transcription mode');
       }
@@ -456,16 +756,88 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       };
     }
 
-    const messages: OpenAIMessage[] = [
-      ...(input.systemPrompt ? [{ role: 'system', content: input.systemPrompt } as const] : []),
-      { role: 'user', content: input.prompt },
-    ];
+    // ── Assistant mode ──
+    if (input.mode === 'assistant') {
+      if (!input.assistantId?.trim()) {
+        throw new ValidationError('assistantId is required for assistant mode');
+      }
+
+      const result = await this.askAssistant({
+        orgId: input.orgId,
+        credentialId: input.credentialId,
+        assistantId: input.assistantId.trim(),
+        message: input.prompt,
+        threadId: input.threadId,
+        additionalInstructions: input.additionalInstructions,
+        functions: input.functions,
+        timeoutMs: input.timeoutMs,
+      });
+
+      return {
+        content: result.response,
+        model: result.model,
+        outputType: 'text',
+        threadId: result.threadId,
+      };
+    }
+
+    // ── Generate Variables mode ──
+    if (input.mode === 'generate_variables') {
+      if (!input.variablesToExtract || input.variablesToExtract.length === 0) {
+        throw new ValidationError('variablesToExtract is required for generate_variables mode');
+      }
+
+      const result = await this.generateVariables({
+        orgId: input.orgId,
+        credentialId: input.credentialId,
+        model: input.model,
+        prompt: input.prompt,
+        variablesToExtract: input.variablesToExtract,
+        temperature: input.temperature,
+        timeoutMs: input.timeoutMs,
+      });
+
+      return {
+        content: JSON.stringify(result.variables),
+        model: result.model,
+        outputType: 'text',
+        variables: result.variables,
+      };
+    }
+
+    // ── Image mode ──
+    if (input.mode === 'image') {
+      const result = await this.createImage({
+        orgId: input.orgId,
+        credentialId: input.credentialId,
+        model: input.model,
+        prompt: input.prompt,
+        size: input.imageSize,
+        quality: input.imageQuality,
+        timeoutMs: input.timeoutMs,
+      });
+
+      return {
+        content: result.imageUrl,
+        model: result.model,
+        outputType: 'image',
+      };
+    }
+
+    // ── Chat Completion mode (default) ──
+    const messages: OpenAIMessage[] = input.messages && input.messages.length > 0 
+      ? input.messages 
+      : [
+          ...(input.systemPrompt ? [{ role: 'system', content: input.systemPrompt } as const] : []),
+          { role: 'user', content: input.prompt },
+        ];
 
     const completion = await this.preview({
       orgId: input.orgId,
       credentialId: input.credentialId,
       model: input.model,
       messages,
+      tools: input.tools,
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       topP: input.topP,
@@ -481,6 +853,8 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     };
   }
 
+  // ── Private helpers ─────────────────────────────────────────────────────
+
   private async getCredentialMaterial(orgId: string, credentialId: string): Promise<OpenAICredentialMaterial> {
     logger.info({ orgId, credentialId, action: 'getCredentialMaterial' }, 'STEP 4: DB query');
     const secret = await this.credentials.decryptSecret(orgId, credentialId, CredentialType.OPENAI);
@@ -495,6 +869,74 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       ...(typeof secret['baseUrl'] === 'string' ? { baseUrl: secret['baseUrl'] } : {}),
       ...(typeof secret['organization'] === 'string' ? { organization: secret['organization'] } : {}),
       ...(typeof secret['project'] === 'string' ? { project: secret['project'] } : {}),
+    };
+  }
+
+  private async executeToolCalls(
+    toolCalls: Array<{ id: string; functionName: string; arguments: string }>,
+    functions: Array<{ name: string; code: string }>,
+  ): Promise<Array<{ tool_call_id: string; output: string }>> {
+    const outputs: Array<{ tool_call_id: string; output: string }> = [];
+
+    for (const tc of toolCalls) {
+      const fn = functions.find((f) => f.name === tc.functionName);
+      if (!fn) {
+        outputs.push({
+          tool_call_id: tc.id,
+          output: JSON.stringify({ error: `Function "${tc.functionName}" not found` }),
+        });
+        continue;
+      }
+
+      try {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.arguments);
+        } catch {
+          // noop — keep empty args
+        }
+
+        // Execute the function code in a safe-ish manner
+        const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+        const executor = new AsyncFunction('args', fn.code);
+        const result = await executor(args);
+        outputs.push({
+          tool_call_id: tc.id,
+          output: typeof result === 'string' ? result : JSON.stringify(result ?? null),
+        });
+      } catch (error) {
+        outputs.push({
+          tool_call_id: tc.id,
+          output: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+        });
+      }
+    }
+
+    return outputs;
+  }
+
+  private buildExtractionSchema(variables: VariableToExtract[]): Record<string, unknown> {
+    const properties: Record<string, unknown> = {};
+
+    for (const v of variables) {
+      const prop: Record<string, unknown> = {
+        type: v.type ?? 'string',
+      };
+      if (v.description) {
+        prop.description = v.description;
+      }
+      properties[v.name] = prop;
+    }
+
+    return {
+      name: 'extracted_variables',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties,
+        required: variables.map((v) => v.name),
+        additionalProperties: false,
+      },
     };
   }
 
@@ -519,15 +961,34 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   private toPublicError(error: unknown): AppError {
-    if (error instanceof AppError) {
-      return error;
+    const message = error instanceof Error ? error.message : String(error);
+    const prefix = 'OpenAI request failed: ';
+    
+    // If it's already an AppError, we might want to preserve its status code
+    const statusCode = (error as any)?.statusCode || 502;
+
+    if (message.startsWith(prefix)) {
+      return error instanceof AppError ? error : new AppError(message, statusCode);
     }
-    return new AppError('OpenAI request failed', 502);
+    
+    return new AppError(`${prefix}${message}`, statusCode);
   }
 
   private shouldUseModelFallback(error: AppError): boolean {
     return error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 ||
       error.statusCode === 429 || error.statusCode >= 500;
+  }
+
+  private getFallbackModels(actionMode?: OpenAIModelActionMode): OpenAIModelInfo[] {
+    if (actionMode === 'image') {
+      return OpenAIIntegrationService.DEFAULT_IMAGE_MODELS;
+    }
+
+    if (actionMode === 'generate_variables') {
+      return OpenAIIntegrationService.DEFAULT_GENERATE_VARIABLE_MODELS;
+    }
+
+    return OpenAIIntegrationService.DEFAULT_TEXT_MODELS;
   }
 
   private mimeToExtension(mimeType: string, requestedFormat?: string): string {
@@ -554,5 +1015,9 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
     throw new ValidationError(
       `Model ${normalized} does not support create_speech. Use a TTS model like gpt-4o-mini-tts, tts-1, or tts-1-hd.`,
     );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

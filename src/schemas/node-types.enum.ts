@@ -12,6 +12,7 @@ export enum NodeType {
   SEND_STICKER = 'send_sticker',
   SEND_CAROUSEL = 'send_carousel',
   ASK_QUESTION = 'ask_question',
+  ASK_FILE = 'ask_file',
   NPS = 'nps',
   SEND_CARDS = 'send_cards',
 
@@ -28,10 +29,13 @@ export enum NodeType {
 
   // Integration Nodes
   WEBHOOK = 'webhook',
+  HTTP_REQUEST = 'http_request',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
    OPENAI = 'openai',
   ELEVENLABS = 'elevenlabs',
+  ANTHROPIC = 'anthropic',
+  DEEPSEEK = 'deepseek',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -47,6 +51,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.SEND_STICKER,
   NodeType.SEND_CAROUSEL,
   NodeType.ASK_QUESTION,
+  NodeType.ASK_FILE,
   NodeType.NPS,
   NodeType.SEND_CARDS,
 ];
@@ -66,8 +71,11 @@ export const FLOW_CONTROL_NODE_TYPES = [
 
 export const INTEGRATION_NODE_TYPES = [
   NodeType.WEBHOOK,
+  NodeType.HTTP_REQUEST,
   NodeType.GOOGLE_SHEETS,
   NodeType.NOCODB,
   NodeType.OPENAI,
   NodeType.ELEVENLABS,
+  NodeType.ANTHROPIC,
+  NodeType.DEEPSEEK,
 ];

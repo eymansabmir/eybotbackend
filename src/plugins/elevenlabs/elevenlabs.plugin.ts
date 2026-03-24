@@ -20,12 +20,27 @@ function toStatusCode(code: ProviderErrorCode, providerStatus?: number): number 
   return 502;
 }
 
-interface ElevenLabsModelsResponse {
-  models?: Array<{ model_id: string; name?: string }>;
-}
+type ElevenLabsModelPayload = {
+  model_id: string;
+  name?: string;
+  can_do_text_to_speech?: boolean;
+};
+
+type ElevenLabsModelsResponse =
+  | ElevenLabsModelPayload[]
+  | {
+      models?: ElevenLabsModelPayload[];
+    };
 
 interface ElevenLabsVoicesResponse {
-  voices?: Array<{ voice_id: string; name: string; category?: string }>;
+  voices?: Array<{
+    voice_id: string;
+    name: string;
+    category?: string;
+    labels?: {
+      description?: string;
+    };
+  }>;
 }
 
 export class ElevenLabsProviderError extends AppError {
@@ -81,9 +96,19 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
       timeoutMs: input.timeoutMs,
     });
 
-    return (payload.models ?? [])
-      .filter((m) => typeof m.model_id === 'string' && m.model_id.length > 0)
-      .map((m) => ({ id: m.model_id, name: m.name }))
+    const models = Array.isArray(payload) ? payload : (payload.models ?? []);
+
+    return models
+      .filter(
+        (m) =>
+          typeof m.model_id === 'string' &&
+          m.model_id.length > 0 &&
+          (m.can_do_text_to_speech === undefined || m.can_do_text_to_speech === true),
+      )
+      .map((m) => ({
+        id: m.model_id,
+        name: typeof m.name === 'string' && m.name.length > 0 ? m.name : undefined,
+      }))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
@@ -99,7 +124,12 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
 
     return (payload.voices ?? [])
       .filter((v) => typeof v.voice_id === 'string' && v.voice_id.length > 0)
-      .map((v) => ({ id: v.voice_id, name: v.name, category: v.category }))
+      .map((v) => ({
+        id: v.voice_id,
+        name: v.name,
+        category: v.category,
+        description: v.labels?.description,
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 

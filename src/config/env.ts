@@ -48,6 +48,10 @@ const envSchema = z.object({
 
   /** Integration secret encryption key (32-byte hex/base64/raw) */
   INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
+
+  /** Google Sheets OAuth */
+  GOOGLE_SHEETS_CLIENT_ID: z.string().optional(),
+  GOOGLE_SHEETS_CLIENT_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
