@@ -12,6 +12,11 @@ export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 
 export const TriggerConfigSchema = z.object({
   keywords: z.array(z.string()).optional(),
+  comparisons: z.array(z.object({
+    operator: z.enum(['CONTAINS', 'EQUALS', 'STARTS_WITH', 'ENDS_WITH']),
+    value: z.string(),
+  })).optional(),
+  logicalOperator: z.enum(['AND', 'OR']).optional().default('OR'),
 });
 
 export type TriggerConfig = z.infer<typeof TriggerConfigSchema>;

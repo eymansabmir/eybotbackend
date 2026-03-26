@@ -5,6 +5,7 @@ import type { ISessionRepository } from './session.repository';
 import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
 import { ValidationError } from '../../utils/errors';
+import { NodeType } from '../../schemas/node-types.enum';
 
 const LOCK_PREFIX = 'wa:lock:';
 const LOCK_TTL = 10; // seconds
@@ -47,12 +48,17 @@ export class SessionInboundHandler implements IInboundHandler {
         // Resume existing session
         logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
 
+        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
+        const currentNode = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
+
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
         }
+        if (currentNode?.type === NodeType.ASK_FILE) {
+          userInput = message.mediaUrl ?? message.mediaId ?? text;
+        }
 
-        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
         const result = await this.enginePlugin.resumeFlow(
           { sessionId: activeSession.id!, userInput: userInput ?? '' },
           flow,

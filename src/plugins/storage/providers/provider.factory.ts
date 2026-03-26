@@ -4,14 +4,50 @@ import { GcsProvider } from './gcs.provider';
 import { S3Provider } from './s3.provider';
 import { AzureProvider } from './azure.provider';
 
+function parseGcsCredentialsFromEnv(): Record<string, unknown> | undefined {
+  const raw = env.GCS_CREDENTIALS_JSON?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const candidates: string[] = [raw];
+
+  try {
+    const decoded = Buffer.from(raw, 'base64').toString('utf8').trim();
+    if (decoded.startsWith('{')) {
+      candidates.push(decoded);
+    }
+  } catch {
+    // Ignore base64 decode failures and fall back to raw JSON parsing.
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as Record<string, unknown>;
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw new Error('[StoragePlugin] GCS_CREDENTIALS_JSON must be valid JSON (raw or base64 encoded JSON)');
+}
+
 export function createStorageProvider(): IStorageProvider {
   switch (env.STORAGE_PROVIDER) {
     case 'gcs': {
       const { Storage } = require('@google-cloud/storage');
-      const storage = new Storage({
+      const gcsCredentials = parseGcsCredentialsFromEnv();
+      const storageOptions: Record<string, unknown> = {
         ...(env.GCS_PROJECT_ID ? { projectId: env.GCS_PROJECT_ID } : {}),
-        ...(env.GCS_KEY_FILE ? { keyFilename: env.GCS_KEY_FILE } : {}),
-      });
+      };
+
+      if (gcsCredentials) {
+        storageOptions['credentials'] = gcsCredentials;
+      } else if (env.GCS_KEY_FILE) {
+        storageOptions['keyFilename'] = env.GCS_KEY_FILE;
+      }
+
+      const storage = new Storage(storageOptions);
       if (!env.GCS_BUCKET_NAME) {
         throw new Error('[StoragePlugin] GCS_BUCKET_NAME is required when using GCS provider');
       }
