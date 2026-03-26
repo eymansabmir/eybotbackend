@@ -15,6 +15,7 @@ export enum NodeType {
   ASK_FILE = 'ask_file',
   NPS = 'nps',
   SEND_CARDS = 'send_cards',
+  SEND_REACTION = 'send_reaction',
 
   // Logic Nodes
   CONDITION = 'condition',
@@ -54,6 +55,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.ASK_FILE,
   NodeType.NPS,
   NodeType.SEND_CARDS,
+  NodeType.SEND_REACTION,
 ];
 
 export const LOGIC_NODE_TYPES = [
