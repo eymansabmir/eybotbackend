@@ -128,9 +128,21 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
-  async uploadMedia(_buffer: any, mimetype: string, filename?: string): Promise<string> {
-    logger.info({ mimetype, filename }, 'Mock media upload');
-    return `media-${Date.now()}`;
+  async sendSticker(to: string, sticker: string): Promise<void> {
+    const isId = !sticker.startsWith('http');
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'sticker',
+      sticker: isId ? { id: sticker } : { link: sticker },
+    });
+  }
+
+  async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    // Note: A full implementation would fetch from `url` and send as multipart to Meta
+    logger.info({ url, type }, 'WhatsAppAPI: uploadMedia called (placeholder)');
+    return 'placeholder-media-id';
   }
 
   private async call(payload: any): Promise<void> {
@@ -157,5 +169,32 @@ export class WhatsAppAPIService {
       { messageType: msgType, to: payload.to },
       'WhatsAppAPI: message sent to Meta successfully',
     );
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    const url = `${this.config.apiUrl}/${mediaId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media URL error: ${response.status} - ${errorText}`, response.status);
+    }
+    const data = (await response.json()) as any;
+    return data.url;
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media download error: ${response.status} - ${errorText}`, response.status);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 }

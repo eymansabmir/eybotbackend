@@ -4,6 +4,8 @@ import type { IFlowRepository } from '../flow/flow.repository';
 import type { ISessionRepository } from './session.repository';
 import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
+import type { IStoragePlugin } from '../../plugins/storage';
+import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
 import { ValidationError } from '../../utils/errors';
 import { NodeType } from '../../schemas/node-types.enum';
 
@@ -16,6 +18,8 @@ export class SessionInboundHandler implements IInboundHandler {
     private readonly sessionRepo: ISessionRepository,
     private readonly enginePlugin: IEnginePlugin,
     private readonly redisPlugin: IRedisPlugin,
+    private readonly storagePlugin: IStoragePlugin,
+    private readonly whatsappPlugin: IWhatsAppPlugin,
   ) {}
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
