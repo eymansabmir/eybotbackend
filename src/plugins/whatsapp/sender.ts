@@ -39,6 +39,8 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendList(waId, p['body'] as string, p['buttonTitle'] as string, p['sections'] as any[], p['footer'] as string | undefined);
       case NodeType.SEND_TEMPLATE:
         return this.api.sendTemplate(waId, p['templateName'] as string, p['languageCode'] as string, p['components'] as any[]);
+      case NodeType.SEND_REACTION:
+        return this.api.sendReaction(waId, p['messageId'] as string, p['emoji'] as string);
       case NodeType.SEND_STICKER:
         return this.api.sendSticker(waId, (p['mediaId'] as string) || (p['url'] as string));
       case NodeType.NPS: {

@@ -29,9 +29,6 @@ export class WhatsAppAPIService {
     await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'audio', audio: { link: url } });
   }
 
-  async sendSticker(to: string, url: string): Promise<void> {
-    await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'sticker', sticker: { link: url } });
-  }
 
   async sendDocument(to: string, url: string, caption?: string, filename?: string): Promise<void> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'document', document: { link: url } };
@@ -136,6 +133,16 @@ export class WhatsAppAPIService {
       to,
       type: 'sticker',
       sticker: isId ? { id: sticker } : { link: sticker },
+    });
+  }
+
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'reaction',
+      reaction: { message_id: messageId, emoji },
     });
   }
 
