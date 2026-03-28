@@ -26,7 +26,7 @@ export class FlowService implements IFlowService {
       status: data.status ?? 'draft',
       version: data.version ?? 1,
       triggerType: data.triggerType!,
-      triggerConfig: data.triggerConfig ?? {},
+      triggerConfig: data.triggerConfig ?? { logicalOperator: 'OR' },
       nodes: data.nodes ?? [],
       edges: data.edges ?? [],
       settings: data.settings ?? {

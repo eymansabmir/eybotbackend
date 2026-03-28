@@ -28,6 +28,7 @@ const envSchema = z.object({
   GCS_PROJECT_ID: z.string().optional(),
   GCS_BUCKET_NAME: z.string().optional(),
   GCS_KEY_FILE: z.string().optional(),
+  GCS_CREDENTIALS_JSON: z.string().optional(),
 
   /** AWS S3 */
   AWS_ACCESS_KEY_ID: z.string().optional(),

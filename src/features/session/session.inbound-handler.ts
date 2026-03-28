@@ -7,6 +7,7 @@ import type { IRedisPlugin } from '../../plugins/redis';
 import type { IStoragePlugin } from '../../plugins/storage';
 import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
 import { ValidationError } from '../../utils/errors';
+import { NodeType } from '../../schemas/node-types.enum';
 
 const LOCK_PREFIX = 'wa:lock:';
 const LOCK_TTL = 10; // seconds
@@ -51,32 +52,17 @@ export class SessionInboundHandler implements IInboundHandler {
         // Resume existing session
         logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
 
+        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
+        const currentNode = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
+
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
         }
-
-        if (activeSession.waitingFor?.type === 'file' && message.mediaId) {
-          logger.info({ waId, mediaId: message.mediaId }, 'SessionInboundHandler: downloading media...');
-          const metaUrl = await this.whatsappPlugin.getMediaUrl(message.mediaId);
-          const buffer = await this.whatsappPlugin.downloadMedia(metaUrl);
-          
-          const uploadResult = await this.storagePlugin.uploadFile({
-            buffer,
-            originalname: message.mediaFilename ?? `file_${message.mediaId}`,
-            mimetype: message.mediaMimeType ?? 'application/octet-stream',
-            fieldname: 'file',
-            encoding: '7bit',
-            size: buffer.length,
-            stream: null as any,
-            destination: '',
-            filename: '',
-            path: ''
-          });
-          userInput = uploadResult.url;
+        if (currentNode?.type === NodeType.ASK_FILE) {
+          userInput = message.mediaUrl ?? message.mediaId ?? text;
         }
 
-        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
         const result = await this.enginePlugin.resumeFlow(
           { sessionId: activeSession.id!, userInput: userInput ?? '' },
           flow,

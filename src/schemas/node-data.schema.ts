@@ -138,6 +138,7 @@ const AskQuestionDataSchema = z.object({
 const AskFileDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
+  variableId: z.string().optional(),
   variableScope: z.enum(['session', 'contact']),
   timeoutSeconds: z.number(),
 });
