@@ -135,6 +135,16 @@ export class WhatsAppAPIService {
     });
   }
 
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'reaction',
+      reaction: { message_id: messageId, emoji },
+    });
+  }
+
   async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
     // Note: A full implementation would fetch from `url` and send as multipart to Meta
     logger.info({ url, type }, 'WhatsAppAPI: uploadMedia called (placeholder)');

@@ -80,7 +80,6 @@ export function createApp(registry: IPluginRegistry): Application {
     origin: FRONTEND_URL,
     credentials: true,
   }));
-  app.use(pinoHttp({ logger: global.logger }));
   app.all('/api/auth/{*any}', authHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -94,11 +93,7 @@ export function createApp(registry: IPluginRegistry): Application {
           url: req.url,
           query: req.query,
           params: req.params,
-          headers: {
-            host: req.headers.host,
-          },
-          remoteAddress: req.remoteAddress,
-          body: req.body,
+          payload: (req as any).body,
         };
       },
       res(res) {

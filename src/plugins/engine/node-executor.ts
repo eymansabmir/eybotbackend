@@ -245,15 +245,40 @@ export class NodeExecutor {
       case NodeType.SEND_LIST:
         return this.handleList(currentNode, context, enteredAt, traverser, userInput);
 
-      case NodeType.SEND_TEMPLATE:
+      case NodeType.SEND_TEMPLATE: {
+        const components = (currentNode.data['components'] ?? []) as any[];
+        const resolvedComponents = components.map(comp => ({
+          ...comp,
+          parameters: comp.parameters?.map((param: any) => {
+            const p = { ...param };
+            if (typeof p.text === 'string') p.text = this.text(p.text, context);
+            if (p.image?.link) p.image = { ...p.image, link: this.text(p.image.link, context) };
+            if (p.video?.link) p.video = { ...p.video, link: this.text(p.video.link, context) };
+            if (p.document?.link) p.document = { ...p.document, link: this.text(p.document.link, context) };
+            if (typeof p.payload === 'string') p.payload = this.text(p.payload, context);
+            return p;
+          })
+        }));
+
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            templateName: currentNode.data['templateName'],
-            languageCode: currentNode.data['languageCode'],
-            components: currentNode.data['components'],
+            templateName: this.text(currentNode.data['templateName'] as string, context),
+            languageCode: this.text(currentNode.data['languageCode'] as string, context),
+            components: resolvedComponents,
           },
         }]);
+      }
+
+      case NodeType.SEND_REACTION: {
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
+          type: currentNode.type,
+          payload: {
+            messageId: this.text(currentNode.data['messageId'] as string, context),
+            emoji: this.text(currentNode.data['emoji'] as string, context),
+          },
+        }]);
+      }
 
       case NodeType.SEND_CAROUSEL:
         return this.handleCarousel(currentNode, context, enteredAt, traverser, userInput);
