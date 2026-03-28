@@ -6,8 +6,9 @@ import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
 import type { IStoragePlugin } from '../../plugins/storage';
 import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
-import { ValidationError } from '../../utils/errors';
 import { NodeType } from '../../schemas/node-types.enum';
+import { Readable } from 'stream';
+import { ValidationError } from '../../utils/errors';
 
 const LOCK_PREFIX = 'wa:lock:';
 const LOCK_TTL = 10; // seconds
@@ -52,17 +53,71 @@ export class SessionInboundHandler implements IInboundHandler {
         // Resume existing session
         logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
 
-        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
-        const currentNode = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
-
         let userInput = text;
         if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
           userInput = message.interactiveOptionId;
         }
-        if (currentNode?.type === NodeType.ASK_FILE) {
-          userInput = message.mediaUrl ?? message.mediaId ?? text;
+
+        if (activeSession.waitingFor?.type === 'file') {
+          const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
+          const textFallback = (text ?? '').trim();
+
+          if (!hasMediaInput) {
+            if (textFallback.length > 0) {
+              userInput = textFallback;
+              logger.info({ waId, sessionId: activeSession.id }, 'SessionInboundHandler: file wait accepted text fallback input');
+            } else {
+              return [{
+                waId,
+                waBusinessNumber,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: 'Please upload a file to continue, or send text input.' },
+                orgId,
+                sessionId: activeSession.id,
+              }];
+            }
+          }
+
+          if (hasMediaInput) {
+            try {
+              const mediaUrl = message.mediaUrl ?? await this.whatsappPlugin.getMediaUrl(message.mediaId!);
+              const buffer = await this.whatsappPlugin.downloadMedia(mediaUrl);
+              const mimeType = message.mediaMimeType ?? 'application/octet-stream';
+              const originalName = message.mediaFilename ?? `${message.type}-${message.mediaId ?? Date.now()}`;
+
+              const upload = await this.storagePlugin.uploadFile(
+                {
+                  fieldname: 'file',
+                  originalname: originalName,
+                  encoding: '7bit',
+                  mimetype: mimeType,
+                  size: buffer.length,
+                  destination: '',
+                  filename: '',
+                  path: '',
+                  buffer,
+                  stream: Readable.from(buffer),
+                },
+                'uploads',
+              );
+
+              userInput = upload.url;
+              logger.info({ waId, sessionId: activeSession.id, url: upload.url }, 'SessionInboundHandler: uploaded inbound file and mapped to userInput');
+            } catch (err) {
+              logger.error({ err, waId, mediaId: message.mediaId, mediaUrl: message.mediaUrl }, 'SessionInboundHandler: failed to process inbound file');
+              return [{
+                waId,
+                waBusinessNumber,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: 'I could not process that file. Please try again with a supported attachment or send text input.' },
+                orgId,
+                sessionId: activeSession.id,
+              }];
+            }
+          }
         }
 
+        const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
         const result = await this.enginePlugin.resumeFlow(
           { sessionId: activeSession.id!, userInput: userInput ?? '' },
           flow,
