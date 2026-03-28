@@ -4,6 +4,7 @@ import { REDIS_PLUGIN, type IRedisPlugin } from '../redis';
 import { DirectWhatsAppSender, StubWhatsAppSender } from './sender';
 import { WhatsAppNormalizer } from './normalizer';
 import { WhatsAppDeduplicator } from './deduplicator';
+import { WhatsAppAPIService } from './whatsapp-api.service';
 import type { WhatsAppConfig } from './whatsapp-api.service';
 
 export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
@@ -12,6 +13,7 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   private _sender!: IWhatsAppSender;
   private _normalizer!: WhatsAppNormalizer;
   private _deduplicator!: WhatsAppDeduplicator;
+  private _api?: WhatsAppAPIService;
 
   get sender(): IWhatsAppSender {
     return this._sender;
@@ -23,6 +25,20 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
   get deduplicator(): WhatsAppDeduplicator {
     return this._deduplicator;
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    if (!this._api) {
+      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+    }
+    return this._api.getMediaUrl(mediaId);
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    if (!this._api) {
+      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+    }
+    return this._api.downloadMedia(mediaUrl);
   }
 
   async initialize(registry: IPluginRegistry): Promise<void> {
@@ -37,9 +53,11 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
     if (apiUrl && apiToken && phoneNumberId) {
       const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
       this._sender = new DirectWhatsAppSender(config);
+      this._api = new WhatsAppAPIService(config);
       logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
       this._sender = new StubWhatsAppSender();
+      this._api = undefined;
       logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — WhatsApp API not configured');
     }
   }

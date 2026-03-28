@@ -812,7 +812,7 @@ export class NodeExecutor {
         outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [],
         isTerminal: false,
-        waitForInput: { type: 'text', variableName, variableScope, since, timeoutAt },
+        waitForInput: { type: 'file', variableName, variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }

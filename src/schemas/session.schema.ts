@@ -41,7 +41,13 @@ const ChoiceWaitingSchema = BaseWaitingSchema.extend({
   variableScope: z.enum(['session', 'contact']).optional(),
 });
 
-export const WaitingForSchema = z.discriminatedUnion('type', [TextWaitingSchema, ChoiceWaitingSchema]);
+const FileWaitingSchema = BaseWaitingSchema.extend({
+  type: z.literal('file'),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
+});
+
+export const WaitingForSchema = z.discriminatedUnion('type', [TextWaitingSchema, ChoiceWaitingSchema, FileWaitingSchema]);
 
 export type WaitingFor = z.infer<typeof WaitingForSchema>;
 

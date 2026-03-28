@@ -128,6 +128,41 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
+  async getMediaUrl(mediaId: string): Promise<string> {
+    const url = `${this.config.apiUrl}/${mediaId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp media metadata error: ${response.status} - ${errorText}`, response.status);
+    }
+
+    const body = await response.json() as { url?: string };
+    if (!body.url) {
+      throw new WhatsAppAPIError('WhatsApp media metadata did not contain a media URL', 502);
+    }
+
+    return body.url;
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp media download error: ${response.status} - ${errorText}`, response.status);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
   async uploadMedia(_buffer: any, mimetype: string, filename?: string): Promise<string> {
     logger.info({ mimetype, filename }, 'Mock media upload');
     return `media-${Date.now()}`;
