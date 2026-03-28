@@ -22,4 +22,18 @@ export type {
 	CreateTranscriptionResult,
 	ExecuteOpenAINodePayload,
 	ExecuteOpenAINodeResult,
+	// New types
+	OpenAIAssistantInfo,
+	OpenAIThreadInfo,
+	OpenAIRunInfo,
+	OpenAIToolCall,
+	OpenAIThreadMessage,
+	OpenAIImageResult,
+	VariableToExtract,
+	AskAssistantPayload,
+	AskAssistantResult,
+	GenerateVariablesPayload,
+	GenerateVariablesResult,
+	CreateImagePayload,
+	CreateImageResult,
 } from './openai.types';

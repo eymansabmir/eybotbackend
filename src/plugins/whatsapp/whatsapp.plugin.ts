@@ -4,7 +4,7 @@ import { REDIS_PLUGIN, type IRedisPlugin } from '../redis';
 import { DirectWhatsAppSender, StubWhatsAppSender } from './sender';
 import { WhatsAppNormalizer } from './normalizer';
 import { WhatsAppDeduplicator } from './deduplicator';
-import type { WhatsAppConfig } from './whatsapp-api.service';
+import { WhatsAppAPIService, type WhatsAppConfig } from './whatsapp-api.service';
 
 export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   readonly name = 'whatsapp';
@@ -12,6 +12,7 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   private _sender!: IWhatsAppSender;
   private _normalizer!: WhatsAppNormalizer;
   private _deduplicator!: WhatsAppDeduplicator;
+  private _api?: WhatsAppAPIService;
 
   get sender(): IWhatsAppSender {
     return this._sender;
@@ -36,7 +37,8 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
     if (apiUrl && apiToken && phoneNumberId) {
       const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
-      this._sender = new DirectWhatsAppSender(config);
+      this._api = new WhatsAppAPIService(config);
+      this._sender = new DirectWhatsAppSender(this._api);
       logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
       this._sender = new StubWhatsAppSender();
@@ -46,5 +48,15 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
   async shutdown(): Promise<void> {
     // Stateless HTTP client — nothing to close.
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    if (!this._api) throw new Error('WhatsApp API not configured');
+    return this._api.getMediaUrl(mediaId);
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    if (!this._api) throw new Error('WhatsApp API not configured');
+    return this._api.downloadMedia(mediaUrl);
   }
 }

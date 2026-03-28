@@ -29,6 +29,7 @@ export class WhatsAppAPIService {
     await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'audio', audio: { link: url } });
   }
 
+
   async sendDocument(to: string, url: string, caption?: string, filename?: string): Promise<void> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'document', document: { link: url } };
     if (caption) payload.document.caption = caption;
@@ -221,5 +222,32 @@ export class WhatsAppAPIService {
       { messageType: msgType, to: payload.to },
       'WhatsAppAPI: message sent to Meta successfully',
     );
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    const url = `${this.config.apiUrl}/${mediaId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media URL error: ${response.status} - ${errorText}`, response.status);
+    }
+    const data = (await response.json()) as any;
+    return data.url;
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media download error: ${response.status} - ${errorText}`, response.status);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 }

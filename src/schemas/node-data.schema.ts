@@ -60,10 +60,47 @@ const SendDocumentDataSchema = z.object({
   filename: z.string().optional(),
 });
 
+const TemplateParameterSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({
+    type: z.literal('currency'),
+    currency: z.object({ fallback_value: z.string(), code: z.string(), amount_1000: z.number() })
+  }),
+  z.object({ type: z.literal('date_time'), date_time: z.object({ fallback_value: z.string() }) }),
+  z.object({ type: z.literal('image'), image: z.object({ link: z.string().optional(), id: z.string().optional() }) }),
+  z.object({ type: z.literal('document'), document: z.object({ link: z.string().optional(), id: z.string().optional(), filename: z.string().optional() }) }),
+  z.object({ type: z.literal('video'), video: z.object({ link: z.string().optional(), id: z.string().optional() }) }),
+  z.object({ type: z.literal('location'), location: z.object({ latitude: z.number(), longitude: z.number(), name: z.string().optional(), address: z.string().optional() }) }),
+]);
+
+const TemplateButtonParameterSchema = z.object({
+  type: z.enum(['payload', 'text', 'coupon_code']),
+  payload: z.string().optional(),
+  text: z.string().optional(),
+  coupon_code: z.string().optional(),
+});
+
+const TemplateComponentSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('header'),
+    parameters: z.array(TemplateParameterSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('body'),
+    parameters: z.array(TemplateParameterSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('button'),
+    sub_type: z.enum(['quick_reply', 'url', 'button']),
+    index: z.number(),
+    parameters: z.array(TemplateButtonParameterSchema),
+  }),
+]);
+
 const SendTemplateDataSchema = z.object({
   templateName: z.string(),
   languageCode: z.string(),
-  components: z.array(z.any()).optional(),
+  components: z.array(TemplateComponentSchema).optional(),
 });
 
 const SendCarouselDataSchema = z.object({
@@ -95,6 +132,13 @@ const AskQuestionDataSchema = z.object({
   variableScope: z.enum(['session', 'contact']),
   inputType: InputTypeSchema,
   validation: ValidationRuleSchema.optional(),
+  timeoutSeconds: z.number(),
+});
+
+const AskFileDataSchema = z.object({
+  message: z.string(),
+  variableName: z.string(),
+  variableScope: z.enum(['session', 'contact']),
   timeoutSeconds: z.number(),
 });
 
@@ -152,27 +196,61 @@ const WebhookDataSchema = z.object({
   ).optional(),
 });
 
+const HttpRequestDataSchema = z.object({
+  url: z.string().url(),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+  headers: z.record(z.string()).optional(),
+  queryParams: z.record(z.string()).optional(),
+  body: z.string().optional(),
+  timeoutMs: z.number().int().positive().default(15000),
+  fallbackText: z.string().optional(),
+  responseMapping: z.array(
+    z.object({
+      jsonPath: z.string(),
+      variableName: z.string(),
+      scope: z.enum(['session', 'contact']),
+    })
+  ).optional(),
+  credentialId: z.string().min(1).optional(),
+  proxyCredentialsId: z.string().min(1).optional(),
+});
+
 const GoogleSheetsDataSchema = z.object({
-  spreadsheetId: z.string(),
-  sheetName: z.string(),
-  action: z.enum(['read_row', 'append_row', 'find_row']),
+  credentialId: z.string().optional(),
+  action: z.enum(['insert_row', 'update_row', 'get_row']),
+  spreadsheetId: z.string().optional(),
+  spreadsheetName: z.string().optional(),
+  sheetId: z.string().optional(),
+  sheetName: z.string().optional(),
+  rowId: z.union([z.string(), z.number()]).optional(),
+  values: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
+  filter: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   data: z.record(z.string()).optional(),
   searchColumn: z.string().optional(),
   searchValue: z.string().optional(),
   resultVariable: z.string().optional(),
   resultScope: z.enum(['session', 'contact']).optional(),
-});
+  timeoutMs: z.number().int().positive().optional(),
+  responseMapping: z.array(z.any()).optional(),
+}).passthrough();
 
 const NocoDBDataSchema = z.object({
-  baseId: z.string(),
-  tableId: z.string(),
-  action: z.enum(['create', 'read', 'update', 'find']),
-  data: z.record(z.string()).optional(),
-  filterField: z.string().optional(),
-  filterValue: z.string().optional(),
-  resultVariable: z.string().optional(),
-  resultScope: z.enum(['session', 'contact']).optional(),
-});
+  credentialId: z.string().optional(),
+  baseId: z.string().optional(),
+  tableId: z.string().optional(),
+  tableName: z.string().optional(),
+  action: z.enum(['create', 'read', 'update', 'find', 'create_record', 'update_record', 'search_records']),
+  filter: z.string().optional(),
+  filterConditions: z.array(z.object({
+    field: z.string(),
+    operator: z.string(),
+    value: z.string(),
+  })).optional(),
+  returnType: z.enum(['All', 'First', 'Last', 'Random']).optional(),
+  fields: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
+  responseMapping: z.array(z.any()).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+}).passthrough();
 
 const SendCardsDataSchema = z.object({
   items: z.array(
@@ -193,13 +271,21 @@ const SendCardsDataSchema = z.object({
   interaction: NodeInteractionSchema.optional(),
 });
 
+const SendReactionDataSchema = z.object({
+  messageId: z.string(),
+  emoji: z.string(),
+});
+
 const OpenAIDataSchema = z.object({
-  mode: z.enum(['agent', 'voice']).default('agent'),
-  voiceAction: z.enum(['create_speech', 'create_transcription']).default('create_speech'),
-  credentialId: z.string().min(1),
-  model: z.string().min(1),
+  mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).optional(),
+  voiceAction: z.enum(['create_speech', 'create_transcription']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
   voice: z.string().optional(),
-  prompt: z.string().min(1),
+  prompt: z.string().optional(),
+  messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant', 'dialogue']), content: z.string() })).optional(),
+  tools: z.array(z.any()).optional(),
+  audioUrl: z.string().optional(),
   systemPrompt: z.string().optional(),
 
   temperature: z.number().min(0).max(2).optional(),
@@ -209,11 +295,24 @@ const OpenAIDataSchema = z.object({
   presencePenalty: z.number().min(-2).max(2).optional(),
   timeoutMs: z.number().int().positive().optional(),
 
-  resultVariable: z.string().min(1),
-  resultScope: z.enum(['session', 'contact']).default('session'),
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
   sendResponseToUser: z.boolean().optional(),
   fallbackText: z.string().optional(),
-});
+
+  // Assistant mode
+  assistantId: z.string().optional(),
+  threadId: z.string().optional(),
+  additionalInstructions: z.string().optional(),
+  functions: z.array(z.any()).optional(),
+
+  // Generate Variables mode
+  variablesToExtract: z.array(z.any()).optional(),
+
+  // Image mode
+  imageSize: z.string().optional(),
+  imageQuality: z.string().optional(),
+}).passthrough();
 
 const ElevenLabsDataSchema = z.object({
   credentialId: z.string().min(1),
@@ -234,6 +333,46 @@ const LanguageDataSchema = z.object({
   timeoutSeconds: z.number().optional(),
 });
 
+const AnthropicDataSchema = z.object({
+  mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(1).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+
+  variablesToExtract: z.array(z.any()).optional(),
+}).passthrough();
+
+const DeepSeekDataSchema = z.object({
+  mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
+  credentialId: z.string().min(1).optional(),
+  model: z.string().optional(),
+  prompt: z.string().optional(),
+  messages: z.array(z.any()).optional(),
+  systemPrompt: z.string().optional(),
+
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+
+  resultVariable: z.string().optional(),
+  resultScope: z.enum(['session', 'contact']).optional(),
+  sendResponseToUser: z.boolean().optional(),
+  fallbackText: z.string().optional(),
+
+  variablesToExtract: z.array(z.any()).optional(),
+}).passthrough();
+
 export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_TEXT), ...SendTextDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_IMAGE), ...SendMediaDataSchema.shape }),
@@ -247,6 +386,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_STICKER), ...SendMediaDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SEND_CAROUSEL), ...SendCarouselDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ASK_QUESTION), ...AskQuestionDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ASK_FILE), ...AskFileDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NPS), ...NpsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.CONDITION), ...ConditionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.SET_VARIABLE), ...SetVariableDataSchema.shape }),
@@ -256,12 +396,16 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.JUMP_TO_FLOW), ...JumpToFlowDataSchema.shape }),
   z.object({ type: z.literal(NodeType.HUMAN_HANDOFF), ...HumanHandoffDataSchema.shape }),
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.HTTP_REQUEST), ...HttpRequestDataSchema.shape }),
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
-  z.object({ type: z.literal(NodeType.NOCODB), ...NocoDBDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.NOCODB) }).merge(NocoDBDataSchema),
   z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_REACTION), ...SendReactionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.LANGUAGE), ...LanguageDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
+  z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

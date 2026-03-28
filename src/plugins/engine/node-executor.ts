@@ -30,6 +30,11 @@ export interface NodeExecutionResult {
   variableMutations: VariableMutation[];
   openAIRequest?: OpenAINodeRequest;
   elevenLabsRequest?: ElevenLabsNodeRequest;
+  anthropicRequest?: AnthropicNodeRequest;
+  deepSeekRequest?: DeepSeekNodeRequest;
+  httpRequest?: HttpRequestNodeRequest;
+  googleSheetsRequest?: GoogleSheetsNodeRequest;
+  nocoDBRequest?: NocoDBNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
@@ -44,12 +49,15 @@ export interface NodeExecutionInput {
 
 export interface OpenAINodeRequest {
   nodeId: string;
-  mode: 'agent' | 'voice';
+  mode: 'chat_completion' | 'voice' | 'assistant' | 'generate_variables' | 'image';
   voiceAction?: 'create_speech' | 'create_transcription';
   credentialId: string;
   model: string;
   voice?: string;
   prompt: string;
+  messages?: { role: 'system' | 'user' | 'assistant' | 'dialogue'; content: string }[];
+  tools?: any[];
+  audioUrl?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
@@ -61,6 +69,16 @@ export interface OpenAINodeRequest {
   resultScope: 'session' | 'contact';
   sendResponseToUser: boolean;
   fallbackText?: string;
+  // Assistant mode
+  assistantId?: string;
+  threadId?: string;
+  additionalInstructions?: string;
+  functions?: { name: string; code: string }[];
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
+  // Image mode
+  imageSize?: string;
+  imageQuality?: string;
 }
 
 export interface ElevenLabsNodeRequest {
@@ -75,6 +93,89 @@ export interface ElevenLabsNodeRequest {
   resultScope: 'session' | 'contact';
   sendResponseToUser: boolean;
   fallbackText?: string;
+}
+
+export interface AnthropicNodeRequest {
+  nodeId: string;
+  mode: 'chat_completion' | 'generate_variables';
+  credentialId: string;
+  model: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
+}
+
+export interface DeepSeekNodeRequest {
+  nodeId: string;
+  mode: 'chat_completion' | 'generate_variables';
+  credentialId: string;
+  model: string;
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  resultVariable: string;
+  resultScope: 'session' | 'contact';
+  sendResponseToUser: boolean;
+  fallbackText?: string;
+  // Generate Variables mode
+  variablesToExtract?: { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[];
+}
+
+export interface HttpRequestResponseMapping {
+  jsonPath: string;
+  variableName: string;
+  scope: 'session' | 'contact';
+}
+
+export interface HttpRequestNodeRequest {
+  nodeId: string;
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  body?: string;
+  timeoutMs?: number;
+  fallbackText?: string;
+  credentialId?: string;
+  proxyCredentialsId?: string;
+  responseMapping?: HttpRequestResponseMapping[];
+}
+
+export interface GoogleSheetsNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  action: 'insert_row' | 'update_row' | 'get_row';
+  spreadsheetId: string;
+  sheetId: string;
+  rowId?: number;
+  values?: Record<string, unknown>;
+  filter?: Record<string, unknown>;
+  timeoutMs?: number;
+  responseMapping?: HttpRequestResponseMapping[];
+}
+
+export interface NocoDBNodeRequest {
+  nodeId: string;
+  credentialId: string;
+  action: 'create_record' | 'update_record' | 'search_records';
+  tableId: string;
+  viewId?: string;
+  filter?: string;
+  filterConditions?: Array<{ field: string; operator: string; value: string }>;
+  returnType?: 'All' | 'First' | 'Last' | 'Random';
+  fields?: Array<{ key: string; value: string }>;
+  timeoutMs?: number;
+  responseMapping?: HttpRequestResponseMapping[];
 }
 
 const LOGIC_TYPES = new Set<NodeType>([
@@ -146,15 +247,40 @@ export class NodeExecutor {
       case NodeType.SEND_LIST:
         return this.handleList(currentNode, context, enteredAt, traverser, userInput);
 
-      case NodeType.SEND_TEMPLATE:
+      case NodeType.SEND_TEMPLATE: {
+        const components = (currentNode.data['components'] ?? []) as any[];
+        const resolvedComponents = components.map(comp => ({
+          ...comp,
+          parameters: comp.parameters?.map((param: any) => {
+            const p = { ...param };
+            if (typeof p.text === 'string') p.text = this.text(p.text, context);
+            if (p.image?.link) p.image = { ...p.image, link: this.text(p.image.link, context) };
+            if (p.video?.link) p.video = { ...p.video, link: this.text(p.video.link, context) };
+            if (p.document?.link) p.document = { ...p.document, link: this.text(p.document.link, context) };
+            if (typeof p.payload === 'string') p.payload = this.text(p.payload, context);
+            return p;
+          })
+        }));
+
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            templateName: currentNode.data['templateName'],
-            languageCode: currentNode.data['languageCode'],
-            components: currentNode.data['components'],
+            templateName: this.text(currentNode.data['templateName'] as string, context),
+            languageCode: this.text(currentNode.data['languageCode'] as string, context),
+            components: resolvedComponents,
           },
         }]);
+      }
+
+      case NodeType.SEND_REACTION: {
+        return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
+          type: currentNode.type,
+          payload: {
+            messageId: this.text(currentNode.data['messageId'] as string, context),
+            emoji: this.text(currentNode.data['emoji'] as string, context),
+          },
+        }]);
+      }
 
       case NodeType.SEND_CAROUSEL:
         return this.handleCarousel(currentNode, context, enteredAt, traverser, userInput);
@@ -162,6 +288,8 @@ export class NodeExecutor {
       case NodeType.ASK_QUESTION:
         return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
 
+      case NodeType.ASK_FILE:
+        return this.handleAskFile(currentNode, context, enteredAt, traverser, userInput);
       case NodeType.NPS:
         return this.handleNps(currentNode, context, enteredAt, traverser, userInput);
 
@@ -193,11 +321,15 @@ export class NodeExecutor {
       }
 
       case NodeType.WEBHOOK:
-      case NodeType.GOOGLE_SHEETS:
-      case NodeType.NOCODB:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
           { type: currentNode.type, payload: currentNode.data as Record<string, unknown> },
         ]);
+
+      case NodeType.NOCODB:
+        return this.handleNocoDB(currentNode, context, enteredAt, traverser);
+
+      case NodeType.GOOGLE_SHEETS:
+        return this.handleGoogleSheets(currentNode, context, enteredAt, traverser);
 
       case NodeType.SEND_CARDS:
         return this.handleCards(currentNode, context, enteredAt, traverser, userInput);
@@ -206,6 +338,15 @@ export class NodeExecutor {
 
       case NodeType.ELEVENLABS:
         return this.handleElevenLabs(currentNode, context, enteredAt, traverser);
+
+      case NodeType.ANTHROPIC:
+        return this.handleAnthropic(currentNode, context, enteredAt, traverser);
+
+      case NodeType.DEEPSEEK:
+        return this.handleDeepSeek(currentNode, context, enteredAt, traverser);
+
+      case NodeType.HTTP_REQUEST:
+        return this.handleHttpRequest(currentNode, context, enteredAt, traverser);
 
 
       default:
@@ -228,10 +369,17 @@ export class NodeExecutor {
     const base = this.defaultResult(node, 'default', enteredAt, traverser);
     const data = node.data as Record<string, unknown>;
 
+    const modeRaw = data['mode'] as string | undefined;
+    let mode: OpenAINodeRequest['mode'] = 'chat_completion';
+    if (modeRaw === 'voice') mode = 'voice';
+    else if (modeRaw === 'assistant') mode = 'assistant';
+    else if (modeRaw === 'generate_variables') mode = 'generate_variables';
+    else if (modeRaw === 'image') mode = 'image';
+
     const request: OpenAINodeRequest = {
       nodeId: node.id,
-      mode: data['mode'] === 'voice' ? 'voice' : 'agent',
-      ...(data['mode'] === 'voice'
+      mode,
+      ...(mode === 'voice'
         ? {
             voiceAction:
               data['voiceAction'] === 'create_transcription'
@@ -243,6 +391,14 @@ export class NodeExecutor {
       model: String(data['model'] ?? ''),
       ...(typeof data['voice'] === 'string' ? { voice: this.text(data['voice'], ctx) } : {}),
       prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      messages: Array.isArray(data['messages'])
+        ? data['messages'].map((m: any) => ({
+            role: m.role,
+            content: this.text(String(m.content ?? ''), ctx),
+          }))
+        : undefined,
+      tools: Array.isArray(data['tools']) ? data['tools'] : undefined,
+      ...(typeof data['audioUrl'] === 'string' ? { audioUrl: this.text(data['audioUrl'], ctx) } : {}),
       ...(typeof data['systemPrompt'] === 'string'
         ? { systemPrompt: this.text(data['systemPrompt'], ctx) }
         : {}),
@@ -262,11 +418,97 @@ export class NodeExecutor {
       ...(typeof data['fallbackText'] === 'string'
         ? { fallbackText: this.text(data['fallbackText'], ctx) }
         : {}),
+      // Assistant mode fields
+      ...(typeof data['assistantId'] === 'string' ? { assistantId: data['assistantId'] } : {}),
+      ...(typeof data['threadId'] === 'string' ? { threadId: data['threadId'] } : {}),
+      ...(typeof data['additionalInstructions'] === 'string'
+        ? { additionalInstructions: this.text(data['additionalInstructions'], ctx) }
+        : {}),
+      ...(Array.isArray(data['functions']) ? { functions: data['functions'] as { name: string; code: string }[] } : {}),
+      // Generate Variables mode fields
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as { name: string; description?: string; type?: 'string' | 'number' | 'boolean' }[] }
+        : {}),
+      // Image mode fields
+      ...(typeof data['imageSize'] === 'string' ? { imageSize: data['imageSize'] } : {}),
+      ...(typeof data['imageQuality'] === 'string' ? { imageQuality: data['imageQuality'] } : {}),
     };
 
     return {
       ...base,
       openAIRequest: request,
+    };
+  }
+
+  private handleAnthropic(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const mode = (data['mode'] as 'chat_completion' | 'generate_variables') || 'chat_completion';
+
+    const request: AnthropicNodeRequest = {
+      nodeId: node.id,
+      mode,
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string' ? { systemPrompt: this.text(data['systemPrompt'], ctx) } : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as any }
+        : {}),
+    };
+
+    return {
+      ...base,
+      anthropicRequest: request,
+    };
+  }
+
+  private handleDeepSeek(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const mode = (data['mode'] as 'chat_completion' | 'generate_variables') || 'chat_completion';
+
+    const request: DeepSeekNodeRequest = {
+      nodeId: node.id,
+      mode,
+      credentialId: String(data['credentialId'] ?? ''),
+      model: String(data['model'] ?? ''),
+      prompt: this.text(String(data['prompt'] ?? ''), ctx),
+      ...(typeof data['systemPrompt'] === 'string' ? { systemPrompt: this.text(data['systemPrompt'], ctx) } : {}),
+      ...(typeof data['temperature'] === 'number' ? { temperature: data['temperature'] } : {}),
+      ...(typeof data['maxTokens'] === 'number' ? { maxTokens: data['maxTokens'] } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      resultVariable: String(data['resultVariable'] ?? ''),
+      resultScope: (data['resultScope'] as 'session' | 'contact') ?? 'session',
+      sendResponseToUser: data['sendResponseToUser'] === true,
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
+      ...(Array.isArray(data['variablesToExtract'])
+        ? { variablesToExtract: data['variablesToExtract'] as any }
+        : {}),
+    };
+
+    return {
+      ...base,
+      deepSeekRequest: request,
     };
   }
 
@@ -316,6 +558,181 @@ export class NodeExecutor {
       variableMutations: mutations,
       isTerminal: false,
       historyStep: { nodeId: node.id, nodeType: node.type, enteredAt, exitedAt: new Date(), branchTaken: branchKey },
+    };
+  }
+
+  private handleHttpRequest(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const resolveRecord = (value: unknown): Record<string, string> | undefined => {
+      if (!value || typeof value !== 'object') return undefined;
+      const out: Record<string, string> = {};
+      for (const [key, raw] of Object.entries(value)) {
+        if (typeof raw === 'string') {
+          out[key] = this.text(raw, ctx);
+        }
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
+    };
+
+    const responseMapping = Array.isArray(data['responseMapping'])
+      ? (data['responseMapping'] as Array<Record<string, unknown>>)
+          .filter((item) => typeof item['jsonPath'] === 'string' && typeof item['variableName'] === 'string')
+          .map((item) => ({
+            jsonPath: item['jsonPath'] as string,
+            variableName: item['variableName'] as string,
+            scope: (item['scope'] === 'contact' ? 'contact' : 'session') as 'session' | 'contact',
+          }))
+      : undefined;
+
+    const resolvedHeaders = resolveRecord(data['headers']);
+    const resolvedQueryParams = resolveRecord(data['queryParams']);
+
+    const request: HttpRequestNodeRequest = {
+      nodeId: node.id,
+      url: this.text(String(data['url'] ?? ''), ctx),
+      method: ((data['method'] as string) ?? 'GET').toUpperCase() as HttpRequestNodeRequest['method'],
+      ...(resolvedHeaders ? { headers: resolvedHeaders } : {}),
+      ...(resolvedQueryParams ? { queryParams: resolvedQueryParams } : {}),
+      ...(typeof data['body'] === 'string' ? { body: this.text(data['body'], ctx) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(typeof data['fallbackText'] === 'string' ? { fallbackText: this.text(data['fallbackText'], ctx) } : {}),
+      ...(typeof data['credentialId'] === 'string' ? { credentialId: data['credentialId'] } : {}),
+      ...(typeof data['proxyCredentialsId'] === 'string' ? { proxyCredentialsId: data['proxyCredentialsId'] } : {}),
+      ...(responseMapping && responseMapping.length > 0 ? { responseMapping } : {}),
+    };
+
+    return {
+      ...base,
+      httpRequest: request,
+    };
+  }
+
+  private handleGoogleSheets(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const parseRecord = (value: unknown): Record<string, unknown> | undefined => {
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(this.text(value, ctx));
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            value = parsed;
+          } else {
+            return undefined;
+          }
+        } catch {
+          return undefined;
+        }
+      }
+
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+      const out: Record<string, unknown> = {};
+      for (const [key, raw] of Object.entries(value)) {
+        if (typeof raw === 'string') {
+           out[key] = this.text(raw, ctx);
+        } else {
+           out[key] = raw;
+        }
+      }
+      return Object.keys(out).length > 0 ? out : undefined;
+    };
+
+    const responseMapping = Array.isArray(data['responseMapping'])
+      ? (data['responseMapping'] as Array<Record<string, unknown>>)
+          .filter(
+            (item) =>
+              typeof item['jsonPath'] === 'string' &&
+              typeof item['variableName'] === 'string' &&
+              (item['scope'] === 'session' || item['scope'] === 'contact'),
+          )
+          .map((item) => ({
+            jsonPath: item['jsonPath'] as string,
+            variableName: item['variableName'] as string,
+            scope: item['scope'] as 'session' | 'contact',
+          }))
+      : undefined;
+
+    const action = (data['action'] as string) || 'insert_row';
+
+    const request: GoogleSheetsNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      action: action as 'insert_row' | 'update_row' | 'get_row',
+      spreadsheetId: this.text(String(data['spreadsheetId'] ?? ''), ctx),
+      sheetId: String(data['sheetId'] ?? ''),
+      ...(data['rowId'] !== undefined ? { rowId: Number(this.text(String(data['rowId']), ctx)) } : {}),
+      ...(data['values'] ? { values: parseRecord(data['values']) } : {}),
+      ...(data['filter'] ? { filter: parseRecord(data['filter']) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(responseMapping && responseMapping.length > 0 ? { responseMapping } : {}),
+    };
+
+    return {
+      ...base,
+      googleSheetsRequest: request,
+    };
+  }
+
+  private handleNocoDB(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const base = this.defaultResult(node, 'default', enteredAt, traverser);
+    const data = node.data as Record<string, unknown>;
+
+    const resolveFields = (value: unknown): Array<{ key: string; value: string }> | undefined => {
+      if (!Array.isArray(value)) return undefined;
+      const out: Array<{ key: string; value: string }> = [];
+      for (const item of value) {
+        if (item && typeof item === 'object' && typeof item.key === 'string' && typeof item.value === 'string') {
+          out.push({
+            key: this.text(item.key, ctx),
+            value: this.text(item.value, ctx),
+          });
+        }
+      }
+      return out.length > 0 ? out : undefined;
+    };
+
+    const action = (data['action'] as string) || 'create_record';
+
+    const request: NocoDBNodeRequest = {
+      nodeId: node.id,
+      credentialId: String(data['credentialId'] ?? ''),
+      action: action as 'create_record' | 'update_record' | 'search_records',
+      tableId: this.text(String(data['tableId'] ?? ''), ctx),
+      viewId: data['viewId'] ? this.text(String(data['viewId']), ctx) : undefined,
+      filter: data['filter'] ? this.text(String(data['filter']), ctx) : undefined,
+      filterConditions: Array.isArray(data['filterConditions']) 
+        ? data['filterConditions'].map((c: any) => ({
+            field: c.field,
+            operator: c.operator,
+            value: this.text(String(c.value ?? ''), ctx)
+          }))
+        : undefined,
+      returnType: data['returnType'] as any,
+      ...(data['fields'] ? { fields: resolveFields(data['fields']) } : {}),
+      ...(typeof data['timeoutMs'] === 'number' ? { timeoutMs: data['timeoutMs'] } : {}),
+      ...(data['responseMapping'] ? { responseMapping: data['responseMapping'] as HttpRequestResponseMapping[] } : {}),
+    };
+
+    return {
+      ...base,
+      nocoDBRequest: request,
     };
   }
 
@@ -391,7 +808,7 @@ export class NodeExecutor {
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
     const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
-    const resolvedMessage = this.text(message as string, ctx);
+    const resolvedMessage = this.text((message as string) || '', ctx);
 
     if (userInput === undefined) {
       const since = new Date();
@@ -400,6 +817,29 @@ export class NodeExecutor {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'text', variableName, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: variableScope as 'session' | 'contact', key: variableName as string, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput } };
+  }
+
+  private handleAskFile(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
+    const resolvedMessage = this.text((message as string) || '', ctx);
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      return {
+        nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'file', variableName, variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
