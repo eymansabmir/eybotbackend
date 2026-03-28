@@ -26,6 +26,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1003.0",
     "@azure/storage-blob": "^12.31.0",
     "@google-cloud/storage": "^5.18.3",
+    "@google-cloud/translate": "^9.3.0",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@types/multer": "^2.0.0",

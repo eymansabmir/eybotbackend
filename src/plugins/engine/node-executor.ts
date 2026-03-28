@@ -523,7 +523,17 @@ export class NodeExecutor {
     const bodyText = node.data['bodyText'] ? this.text(node.data['bodyText'] as string, ctx) : undefined;
     const cards = (node.data['cards'] as any[])?.map(card => ({
       ...card,
+      url: card.url ? this.text(card.url as string, ctx) : undefined,
       bodyText: card.bodyText ? this.text(card.bodyText as string, ctx) : undefined,
+      ctaUrlButton: card.ctaUrlButton ? {
+        ...card.ctaUrlButton,
+        displayText: card.ctaUrlButton.displayText ? this.text(card.ctaUrlButton.displayText as string, ctx) : undefined,
+        url: card.ctaUrlButton.url ? this.text(card.ctaUrlButton.url as string, ctx) : undefined,
+      } : undefined,
+      quickReplyButtons: card.quickReplyButtons?.map((btn: any) => ({
+        ...btn,
+        title: btn.title ? this.text(btn.title as string, ctx) : undefined,
+      })),
     }));
     const interaction = node.data['interaction'] as any;
 
@@ -531,7 +541,6 @@ export class NodeExecutor {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 3600) as number) * 1000);
       
-      // Collect all possible quick reply options across all cards
       const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
@@ -542,7 +551,7 @@ export class NodeExecutor {
 
       return {
         nextNodeId: node.id,
-        outboundMessages: [{ type: node.type, payload: { bodyText, cards: node.data['cards'] } }],
+        outboundMessages: [{ type: node.type, payload: { bodyText, cards } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
@@ -568,7 +577,7 @@ export class NodeExecutor {
     }
 
     return this.defaultResult(node, 'default', enteredAt, traverser, [
-      { type: node.type, payload: { bodyText, cards: node.data['cards'] } },
+      { type: node.type, payload: { bodyText, cards } },
     ]);
   }
 

@@ -1,13 +1,13 @@
-import { Translate } from '@google-cloud/translate/build/src/v2';
+import { v2 } from '@google-cloud/translate';
 import { Node } from '../../schemas/node.schema';
 import { NodeType } from '../../schemas/node-types.enum';
 import type { IFlowRepository } from '../../features/flow/flow.repository';
 
 const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
 
-let translate: Translate | undefined;
+let translate: v2.Translate | undefined;
 if (apiKey) {
-  translate = new Translate({ key: apiKey });
+  translate = new v2.Translate({ key: apiKey });
 }
 
 /**
