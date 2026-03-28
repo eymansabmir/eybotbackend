@@ -26,6 +26,11 @@ export const FlowSettingsSchema = z.object({
   maxSteps: z.number().default(100),
   maxConsecutiveLogicSteps: z.number().default(10),
   fallbackMessage: z.string().default('Sorry, something went wrong. Please try again later.'),
+  localization: z.object({
+    isEnabled: z.boolean().default(false),
+    languages: z.array(z.string()).default([]),
+    defaultLanguage: z.string().optional(),
+  }).optional(),
 });
 
 export type FlowSettings = z.infer<typeof FlowSettingsSchema>;

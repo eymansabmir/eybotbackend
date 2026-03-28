@@ -12,6 +12,8 @@ export interface IFlowRepository {
     findPublishedByOrgAndKeyword(orgId: string, keyword: string): Promise<FlowEntity | null>;
     update(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity>;
     delete(id: string): Promise<void>;
+    getTranslation(flowId: string, language: string): Promise<any>;
+    saveTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
 }
 
 export class PrismaFlowRepository implements IFlowRepository {
@@ -111,6 +113,22 @@ export class PrismaFlowRepository implements IFlowRepository {
             }
             throw error;
         }
+    }
+
+    async getTranslation(flowId: string, language: string): Promise<any> {
+        return this.prisma.flowTranslation.findUnique({
+            where: {
+                flowId_language: { flowId, language },
+            },
+        });
+    }
+
+    async saveTranslation(flowId: string, language: string, translatedData: any): Promise<void> {
+        await this.prisma.flowTranslation.upsert({
+            where: { flowId_language: { flowId, language } },
+            update: { translatedData },
+            create: { flowId, language, translatedData },
+        });
     }
 }
 

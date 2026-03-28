@@ -33,6 +33,7 @@ export interface RuntimeIntegrations {
   executeAnthropic?(input: AnthropicNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeDeepSeek?(input: DeepSeekNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  getTranslation?(language: string): Promise<any[] | null>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
@@ -177,6 +178,13 @@ export class FlowOrchestrator {
 
       for (const m of stepResult.variableMutations) {
         this.applyMutation(m, session, contact, allContactMutations);
+      }
+
+      if (stepResult.languageChanged && runtime?.getTranslation) {
+        const translatedNodes = await runtime.getTranslation(stepResult.languageChanged);
+        if (translatedNodes) {
+          traverser.updateNodes(translatedNodes as any);
+        }
       }
 
       if (stepResult.openAIRequest) {

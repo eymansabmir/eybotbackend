@@ -328,6 +328,11 @@ const ElevenLabsDataSchema = z.object({
   fallbackText: z.string().optional(),
 });
 
+const LanguageDataSchema = z.object({
+  message: z.string(),
+  variable: z.string(),
+  timeoutSeconds: z.number().optional(),
+});
 
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
@@ -399,6 +404,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SEND_REACTION), ...SendReactionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.LANGUAGE), ...LanguageDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
   z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
 ]);

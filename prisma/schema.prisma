@@ -25,9 +25,26 @@ model Flow {
 
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  campaigns Campaign[]
+  campaigns     Campaign[]
+  translations  FlowTranslation[]
 
   @@index([orgId, status])
+}
+
+model FlowTranslation {
+  id             String   @id @default(uuid())
+  flowId         String
+  language       String
+  translatedData Json
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  flow           Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@unique([flowId, language], name: "flowId_language")
+  @@index([flowId])
+  @@map("flow_translations")
 }
 
 model ChatSession {
