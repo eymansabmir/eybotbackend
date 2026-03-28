@@ -4,8 +4,7 @@ import { REDIS_PLUGIN, type IRedisPlugin } from '../redis';
 import { DirectWhatsAppSender, StubWhatsAppSender } from './sender';
 import { WhatsAppNormalizer } from './normalizer';
 import { WhatsAppDeduplicator } from './deduplicator';
-import { WhatsAppAPIService } from './whatsapp-api.service';
-import type { WhatsAppConfig } from './whatsapp-api.service';
+import { WhatsAppAPIService, type WhatsAppConfig } from './whatsapp-api.service';
 
 export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   readonly name = 'whatsapp';
@@ -52,8 +51,8 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
     if (apiUrl && apiToken && phoneNumberId) {
       const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
-      this._sender = new DirectWhatsAppSender(config);
       this._api = new WhatsAppAPIService(config);
+      this._sender = new DirectWhatsAppSender(this._api);
       logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
       this._sender = new StubWhatsAppSender();

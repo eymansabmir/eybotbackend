@@ -779,7 +779,7 @@ export class NodeExecutor {
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
     const { variableName, variableScope, timeoutSeconds, message } = node.data as Record<string, any>;
-    const resolvedMessage = this.text(message as string, ctx);
+    const resolvedMessage = this.text((message as string) || '', ctx);
 
     if (userInput === undefined) {
       const since = new Date();

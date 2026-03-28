@@ -29,10 +29,6 @@ export class WhatsAppAPIService {
     await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'audio', audio: { link: url } });
   }
 
-  async sendSticker(to: string, url: string): Promise<void> {
-    await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'sticker', sticker: { link: url } });
-  }
-
   async sendDocument(to: string, url: string, caption?: string, filename?: string): Promise<void> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'document', document: { link: url } };
     if (caption) payload.document.caption = caption;
@@ -128,44 +124,21 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
-  async getMediaUrl(mediaId: string): Promise<string> {
-    const url = `${this.config.apiUrl}/${mediaId}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+  async sendSticker(to: string, sticker: string): Promise<void> {
+    const isId = !sticker.startsWith('http');
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'sticker',
+      sticker: isId ? { id: sticker } : { link: sticker },
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new WhatsAppAPIError(`WhatsApp media metadata error: ${response.status} - ${errorText}`, response.status);
-    }
-
-    const body = await response.json() as { url?: string };
-    if (!body.url) {
-      throw new WhatsAppAPIError('WhatsApp media metadata did not contain a media URL', 502);
-    }
-
-    return body.url;
   }
 
-  async downloadMedia(mediaUrl: string): Promise<Buffer> {
-    const response = await fetch(mediaUrl, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${this.config.apiToken}` },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new WhatsAppAPIError(`WhatsApp media download error: ${response.status} - ${errorText}`, response.status);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
-
-  async uploadMedia(_buffer: any, mimetype: string, filename?: string): Promise<string> {
-    logger.info({ mimetype, filename }, 'Mock media upload');
-    return `media-${Date.now()}`;
+  async uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {
+    // Note: A full implementation would fetch from `url` and send as multipart to Meta
+    logger.info({ url, type }, 'WhatsAppAPI: uploadMedia called (placeholder)');
+    return 'placeholder-media-id';
   }
 
   private async call(payload: any): Promise<void> {
@@ -192,5 +165,35 @@ export class WhatsAppAPIService {
       { messageType: msgType, to: payload.to },
       'WhatsAppAPI: message sent to Meta successfully',
     );
+  }
+
+  async getMediaUrl(mediaId: string): Promise<string> {
+    const url = `${this.config.apiUrl}/${mediaId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media URL error: ${response.status} - ${errorText}`, response.status);
+    }
+    const data = (await response.json()) as { url?: string };
+    if (!data.url) {
+      throw new WhatsAppAPIError('WhatsApp media metadata did not contain a media URL', 502);
+    }
+    return data.url;
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.config.apiToken}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new WhatsAppAPIError(`WhatsApp API media download error: ${response.status} - ${errorText}`, response.status);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 }
