@@ -7,7 +7,7 @@ import { ConditionEvaluator } from './condition-evaluator';
 import { GraphTraverser } from './graph-traverser';
 import type { OutboundMessage } from './engine.interface';
 import type { WaitingFor } from '../../features/session/session.entity';
-import { ISO_TO_NATIVE_NAME } from '@plugins/i18n/languages';
+import { ISO_TO_NATIVE_NAME } from '../i18n/languages';
 
 export interface VariableMutation {
   scope: 'session' | 'contact';
