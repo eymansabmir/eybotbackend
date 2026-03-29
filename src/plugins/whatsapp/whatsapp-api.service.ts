@@ -197,6 +197,16 @@ export class WhatsAppAPIService {
     }
   }
 
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'reaction',
+      reaction: { message_id: messageId, emoji },
+    });
+  }
+
   private async call(payload: any): Promise<void> {
     const msgType = payload.type;
     logger.info(
