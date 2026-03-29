@@ -18,11 +18,14 @@ export class AzureProvider implements IStorageProvider {
       blobHTTPHeaders: { blobContentType: mimeType },
     });
 
-    const url = env.BASE_MEDIA_URL
+    return { path: blobName, url: this.getPublicUrl(blobName) };
+  }
+
+  getPublicUrl(blobName: string): string {
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
+    return env.BASE_MEDIA_URL
       ? `${env.BASE_MEDIA_URL}/${blobName}`
       : blockBlobClient.url;
-
-    return { path: blobName, url };
   }
 
   async delete(filePath: string): Promise<void> {

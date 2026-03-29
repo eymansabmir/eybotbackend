@@ -21,5 +21,6 @@ export interface IStoragePlugin {
     folder: string,
   ): Promise<{ uploadUrl: string; fileUrl: string }>;
   getSignedUrl(filePath: string): Promise<string>;
+  resolveUrl(filePath: string, bucket?: 'public' | 'private'): Promise<string>;
   downloadFile(filePath: string): Promise<Buffer>;
 }

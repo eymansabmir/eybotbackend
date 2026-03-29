@@ -22,3 +22,9 @@ export const SignedUrlQuerySchema = z.object({
 export const DeleteFileBodySchema = z.object({
     filePath: z.string().min(1, "filePath is required"),
 });
+
+/** Schema for GET /resolve-url query */
+export const ResolveUrlQuerySchema = z.object({
+    filePath: z.string().min(1, "filePath is required"),
+    bucket: z.enum(["public", "private"]).default("public"),
+});

@@ -21,11 +21,13 @@ export class S3Provider implements IStorageProvider {
       new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: buffer, ContentType: mimeType }),
     );
 
-    const url = env.BASE_MEDIA_URL
+    return { path: key, url: this.getPublicUrl(key) };
+  }
+
+  getPublicUrl(key: string): string {
+    return env.BASE_MEDIA_URL
       ? `${env.BASE_MEDIA_URL}/${key}`
       : `https://${this.bucket}.s3.amazonaws.com/${key}`;
-
-    return { path: key, url };
   }
 
   async delete(filePath: string): Promise<void> {

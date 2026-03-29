@@ -11,11 +11,13 @@ export class GcsProvider implements IStorageProvider {
 
     await file.save(buffer, { metadata: { contentType: mimeType } });
 
-    const url = env.BASE_MEDIA_URL
+    return { path: filePath, url: this.getPublicUrl(filePath) };
+  }
+
+  getPublicUrl(filePath: string): string {
+    return env.BASE_MEDIA_URL
       ? `${env.BASE_MEDIA_URL}/${filePath}`
       : `https://storage.googleapis.com/${this.bucket.name}/${filePath}`;
-
-    return { path: filePath, url };
   }
 
   async delete(filePath: string): Promise<void> {
