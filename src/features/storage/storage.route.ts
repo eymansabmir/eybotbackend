@@ -7,6 +7,7 @@ export function createStorageRouter(controller: StorageController): Router {
   router.post('/upload', upload.single('file'), controller.uploadFile);
   router.get('/presigned-url', controller.getPresignedUrl);
   router.get('/signed-url', controller.getSignedUrl);
+  router.get('/resolve-url', controller.resolveUrl);
   router.delete('/file', controller.deleteFile);
   return router;
 }

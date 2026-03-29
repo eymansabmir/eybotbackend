@@ -14,6 +14,7 @@ export interface IStorageProvider {
   upload(params: UploadParams): Promise<UploadResult>;
   delete(filePath: string): Promise<void>;
   getSignedUrl?(filePath: string): Promise<string>;
+  getPublicUrl(filePath: string): string;
   getSignedUploadUrl?(
     filePath: string,
     contentType: string,

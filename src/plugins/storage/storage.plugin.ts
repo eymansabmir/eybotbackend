@@ -59,6 +59,13 @@ export class StoragePlugin implements IPlugin, IStoragePlugin {
     return this._provider.getSignedUrl(filePath);
   }
 
+  async resolveUrl(filePath: string, bucket: 'public' | 'private' = 'public'): Promise<string> {
+    if (bucket === 'private') {
+      return this.getSignedUrl(filePath);
+    }
+    return this._provider.getPublicUrl(filePath);
+  }
+
   async downloadFile(filePath: string): Promise<Buffer> {
     return this._provider.download(filePath);
   }

@@ -5,11 +5,20 @@ import {
   PresignedUrlQuerySchema,
   SignedUrlQuerySchema,
   DeleteFileBodySchema,
+  ResolveUrlQuerySchema,
 } from '../../schemas/storage.schema';
 import { isAllowedMime, getSizeLimitMB, FOLDER_SIZE_LIMITS } from '../../plugins/storage/storage.config';
 
 export class StorageController {
   constructor(private readonly storagePlugin: IStoragePlugin) {}
+
+  resolveUrl = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { filePath, bucket } = ResolveUrlQuerySchema.parse(req.query);
+      const url = await this.storagePlugin.resolveUrl(filePath, bucket);
+      res.json({ success: true, data: { url } });
+    } catch (err) { next(err); }
+  };
 
   uploadFile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
