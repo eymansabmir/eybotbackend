@@ -6,6 +6,8 @@ import type { IEnginePlugin, ContactInfo } from '../../plugins/engine';
 import type { IRedisPlugin } from '../../plugins/redis';
 import type { IStoragePlugin } from '../../plugins/storage';
 import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
+import { NodeType } from '../../schemas/node-types.enum';
+import { Readable } from 'stream';
 import { ValidationError } from '../../utils/errors';
 
 const LOCK_PREFIX = 'wa:lock:';
@@ -56,32 +58,86 @@ export class SessionInboundHandler implements IInboundHandler {
           userInput = message.interactiveOptionId;
         }
 
-        if (activeSession.waitingFor?.type === 'file' && message.mediaId) {
-          logger.info({ waId, mediaId: message.mediaId }, 'SessionInboundHandler: downloading media...');
-          const metaUrl = await this.whatsappPlugin.getMediaUrl(message.mediaId);
-          const buffer = await this.whatsappPlugin.downloadMedia(metaUrl);
-          
-          const uploadResult = await this.storagePlugin.uploadFile({
-            buffer,
-            originalname: message.mediaFilename ?? `file_${message.mediaId}`,
-            mimetype: message.mediaMimeType ?? 'application/octet-stream',
-            fieldname: 'file',
-            encoding: '7bit',
-            size: buffer.length,
-            stream: null as any,
-            destination: '',
-            filename: '',
-            path: ''
-          });
-          userInput = uploadResult.url;
+        if (activeSession.waitingFor?.type === 'file') {
+          const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
+          const textFallback = (text ?? '').trim();
+
+          if (!hasMediaInput) {
+            if (textFallback.length > 0) {
+              userInput = textFallback;
+              logger.info({ waId, sessionId: activeSession.id }, 'SessionInboundHandler: file wait accepted text fallback input');
+            } else {
+              return [{
+                waId,
+                waBusinessNumber,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: 'Please upload a file to continue, or send text input.' },
+                orgId,
+                sessionId: activeSession.id,
+              }];
+            }
+          }
+
+          if (hasMediaInput) {
+            try {
+              const mediaUrl = message.mediaUrl ?? await this.whatsappPlugin.getMediaUrl(message.mediaId!);
+              const buffer = await this.whatsappPlugin.downloadMedia(mediaUrl);
+              const mimeType = message.mediaMimeType ?? 'application/octet-stream';
+              const originalName = message.mediaFilename ?? `${message.type}-${message.mediaId ?? Date.now()}`;
+
+              const upload = await this.storagePlugin.uploadFile(
+                {
+                  fieldname: 'file',
+                  originalname: originalName,
+                  encoding: '7bit',
+                  mimetype: mimeType,
+                  size: buffer.length,
+                  destination: '',
+                  filename: '',
+                  path: '',
+                  buffer,
+                  stream: Readable.from(buffer),
+                },
+                'uploads',
+              );
+
+              userInput = upload.url;
+              logger.info({ waId, sessionId: activeSession.id, url: upload.url }, 'SessionInboundHandler: uploaded inbound file and mapped to userInput');
+            } catch (err) {
+              logger.error({ err, waId, mediaId: message.mediaId, mediaUrl: message.mediaUrl }, 'SessionInboundHandler: failed to process inbound file');
+              return [{
+                waId,
+                waBusinessNumber,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: 'I could not process that file. Please try again with a supported attachment or send text input.' },
+                orgId,
+                sessionId: activeSession.id,
+              }];
+            }
+          }
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
+        
+        let flowToExecute = flow;
+        const language = activeSession.variables?.selected_language || (flow.settings as any)?.localization?.defaultLanguage;
+        if (language) {
+          const translation = await this.flowRepo.getTranslation(flow.id!, language);
+          if (translation) {
+            flowToExecute = flow.clone();
+            flowToExecute.nodes = translation.translatedData as any;
+          }
+        }
+
         const result = await this.enginePlugin.resumeFlow(
           { sessionId: activeSession.id!, userInput: userInput ?? '' },
-          flow,
+          flowToExecute,
           contact,
           activeSession,
+          async (lang: string) => {
+            const t = await this.flowRepo.getTranslation(flow.id!, lang);
+            return t?.translatedData || null;
+          }
         );
 
         await this.sessionRepo.update(result.session.id!, {
@@ -115,10 +171,25 @@ export class SessionInboundHandler implements IInboundHandler {
         logger.info({ waId, flowId: flow.id }, 'SessionInboundHandler: starting new session from keyword match');
 
         await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
+        
+        let flowToExecute = flow;
+        const language = (contact.customFields?.language as string | undefined) || (flow.settings as any)?.localization?.defaultLanguage;
+        if (language) {
+            const translation = await this.flowRepo.getTranslation(flow.id!, language);
+            if (translation) {
+                flowToExecute = flow.clone();
+                flowToExecute.nodes = translation.translatedData as any;
+            }
+        }
+
         const result = await this.enginePlugin.startFlow(
           { orgId, flowId: flow.id!, waId, waBusinessNumber },
-          flow,
+          flowToExecute,
           contact,
+          async (lang: string) => {
+            const t = await this.flowRepo.getTranslation(flow.id!, lang);
+            return t?.translatedData || null;
+          }
         );
 
         const saved = await this.sessionRepo.create(result.session);

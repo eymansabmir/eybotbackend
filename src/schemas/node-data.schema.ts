@@ -60,10 +60,47 @@ const SendDocumentDataSchema = z.object({
   filename: z.string().optional(),
 });
 
+const TemplateParameterSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({
+    type: z.literal('currency'),
+    currency: z.object({ fallback_value: z.string(), code: z.string(), amount_1000: z.number() })
+  }),
+  z.object({ type: z.literal('date_time'), date_time: z.object({ fallback_value: z.string() }) }),
+  z.object({ type: z.literal('image'), image: z.object({ link: z.string().optional(), id: z.string().optional() }) }),
+  z.object({ type: z.literal('document'), document: z.object({ link: z.string().optional(), id: z.string().optional(), filename: z.string().optional() }) }),
+  z.object({ type: z.literal('video'), video: z.object({ link: z.string().optional(), id: z.string().optional() }) }),
+  z.object({ type: z.literal('location'), location: z.object({ latitude: z.number(), longitude: z.number(), name: z.string().optional(), address: z.string().optional() }) }),
+]);
+
+const TemplateButtonParameterSchema = z.object({
+  type: z.enum(['payload', 'text', 'coupon_code']),
+  payload: z.string().optional(),
+  text: z.string().optional(),
+  coupon_code: z.string().optional(),
+});
+
+const TemplateComponentSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('header'),
+    parameters: z.array(TemplateParameterSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('body'),
+    parameters: z.array(TemplateParameterSchema).optional(),
+  }),
+  z.object({
+    type: z.literal('button'),
+    sub_type: z.enum(['quick_reply', 'url', 'button']),
+    index: z.number(),
+    parameters: z.array(TemplateButtonParameterSchema),
+  }),
+]);
+
 const SendTemplateDataSchema = z.object({
   templateName: z.string(),
   languageCode: z.string(),
-  components: z.array(z.any()).optional(),
+  components: z.array(TemplateComponentSchema).optional(),
 });
 
 const SendCarouselDataSchema = z.object({
@@ -101,6 +138,7 @@ const AskQuestionDataSchema = z.object({
 const AskFileDataSchema = z.object({
   message: z.string(),
   variableName: z.string(),
+  variableId: z.string().optional(),
   variableScope: z.enum(['session', 'contact']),
   timeoutSeconds: z.number(),
 });
@@ -234,6 +272,11 @@ const SendCardsDataSchema = z.object({
   interaction: NodeInteractionSchema.optional(),
 });
 
+const SendReactionDataSchema = z.object({
+  messageId: z.string(),
+  emoji: z.string(),
+});
+
 const OpenAIDataSchema = z.object({
   mode: z.enum(['agent', 'voice', 'chat_completion', 'assistant', 'generate_variables', 'image']).optional(),
   voiceAction: z.enum(['create_speech', 'create_transcription']).optional(),
@@ -285,6 +328,11 @@ const ElevenLabsDataSchema = z.object({
   fallbackText: z.string().optional(),
 });
 
+const LanguageDataSchema = z.object({
+  message: z.string(),
+  variable: z.string(),
+  timeoutSeconds: z.number().optional(),
+});
 
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
@@ -353,8 +401,10 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.GOOGLE_SHEETS), ...GoogleSheetsDataSchema.shape }),
   z.object({ type: z.literal(NodeType.NOCODB) }).merge(NocoDBDataSchema),
   z.object({ type: z.literal(NodeType.SEND_CARDS), ...SendCardsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SEND_REACTION), ...SendReactionDataSchema.shape }),
   z.object({ type: z.literal(NodeType.OPENAI), ...OpenAIDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ELEVENLABS), ...ElevenLabsDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.LANGUAGE), ...LanguageDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
   z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
 ]);

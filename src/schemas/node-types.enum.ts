@@ -15,6 +15,7 @@ export enum NodeType {
   ASK_FILE = 'ask_file',
   NPS = 'nps',
   SEND_CARDS = 'send_cards',
+  SEND_REACTION = 'send_reaction',
 
   // Logic Nodes
   CONDITION = 'condition',
@@ -27,11 +28,11 @@ export enum NodeType {
   JUMP_TO_FLOW = 'jump_to_flow',
   HUMAN_HANDOFF = 'human_handoff',
 
-  // Integration Nodes
   WEBHOOK = 'webhook',
   HTTP_REQUEST = 'http_request',
   GOOGLE_SHEETS = 'google_sheets',
   NOCODB = 'nocodb',
+  LANGUAGE = 'language',
    OPENAI = 'openai',
   ELEVENLABS = 'elevenlabs',
   ANTHROPIC = 'anthropic',
@@ -54,6 +55,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.ASK_FILE,
   NodeType.NPS,
   NodeType.SEND_CARDS,
+  NodeType.SEND_REACTION,
 ];
 
 export const LOGIC_NODE_TYPES = [

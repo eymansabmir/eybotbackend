@@ -26,6 +26,20 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
     return this._deduplicator;
   }
 
+  async getMediaUrl(mediaId: string): Promise<string> {
+    if (!this._api) {
+      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+    }
+    return this._api.getMediaUrl(mediaId);
+  }
+
+  async downloadMedia(mediaUrl: string): Promise<Buffer> {
+    if (!this._api) {
+      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+    }
+    return this._api.downloadMedia(mediaUrl);
+  }
+
   async initialize(registry: IPluginRegistry): Promise<void> {
     const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
     this._normalizer = new WhatsAppNormalizer();
@@ -42,21 +56,12 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
       logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
     } else {
       this._sender = new StubWhatsAppSender();
+      this._api = undefined;
       logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — WhatsApp API not configured');
     }
   }
 
   async shutdown(): Promise<void> {
     // Stateless HTTP client — nothing to close.
-  }
-
-  async getMediaUrl(mediaId: string): Promise<string> {
-    if (!this._api) throw new Error('WhatsApp API not configured');
-    return this._api.getMediaUrl(mediaId);
-  }
-
-  async downloadMedia(mediaUrl: string): Promise<Buffer> {
-    if (!this._api) throw new Error('WhatsApp API not configured');
-    return this._api.downloadMedia(mediaUrl);
   }
 }

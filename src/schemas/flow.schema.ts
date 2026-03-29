@@ -12,6 +12,11 @@ export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 
 export const TriggerConfigSchema = z.object({
   keywords: z.array(z.string()).optional(),
+  comparisons: z.array(z.object({
+    operator: z.enum(['CONTAINS', 'EQUALS', 'STARTS_WITH', 'ENDS_WITH']),
+    value: z.string(),
+  })).optional(),
+  logicalOperator: z.enum(['AND', 'OR']).optional().default('OR'),
 });
 
 export type TriggerConfig = z.infer<typeof TriggerConfigSchema>;
@@ -21,6 +26,11 @@ export const FlowSettingsSchema = z.object({
   maxSteps: z.number().default(100),
   maxConsecutiveLogicSteps: z.number().default(10),
   fallbackMessage: z.string().default('Sorry, something went wrong. Please try again later.'),
+  localization: z.object({
+    isEnabled: z.boolean().default(false),
+    languages: z.array(z.string()).default([]),
+    defaultLanguage: z.string().optional(),
+  }).optional(),
 });
 
 export type FlowSettings = z.infer<typeof FlowSettingsSchema>;

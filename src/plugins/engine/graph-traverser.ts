@@ -11,6 +11,12 @@ export class GraphTraverser {
     this.edgesBySource = this.buildEdgeIndex(edges);
   }
 
+  updateNodes(nodes: Node[]): void {
+    for (const node of nodes) {
+      this.nodes.set(node.id, node);
+    }
+  }
+
   getNode(nodeId: string): Node {
     const node = this.nodes.get(nodeId);
     if (!node) throw new NotFoundError('Node', nodeId);

@@ -34,7 +34,7 @@ export class DatabasePlugin implements IPlugin, IDatabasePlugin {
       ssl: isLocalConnection ? false : { rejectUnauthorized: false }
     });
     const adapter = new PrismaPg(pool);
-    this._prisma = new PrismaClient({ adapter });
+    this._prisma = new PrismaClient({ adapter, log: ['query', 'info', 'warn', 'error'] });
 
     await this._prisma.$connect();
     logger.info('DatabasePlugin: PostgreSQL connected');
