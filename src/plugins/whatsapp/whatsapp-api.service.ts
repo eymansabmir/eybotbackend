@@ -43,6 +43,20 @@ export class WhatsAppAPIService {
     await this.call(payload);
   }
 
+  async sendLocationRequest(to: string, body: string): Promise<void> {
+    await this.call({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'interactive',
+      interactive: {
+        type: 'location_request_message',
+        body: { text: body },
+        action: { name: 'send_location' },
+      },
+    });
+  }
+
   async sendButtons(to: string, body: string, buttons: Array<{ id: string; title: string }>, footer?: string, header?: any): Promise<void> {
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',

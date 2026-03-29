@@ -33,6 +33,8 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendDocument(waId, p['url'] as string, p['caption'] as string | undefined, p['filename'] as string | undefined);
       case NodeType.SEND_LOCATION:
         return this.api.sendLocation(waId, p['latitude'] as number, p['longitude'] as number, p['name'] as string | undefined, p['address'] as string | undefined);
+      case NodeType.LOCATION_REQUEST:
+        return this.api.sendLocationRequest(waId, p['message'] as string);
       case NodeType.SEND_BUTTONS:
         return this.api.sendButtons(waId, p['body'] as string, p['buttons'] as any[], p['footer'] as string | undefined);
       case NodeType.SEND_LIST:

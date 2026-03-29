@@ -285,6 +285,9 @@ export class NodeExecutor {
       case NodeType.SEND_CAROUSEL:
         return this.handleCarousel(currentNode, context, enteredAt, traverser, userInput);
 
+      case NodeType.LOCATION_REQUEST:
+        return this.handleLocationRequest(currentNode, context, enteredAt, traverser, userInput);
+
       case NodeType.ASK_QUESTION:
         return this.handleAskQuestion(currentNode, context, enteredAt, traverser, userInput);
 
@@ -1105,5 +1108,48 @@ export class NodeExecutor {
       if (rand < cumulative) { selectedKey = branch.key; break; }
     }
     return this.defaultResult(node, selectedKey, enteredAt, traverser);
+  }
+
+  private handleLocationRequest(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { message, variablePrefix } = node.data as Record<string, any>;
+    const resolvedMessage = this.text(message as string, ctx);
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + 300 * 1000); // 5 minutes default
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
+        variableMutations: [],
+        isTerminal: false,
+        waitForInput: { type: 'location', variableName: variablePrefix, variableScope: 'session' as const, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    try {
+      const loc = JSON.parse(userInput);
+      const prefix = variablePrefix || 'location';
+      const mutations: VariableMutation[] = [
+        { scope: 'session', key: `${prefix}_lat`, value: loc.latitude },
+        { scope: 'session', key: `${prefix}_latitude`, value: loc.latitude },
+        { scope: 'session', key: `${prefix}_lng`, value: loc.longitude },
+        { scope: 'session', key: `${prefix}_longitude`, value: loc.longitude },
+      ];
+      if (loc.name) {
+        mutations.push({ scope: 'session', key: `${prefix}_name`, value: loc.name });
+      }
+      if (loc.address) {
+        mutations.push({ scope: 'session', key: `${prefix}_address`, value: loc.address });
+      }
+
+      const result = this.defaultResult(node, 'default', enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    } catch (e) {
+      const result = this.defaultResult(node, 'default', enteredAt, traverser);
+      return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
   }
 }
