@@ -2,6 +2,7 @@ import { FlowEntity, FlowProperties } from './flow.entity';
 import { IFlowRepository } from './flow.repository';
 import { NodeType } from '../../schemas/node-types.enum';
 import { ValidationError } from '../../utils/errors';
+import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
 import { env } from '../../config/env';
 
 export interface IFlowService {
@@ -13,6 +14,7 @@ export interface IFlowService {
   archiveFlow(id: string): Promise<FlowEntity>;
   deleteFlow(id: string): Promise<void>;
   validateGraph(entity: FlowEntity): void;
+  syncTranslations(id: string): Promise<void>;
 }
 
 export class FlowService implements IFlowService {
@@ -63,7 +65,21 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Flow is already published');
     }
     this.validateGraph(flow);
+    await this.syncTranslations(id);
     return this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
+  }
+
+  async syncTranslations(id: string): Promise<void> {
+    const flow = await this.flowRepo.findByIdOrFail(id);
+    const localization = (flow.settings as any)?.localization;
+
+    if (localization?.isEnabled && Array.isArray(localization.languages) && localization.languages.length > 0) {
+      await syncFlowTranslations(
+        this.flowRepo,
+        id,
+        localization.languages
+      );
+    }
   }
 
   async archiveFlow(id: string): Promise<FlowEntity> {
@@ -99,10 +115,39 @@ export class FlowService implements IFlowService {
       }
       const sourceNode = nodes.find(n => n.id === edge.sourceNodeId);
       if (sourceNode) {
-        const branchKeys = sourceNode.branches.map(b => b.key);
-        if (!branchKeys.includes(edge.sourceBranchKey)) {
+        const branchKeys = new Set(sourceNode.branches.map(b => b.key));
+
+        // For interactive nodes (send_cards, send_buttons, send_list etc.) the branch
+        // keys come from button/row IDs which may not always be in the branches array
+        // (e.g. when data was saved with an older version of the frontend).
+        // We derive the valid keys from node data to remain backward-compatible.
+        if (sourceNode.type === NodeType.SEND_CARDS) {
+          const items = (sourceNode.data['items'] as any[]) ?? [];
+          items.forEach((item: any) => {
+            (item.buttons ?? []).forEach((b: any) => { 
+                if (b.branchKey) branchKeys.add(b.branchKey);
+                if (b.id) branchKeys.add(b.id); 
+            });
+          });
+          branchKeys.add('default');
+          branchKeys.add('timeout');
+        } else if (sourceNode.type === NodeType.SEND_BUTTONS) {
+          const buttons = (sourceNode.data['buttons'] as any[]) ?? [];
+          buttons.forEach((b: any) => { if (b.id) branchKeys.add(b.id); });
+          branchKeys.add('timeout');
+        } else if (sourceNode.type === NodeType.SEND_LIST) {
+          const sections = (sourceNode.data['sections'] as any[]) ?? [];
+          sections.forEach((s: any) => (s.rows ?? []).forEach((r: any) => { if (r.id) branchKeys.add(r.id); }));
+          branchKeys.add('timeout');
+        }
+
+        if (!branchKeys.has(edge.sourceBranchKey)) {
+          logger.warn(
+            { path: `/validate`, nodeId: sourceNode.id, nodeType: sourceNode.type, branchKey: edge.sourceBranchKey },
+            `Edge uses invalid branch key '${edge.sourceBranchKey}' for node '${sourceNode.label}'. Valid keys: ${[...branchKeys].join(', ')}`
+          );
           throw new ValidationError(
-            `Edge uses invalid branch key '${edge.sourceBranchKey}' for node '${sourceNode.label}'. Valid keys: ${branchKeys.join(', ')}`
+            `Edge uses invalid branch key '${edge.sourceBranchKey}' for node '${sourceNode.label}'. Valid keys: ${[...branchKeys].join(', ')}`
           );
         }
       }

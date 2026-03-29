@@ -7,6 +7,7 @@ import { ConditionEvaluator } from './condition-evaluator';
 import { GraphTraverser } from './graph-traverser';
 import type { OutboundMessage } from './engine.interface';
 import type { WaitingFor } from '../../features/session/session.entity';
+import { ISO_TO_NATIVE_NAME } from '@plugins/i18n/languages';
 
 export interface VariableMutation {
   scope: 'session' | 'contact';
@@ -37,6 +38,7 @@ export interface NodeExecutionResult {
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
+  languageChanged?: string;
 }
 
 export interface NodeExecutionInput {
@@ -291,6 +293,9 @@ export class NodeExecutor {
 
       case NodeType.NPS:
         return this.handleNps(currentNode, context, enteredAt, traverser, userInput);
+
+      case NodeType.LANGUAGE:
+        return this.handleLanguageNode(currentNode, context, enteredAt, traverser, userInput);
 
       case NodeType.CONDITION:
         return this.handleCondition(currentNode, context, enteredAt, traverser);
@@ -961,7 +966,17 @@ export class NodeExecutor {
     const bodyText = node.data['bodyText'] ? this.text(node.data['bodyText'] as string, ctx) : undefined;
     const cards = (node.data['cards'] as any[])?.map(card => ({
       ...card,
+      url: card.url ? this.text(card.url as string, ctx) : undefined,
       bodyText: card.bodyText ? this.text(card.bodyText as string, ctx) : undefined,
+      ctaUrlButton: card.ctaUrlButton ? {
+        ...card.ctaUrlButton,
+        displayText: card.ctaUrlButton.displayText ? this.text(card.ctaUrlButton.displayText as string, ctx) : undefined,
+        url: card.ctaUrlButton.url ? this.text(card.ctaUrlButton.url as string, ctx) : undefined,
+      } : undefined,
+      quickReplyButtons: card.quickReplyButtons?.map((btn: any) => ({
+        ...btn,
+        title: btn.title ? this.text(btn.title as string, ctx) : undefined,
+      })),
     }));
     const interaction = node.data['interaction'] as any;
 
@@ -969,7 +984,6 @@ export class NodeExecutor {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 3600) as number) * 1000);
       
-      // Collect all possible quick reply options across all cards
       const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
@@ -980,7 +994,7 @@ export class NodeExecutor {
 
       return {
         nextNodeId: node.id,
-        outboundMessages: [{ type: node.type, payload: { bodyText, cards: node.data['cards'] } }],
+        outboundMessages: [{ type: node.type, payload: { bodyText, cards } }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
@@ -1006,8 +1020,58 @@ export class NodeExecutor {
     }
 
     return this.defaultResult(node, 'default', enteredAt, traverser, [
-      { type: node.type, payload: { bodyText, cards: node.data['cards'] } },
+      { type: node.type, payload: { bodyText, cards } },
     ]);
+  }
+
+  private handleLanguageNode(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const { message, variable, timeoutSeconds } = node.data as Record<string, any>;
+    const resolvedMessage = this.text(message as string, ctx);
+    
+    // Fetch languages from flow settings
+    const settings = ctx.flow.settings as Record<string, any>;
+    const languages = (settings?.localization?.isEnabled && Array.isArray(settings.localization.languages)) 
+        ? settings.localization.languages 
+        : [];
+
+    if (languages.length === 0) {
+        // No localization configured, just proceed silently or inform
+        return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
+    }
+
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || 3600) * 1000);
+      
+      const options = languages.map((langCode: string) => ({
+          id: langCode,
+          label: ISO_TO_NATIVE_NAME[langCode] || langCode.toUpperCase(),
+          branchKey: 'default'
+      }));
+
+      // Map to interactive buttons or list if length > 3
+      const isList = languages.length > 3;
+      const payload = isList 
+          ? { body: resolvedMessage, buttonTitle: "Select Language", sections: [{ title: "Languages", rows: options.map((o: any) => ({ id: o.id, title: o.label })) }] }
+          : { body: resolvedMessage, buttons: options.map((o: any) => ({ id: o.id, title: o.label })) };
+      const outType = isList ? NodeType.SEND_LIST : NodeType.SEND_BUTTONS;
+
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: outType as NodeType, payload }],
+        variableMutations: [], isTerminal: false,
+        waitForInput: { type: 'choice', options, variableName: variable || 'selected_language', variableScope: 'session', since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    const langVar = variable || 'selected_language';
+    const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
+      { scope: 'session', key: langVar, value: userInput },
+    ]);
+    return { ...result, historyStep: { ...result.historyStep, userInput }, languageChanged: userInput };
   }
 
   private handleCondition(

@@ -118,11 +118,26 @@ export class SessionInboundHandler implements IInboundHandler {
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
+        
+        let flowToExecute = flow;
+        const language = activeSession.variables?.selected_language || (flow.settings as any)?.localization?.defaultLanguage;
+        if (language) {
+          const translation = await this.flowRepo.getTranslation(flow.id!, language);
+          if (translation) {
+            flowToExecute = flow.clone();
+            flowToExecute.nodes = translation.translatedData as any;
+          }
+        }
+
         const result = await this.enginePlugin.resumeFlow(
           { sessionId: activeSession.id!, userInput: userInput ?? '' },
-          flow,
+          flowToExecute,
           contact,
           activeSession,
+          async (lang: string) => {
+            const t = await this.flowRepo.getTranslation(flow.id!, lang);
+            return t?.translatedData || null;
+          }
         );
 
         await this.sessionRepo.update(result.session.id!, {
@@ -156,10 +171,25 @@ export class SessionInboundHandler implements IInboundHandler {
         logger.info({ waId, flowId: flow.id }, 'SessionInboundHandler: starting new session from keyword match');
 
         await this.sessionRepo.clearCurrentFlags(waBusinessNumber, waId);
+        
+        let flowToExecute = flow;
+        const language = (contact.customFields?.language as string | undefined) || (flow.settings as any)?.localization?.defaultLanguage;
+        if (language) {
+            const translation = await this.flowRepo.getTranslation(flow.id!, language);
+            if (translation) {
+                flowToExecute = flow.clone();
+                flowToExecute.nodes = translation.translatedData as any;
+            }
+        }
+
         const result = await this.enginePlugin.startFlow(
           { orgId, flowId: flow.id!, waId, waBusinessNumber },
-          flow,
+          flowToExecute,
           contact,
+          async (lang: string) => {
+            const t = await this.flowRepo.getTranslation(flow.id!, lang);
+            return t?.translatedData || null;
+          }
         );
 
         const saved = await this.sessionRepo.create(result.session);
