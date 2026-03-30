@@ -72,6 +72,7 @@ export interface OpenAINodeRequest {
   // Assistant mode
   assistantId?: string;
   threadId?: string;
+  threadIdStorage?: { scope: 'session' | 'contact'; key: string };
   additionalInstructions?: string;
   functions?: { name: string; code: string }[];
   // Generate Variables mode
@@ -361,6 +362,57 @@ export class NodeExecutor {
     return this.resolver.resolve(template, ctx);
   }
 
+  private parseThreadIdStorage(template: string): { scope: 'session' | 'contact'; key: string } | undefined {
+    const match = /^\{\{\s*(session|contact)\.([a-zA-Z0-9_]+)\s*\}\}$/.exec(template.trim());
+    if (!match) return undefined;
+    const scope = match[1];
+    const key = match[2];
+    if (!scope || !key) return undefined;
+    return {
+      scope: scope as 'session' | 'contact',
+      key,
+    };
+  }
+
+  private resolveTemplateWithScopeFallback(template: string, ctx: VariableContext): string {
+    const trimmedTemplate = template.trim();
+    if (!trimmedTemplate) return '';
+
+    const resolved = this.text(trimmedTemplate, ctx).trim();
+    const hasTemplateMarkers = trimmedTemplate.includes('{{') || trimmedTemplate.includes('}}');
+    if (!hasTemplateMarkers || resolved !== trimmedTemplate) {
+      return resolved;
+    }
+
+    const scopedTemplate = this.parseThreadIdStorage(trimmedTemplate);
+    if (scopedTemplate) {
+      const fallbackValue =
+        scopedTemplate.scope === 'session'
+          ? ctx.contact.customFields[scopedTemplate.key]
+          : ctx.session.variables[scopedTemplate.key];
+
+      if (fallbackValue !== undefined && fallbackValue !== null) {
+        return String(fallbackValue).trim();
+      }
+    }
+
+    const bareTemplateMatch = /^\{\{\s*([a-zA-Z0-9_]+)\s*\}\}$/.exec(trimmedTemplate);
+    const bareKey = bareTemplateMatch?.[1];
+    if (bareKey) {
+      const sessionValue = ctx.session.variables[bareKey];
+      if (sessionValue !== undefined && sessionValue !== null) {
+        return String(sessionValue).trim();
+      }
+
+      const contactValue = ctx.contact.customFields[bareKey];
+      if (contactValue !== undefined && contactValue !== null) {
+        return String(contactValue).trim();
+      }
+    }
+
+    return resolved;
+  }
+
   private handleOpenAI(
     node: Node,
     ctx: VariableContext,
@@ -376,6 +428,26 @@ export class NodeExecutor {
     else if (modeRaw === 'assistant') mode = 'assistant';
     else if (modeRaw === 'generate_variables') mode = 'generate_variables';
     else if (modeRaw === 'image') mode = 'image';
+
+    const rawThreadIdTemplate = typeof data['threadId'] === 'string' ? data['threadId'].trim() : '';
+    const resolvedThreadId = rawThreadIdTemplate ? this.text(rawThreadIdTemplate, ctx).trim() : '';
+    const resolvedAudioUrl =
+      typeof data['audioUrl'] === 'string'
+        ? this.resolveTemplateWithScopeFallback(data['audioUrl'], ctx)
+        : undefined;
+    const threadIdStorage = rawThreadIdTemplate ? this.parseThreadIdStorage(rawThreadIdTemplate) : undefined;
+    const hasThreadTemplateMarkers = rawThreadIdTemplate.includes('{{') || rawThreadIdTemplate.includes('}}');
+    const unresolvedTemplate =
+      !!rawThreadIdTemplate &&
+      !!threadIdStorage &&
+      resolvedThreadId === rawThreadIdTemplate;
+
+    if (mode === 'assistant' && hasThreadTemplateMarkers && !threadIdStorage) {
+      throw new FlowExecutionError(
+        'Assistant threadId template must be in the format {{session.key}} or {{contact.key}}',
+        node.id,
+      );
+    }
 
     const request: OpenAINodeRequest = {
       nodeId: node.id,
@@ -399,7 +471,7 @@ export class NodeExecutor {
           }))
         : undefined,
       tools: Array.isArray(data['tools']) ? data['tools'] : undefined,
-      ...(typeof data['audioUrl'] === 'string' ? { audioUrl: this.text(data['audioUrl'], ctx) } : {}),
+      ...(resolvedAudioUrl ? { audioUrl: resolvedAudioUrl } : {}),
       ...(typeof data['systemPrompt'] === 'string'
         ? { systemPrompt: this.text(data['systemPrompt'], ctx) }
         : {}),
@@ -421,7 +493,8 @@ export class NodeExecutor {
         : {}),
       // Assistant mode fields
       ...(typeof data['assistantId'] === 'string' ? { assistantId: data['assistantId'] } : {}),
-      ...(typeof data['threadId'] === 'string' ? { threadId: data['threadId'] } : {}),
+      ...(resolvedThreadId && !unresolvedTemplate ? { threadId: resolvedThreadId } : {}),
+      ...(threadIdStorage ? { threadIdStorage } : {}),
       ...(typeof data['additionalInstructions'] === 'string'
         ? { additionalInstructions: this.text(data['additionalInstructions'], ctx) }
         : {}),

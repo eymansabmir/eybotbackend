@@ -726,6 +726,9 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       try {
         validatedAudioUrl = new URL(audioUrl);
       } catch {
+        if (audioUrl.includes('{{') || audioUrl.includes('}}')) {
+          throw new ValidationError('audio URL variable could not be resolved for create_transcription mode; check variable scope/name');
+        }
         throw new ValidationError('audio URL must be a valid absolute URL for create_transcription mode');
       }
 
@@ -735,16 +738,20 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      const mimeType = response.headers.get('content-type') || 'audio/mpeg';
-      const fileName = validatedAudioUrl.pathname.split('/').pop() || `audio-${Date.now()}.mp3`;
+      const audioBuffer = Buffer.from(arrayBuffer);
+      const normalizedSource = this.normalizeTranscriptionSource(
+        validatedAudioUrl,
+        response.headers.get('content-type'),
+        audioBuffer,
+      );
 
       const transcription = await this.createTranscription({
         orgId: input.orgId,
         credentialId: input.credentialId,
         model: input.model,
-        audioBuffer: Buffer.from(arrayBuffer),
-        fileName,
-        mimeType,
+        audioBuffer,
+        fileName: normalizedSource.fileName,
+        mimeType: normalizedSource.mimeType,
         prompt: input.systemPrompt,
         timeoutMs: input.timeoutMs,
       });
@@ -854,6 +861,123 @@ export class OpenAIIntegrationService implements IOpenAIIntegrationService {
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────
+
+  private normalizeTranscriptionSource(
+    sourceUrl: URL,
+    rawContentType: string | null,
+    audioBuffer: Buffer,
+  ): { fileName: string; mimeType: string } {
+    const contentType = this.normalizeMimeType(rawContentType);
+    const pathnameName = sourceUrl.pathname.split('/').pop() || '';
+    const pathnameExt = this.extractExtension(pathnameName);
+    const sniffedExt = this.detectAudioExtension(audioBuffer);
+    const inferredExt = pathnameExt || this.extensionForMimeType(contentType) || sniffedExt || 'ogg';
+    const fileName = pathnameExt
+      ? pathnameName
+      : `${pathnameName || `audio-${Date.now()}`}.${inferredExt}`;
+
+    const mimeType =
+      contentType && this.isSupportedTranscriptionMimeType(contentType)
+        ? contentType
+        : this.mimeTypeForExtension(inferredExt);
+
+    return { fileName, mimeType };
+  }
+
+  private normalizeMimeType(raw: string | null | undefined): string | undefined {
+    if (!raw) return undefined;
+    const normalized = raw.split(';')[0]?.trim().toLowerCase();
+    return normalized || undefined;
+  }
+
+  private extractExtension(fileName: string): string | undefined {
+    const lastDot = fileName.lastIndexOf('.');
+    if (lastDot <= 0 || lastDot === fileName.length - 1) return undefined;
+    const ext = fileName.slice(lastDot + 1).toLowerCase();
+    return this.isSupportedTranscriptionExtension(ext) ? ext : undefined;
+  }
+
+  private extensionForMimeType(mimeType?: string): string | undefined {
+    if (!mimeType) return undefined;
+    const byMime: Record<string, string> = {
+      'audio/flac': 'flac',
+      'audio/x-flac': 'flac',
+      'audio/mp4': 'm4a',
+      'video/mp4': 'mp4',
+      'audio/mpeg': 'mp3',
+      'audio/mpga': 'mpga',
+      'audio/ogg': 'ogg',
+      'audio/oga': 'oga',
+      'audio/wav': 'wav',
+      'audio/x-wav': 'wav',
+      'audio/webm': 'webm',
+    };
+    return byMime[mimeType];
+  }
+
+  private mimeTypeForExtension(ext: string): string {
+    const byExt: Record<string, string> = {
+      flac: 'audio/flac',
+      m4a: 'audio/mp4',
+      mp3: 'audio/mpeg',
+      mp4: 'video/mp4',
+      mpeg: 'audio/mpeg',
+      mpga: 'audio/mpga',
+      oga: 'audio/ogg',
+      ogg: 'audio/ogg',
+      wav: 'audio/wav',
+      webm: 'audio/webm',
+    };
+    return byExt[ext] ?? 'audio/ogg';
+  }
+
+  private isSupportedTranscriptionExtension(ext: string): boolean {
+    return new Set(['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm']).has(ext);
+  }
+
+  private isSupportedTranscriptionMimeType(mimeType: string): boolean {
+    return new Set([
+      'audio/flac',
+      'audio/x-flac',
+      'audio/mp4',
+      'video/mp4',
+      'audio/mpeg',
+      'audio/mpga',
+      'audio/ogg',
+      'audio/oga',
+      'audio/wav',
+      'audio/x-wav',
+      'audio/webm',
+    ]).has(mimeType);
+  }
+
+  private detectAudioExtension(audioBuffer: Buffer): string | undefined {
+    if (audioBuffer.length >= 4) {
+      const header = audioBuffer.subarray(0, 4);
+      if (header[0] === 0x4f && header[1] === 0x67 && header[2] === 0x67 && header[3] === 0x53) return 'ogg';
+      if (header[0] === 0x66 && header[1] === 0x4c && header[2] === 0x61 && header[3] === 0x43) return 'flac';
+      if (header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46) return 'wav';
+      if (header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33) return 'mp3';
+      if (header[0] === 0x1a && header[1] === 0x45 && header[2] === 0xdf && header[3] === 0xa3) return 'webm';
+    }
+
+    if (audioBuffer.length >= 12) {
+      const box = audioBuffer.subarray(4, 8).toString('ascii');
+      if (box === 'ftyp') {
+        const brand = audioBuffer.subarray(8, 12).toString('ascii').toLowerCase();
+        if (brand.includes('m4a')) return 'm4a';
+        return 'mp4';
+      }
+    }
+
+    if (audioBuffer.length >= 2) {
+      const first = audioBuffer.at(0);
+      const second = audioBuffer.at(1);
+      if (first === 0xff && second !== undefined && (second & 0xe0) === 0xe0) return 'mp3';
+    }
+
+    return undefined;
+  }
 
   private async getCredentialMaterial(orgId: string, credentialId: string): Promise<OpenAICredentialMaterial> {
     logger.info({ orgId, credentialId, action: 'getCredentialMaterial' }, 'STEP 4: DB query');
