@@ -14,6 +14,7 @@ import { OPENAI_PLUGIN, type IOpenAIPlugin } from './plugins/openai';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from './plugins/elevenlabs';
 import { ANTHROPIC_PLUGIN, type IAnthropicPlugin } from './plugins/anthropic';
 import { DEEPSEEK_PLUGIN, type IDeepSeekPlugin } from './plugins/deepseek';
+import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from './plugins/http-request';
 
 import {
   FLOW_REPOSITORY,
@@ -34,6 +35,7 @@ import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
+import { HttpRequestIntegrationService } from './plugins/http-request';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -47,6 +49,7 @@ import { AnthropicController } from './features/integrations/anthropic/anthropic
 import { DeepSeekController } from './features/integrations/deepseek/deepseek.controller';
 import { GoogleSheetsController } from './features/integrations/google-sheets/google-sheets.controller';
 import { NocoDBController } from './features/integrations/nocodb/nocodb.controller';
+import { HttpRequestController } from './features/integrations/http-request/http-request.controller';
 import { CredentialController } from './features/credentials';
 
 import { createFlowRouter } from './features/flow/flow.route';
@@ -63,6 +66,7 @@ import { createAnthropicRouter } from './features/integrations/anthropic/anthrop
 import { createDeepSeekRouter } from './features/integrations/deepseek/deepseek.route';
 import { createGoogleSheetsRouter } from './features/integrations/google-sheets/google-sheets.route';
 import { createNocoDBRouter } from './features/integrations/nocodb/nocodb.route';
+import { createHttpRequestRouter } from './features/integrations/http-request/http-request.route';
 import { createCredentialRouter } from './features/credentials';
 
 import { errorHandler } from './middleware/error.middleware';
@@ -117,6 +121,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const elevenLabsPlugin = registry.get<IElevenLabsPlugin>(ELEVENLABS_PLUGIN);
   const anthropicPlugin = registry.get<IAnthropicPlugin>(ANTHROPIC_PLUGIN);
   const deepSeekPlugin = registry.get<IDeepSeekPlugin>(DEEPSEEK_PLUGIN);
+  const httpRequestPlugin = registry.get<IHttpRequestPlugin>(HTTP_REQUEST_PLUGIN);
 
   // ── Repositories ───────────────────────────────────────────────────────────
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
@@ -133,6 +138,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
+  const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
 
   // Start background scheduler
   campaignService.startScheduler();
@@ -151,6 +157,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekController = new DeepSeekController(deepSeekService);
   const googleSheetsController = new GoogleSheetsController(googleSheetsService);
   const nocodbController = new NocoDBController(registry, credentialService);
+  const httpRequestController = new HttpRequestController(httpRequestService);
   const credentialController = new CredentialController(credentialService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -167,6 +174,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/deepseek', createDeepSeekRouter(deepSeekController));
   app.use('/api/integrations/google-sheets', createGoogleSheetsRouter(googleSheetsController));
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
+  app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

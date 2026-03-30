@@ -154,7 +154,7 @@ function buildUrl(baseUrl: string, queryParams?: Record<string, string>): string
 }
 
 function canHaveBody(method: HttpRequestMethod): boolean {
-  return method !== 'GET';
+  return method !== 'GET' && method !== 'HEAD';
 }
 
 function defaultRetries(method: HttpRequestMethod): number {

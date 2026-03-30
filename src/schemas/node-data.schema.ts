@@ -199,12 +199,19 @@ const WebhookDataSchema = z.object({
 
 const HttpRequestDataSchema = z.object({
   url: z.string().url(),
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'CONNECT', 'OPTIONS', 'TRACE']).default('GET'),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),
   body: z.string().optional(),
   timeoutMs: z.number().int().positive().default(15000),
   fallbackText: z.string().optional(),
+  variablesForTest: z.array(
+    z.object({
+      id: z.string(),
+      variableName: z.string(),
+      value: z.string().optional(),
+    })
+  ).optional(),
   responseMapping: z.array(
     z.object({
       jsonPath: z.string(),
