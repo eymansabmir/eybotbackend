@@ -1054,13 +1054,18 @@ export class NodeExecutor {
         title: btn.title ? this.text(btn.title as string, ctx) : undefined,
       })),
     }));
+
+    const hasQuickReplies = (cards || []).some(card => 
+      card.buttonType === 'quick_reply' && (card.quickReplyButtons?.length ?? 0) > 0
+    );
+
     const interaction = node.data['interaction'] as any;
 
-    if (interaction?.mode === 'input' && userInput === undefined) {
+    if (hasQuickReplies && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 3600) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? 3600) as number) * 1000);
       
-      const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
+      const options = interaction?.input?.options ?? cards?.flatMap((card: any) => 
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
           label: btn.title,
@@ -1072,13 +1077,21 @@ export class NodeExecutor {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { bodyText, cards } }],
         variableMutations: [], isTerminal: false,
-        waitForInput: { type: 'choice', options, defaultBranchKey: interaction.input?.defaultBranchKey, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope, since, timeoutAt },
+        waitForInput: { 
+          type: 'choice', 
+          options, 
+          defaultBranchKey: interaction?.input?.defaultBranchKey, 
+          variableName: interaction?.input?.variableName, 
+          variableScope: interaction?.input?.variableScope, 
+          since, 
+          timeoutAt 
+        },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
 
-    if (interaction?.mode === 'input' && userInput !== undefined) {
-      const options = interaction.input?.options ?? cards?.flatMap((card: any) => 
+    if (hasQuickReplies && userInput !== undefined) {
+      const options = interaction?.input?.options ?? cards?.flatMap((card: any) => 
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
           branchKey: btn.id
@@ -1086,10 +1099,14 @@ export class NodeExecutor {
       ) ?? [];
 
       const selected = (options as any[]).find((o: any) => o.id === userInput);
-      const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'timeout';
+      const branchKey = selected?.branchKey ?? interaction?.input?.defaultBranchKey ?? 'timeout';
       const mutations: VariableMutation[] = [];
-      if (interaction.input?.variableName && interaction.input?.variableScope) {
-        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      if (interaction?.input?.variableName && interaction?.input?.variableScope) {
+        mutations.push({ 
+          scope: interaction.input.variableScope as 'session' | 'contact', 
+          key: interaction.input.variableName as string, 
+          value: userInput 
+        });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };

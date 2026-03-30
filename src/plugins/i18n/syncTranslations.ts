@@ -85,6 +85,8 @@ export async function syncFlowTranslations(
     switch (node.type) {
       case NodeType.SEND_TEXT:
       case NodeType.ASK_QUESTION:
+      case NodeType.ASK_FILE:
+      case NodeType.LOCATION_REQUEST:
       case NodeType.LANGUAGE:
         paths.push('data.message');
         break;
@@ -136,12 +138,15 @@ export async function syncFlowTranslations(
         break;
       case NodeType.SEND_CAROUSEL:
         if (node.data.bodyText) paths.push('data.bodyText');
-        (node.data.cards as any[])?.forEach((card, ci) => {
+        (node.data.cards as any[])?.forEach((card: any, ci: number) => {
           if (card.bodyText) paths.push(`data.cards.${ci}.bodyText`);
           if (card.ctaUrlButton?.displayText) paths.push(`data.cards.${ci}.ctaUrlButton.displayText`);
           card.quickReplyButtons?.forEach((_: any, bi: number) => {
             paths.push(`data.cards.${ci}.quickReplyButtons.${bi}.title`);
           });
+        });
+        (node.data.interaction?.input?.options as any[])?.forEach((_: any, oi: number) => {
+            paths.push(`data.interaction.input.options.${oi}.label`);
         });
         break;
     }
