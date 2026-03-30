@@ -58,6 +58,10 @@ export class SessionInboundHandler implements IInboundHandler {
           userInput = message.interactiveOptionId;
         }
 
+        if (activeSession.waitingFor?.type === 'location' && message.location) {
+          userInput = JSON.stringify(message.location);
+        }
+
         if (activeSession.waitingFor?.type === 'file') {
           const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
           const textFallback = (text ?? '').trim();
