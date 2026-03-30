@@ -63,6 +63,54 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
     return result;
   }
 
+  private extractMappedValue(payload: unknown, rawPath: string): unknown {
+    const path = rawPath.trim();
+    if (!path) return undefined;
+
+    // Support "$" root and "$.foo.bar" JSONPath-like prefixes.
+    if (path === '$') return payload;
+    const normalized = path.startsWith('$.') ? path.slice(2) : path;
+
+    // Support bracket notation (rows[0].name / rows['0'].name)
+    const dotPath = normalized
+      .replace(/\[(\d+)\]/g, '.$1')
+      .replace(/\[['\"]([^'\"]+)['\"]\]/g, '.$1');
+
+    const parts = dotPath.split('.').filter(Boolean);
+    let current: any = payload;
+    for (const part of parts) {
+      if (current == null) return undefined;
+      current = current[part];
+    }
+
+    if (current !== undefined) return current;
+
+    // Search action convenience: treat a plain field name as a row field mapping
+    // (autobot-style): one matched row => scalar, multiple matched rows => array.
+    const isSimpleFieldName = !path.includes('$') && !path.includes('.') && !path.includes('[') && !path.includes(']');
+    if (isSimpleFieldName && parts.length === 1 && payload && typeof payload === 'object') {
+      const obj = payload as Record<string, any>;
+      const key = parts[0];
+      if (!key) return undefined;
+
+      if (Array.isArray(obj.rows) && obj.rows.length > 0) {
+        const values = obj.rows
+          .map((row: any) => (row && typeof row === 'object' ? row[key] : undefined))
+          .filter((value: unknown) => value !== undefined);
+
+        if (values.length > 0) {
+          return values.length === 1 ? values[0] : values;
+        }
+      }
+
+      if (obj.firstRow && typeof obj.firstRow === 'object' && obj.firstRow[key] !== undefined) {
+        return obj.firstRow[key];
+      }
+    }
+
+    return undefined;
+  }
+
   async executeNode(input: {
     orgId: string;
     credentialId: string;
@@ -124,16 +172,12 @@ export class NocoDBIntegrationService implements INocoDBIntegrationService {
     if (input.responseMapping) {
       for (const mapping of input.responseMapping) {
         if (!mapping.variableName || !mapping.jsonPath) continue;
-        
-        // Simple dot notation extraction
-        const value = mapping.jsonPath.split('.').reduce((acc: any, part: string) => {
-           if (acc == null) return acc;
-           return acc[part];
-        }, resultPayload);
+
+        const value = this.extractMappedValue(resultPayload, mapping.jsonPath);
 
         if (value !== undefined) {
            mutations.push({
-             scope: mapping.scope,
+             scope: mapping.scope === 'contact' ? 'contact' : 'session',
              key: mapping.variableName,
              value,
            });

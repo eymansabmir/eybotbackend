@@ -77,7 +77,7 @@ export class NocoDBPlugin implements IPlugin, INocoDBPlugin {
         }
         return `(${c.field},${c.operator},${c.value})`;
       })
-      .join('~and~');
+      .join('~and');
   }
 
   async createRecord(input: NocoDBInsertRowInput): Promise<NocoDBInsertResult> {
