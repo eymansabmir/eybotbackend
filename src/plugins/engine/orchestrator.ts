@@ -29,7 +29,7 @@ export interface OpenAINodeExecutionInput {
 }
 
 export interface RuntimeIntegrations {
-  executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
+  executeOpenAI?(input: OpenAINodeExecutionInput): Promise<{ value: string; message: OutboundMessage; threadId?: string }>;
   executeAnthropic?(input: AnthropicNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeDeepSeek?(input: DeepSeekNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
@@ -202,6 +202,18 @@ export class FlowOrchestrator {
           value: openAIOutput.value,
         }, session, contact, allContactMutations);
 
+        if (
+          stepResult.openAIRequest.mode === 'assistant' &&
+          openAIOutput.threadId &&
+          stepResult.openAIRequest.threadIdStorage
+        ) {
+          this.applyMutation({
+            scope: stepResult.openAIRequest.threadIdStorage.scope,
+            key: stepResult.openAIRequest.threadIdStorage.key,
+            value: openAIOutput.threadId,
+          }, session, contact, allContactMutations);
+        }
+
         if (stepResult.openAIRequest.sendResponseToUser) {
           allMessages.push(openAIOutput.message);
         }
@@ -351,7 +363,7 @@ export class FlowOrchestrator {
     contact: ContactInfo,
     request: OpenAINodeRequest,
     runtime?: RuntimeIntegrations,
-  ): Promise<{ value: string; message: OutboundMessage }> {
+  ): Promise<{ value: string; message: OutboundMessage; threadId?: string }> {
     try {
       if (!runtime?.executeOpenAI) {
         throw new FlowExecutionError('OpenAI runtime executor is not configured', request.nodeId);

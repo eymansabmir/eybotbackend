@@ -96,6 +96,8 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           model: request.model,
           voice: request.voice,
           prompt: request.prompt,
+          messages: request.messages,
+          tools: request.tools,
           audioUrl: request.audioUrl,
           systemPrompt: request.systemPrompt,
           temperature: request.temperature,
@@ -123,6 +125,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
               type: NodeType.SEND_AUDIO,
               payload: { url: output.content },
             },
+            ...(output.threadId ? { threadId: output.threadId } : {}),
           };
         }
 
@@ -133,6 +136,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
               type: NodeType.SEND_IMAGE,
               payload: { url: output.content },
             },
+            ...(output.threadId ? { threadId: output.threadId } : {}),
           };
         }
 
@@ -142,6 +146,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
             type: NodeType.SEND_TEXT,
             payload: { message: output.content },
           },
+          ...(output.threadId ? { threadId: output.threadId } : {}),
         };
       },
       executeElevenLabs: async ({ orgId, request }) => {

@@ -376,8 +376,9 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
 
     try {
       const form = new FormData();
+      const normalizedMimeType = input.mimeType.split(';')[0]?.trim().toLowerCase() || 'audio/ogg';
       form.append('model', input.model);
-      form.append('file', new Blob([input.audioBuffer], { type: input.mimeType }), input.fileName);
+      form.append('file', new Blob([input.audioBuffer], { type: normalizedMimeType }), input.fileName);
       if (input.language) form.append('language', input.language);
       if (input.prompt) form.append('prompt', input.prompt);
 
