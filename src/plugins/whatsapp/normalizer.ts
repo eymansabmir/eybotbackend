@@ -74,7 +74,7 @@ export class WhatsAppNormalizer {
     if (!waId || !waBusinessNumber) return null;
 
     const text = this.extractText(message);
-    const nonText = new Set(['interactive', 'location', 'contacts', 'reaction', 'order', 'system', ...MEDIA_TYPES]);
+    const nonText = new Set(['interactive', 'button', 'location', 'contacts', 'reaction', 'order', 'system', ...MEDIA_TYPES]);
     if (!text && !nonText.has(message.type)) return null;
 
     const base: NormalizedInboundMessage = {
@@ -91,7 +91,14 @@ export class WhatsAppNormalizer {
     if (contactName !== undefined) base.contactName = contactName;
 
     const interactiveId = this.extractInteractiveId(message);
-    if (interactiveId !== undefined) base.interactiveOptionId = interactiveId;
+    if (interactiveId !== undefined) {
+      base.interactiveOptionId = interactiveId;
+      logger.info({ interactiveOptionId: interactiveId }, 'WhatsAppNormalizer: extracted interactiveOptionId');
+    }
+
+    if (message.type === 'interactive') {
+      logger.info({ interactive: message.interactive }, 'WhatsAppNormalizer: raw interactive data');
+    }
 
     Object.assign(base, this.extractMedia(message), this.extractLocation(message), this.extractReaction(message));
 
@@ -102,7 +109,12 @@ export class WhatsAppNormalizer {
     if (message.type === 'text') return message.text?.body ?? null;
     if (message.type === 'button') return message.button?.text ?? null;
     if (message.type === 'interactive' && message.interactive) {
-      return message.interactive.button_reply?.title ?? message.interactive.list_reply?.title ?? null;
+      return (
+        message.interactive.button_reply?.title ??
+        message.interactive.list_reply?.title ??
+        (message.interactive as any).carousel_reply?.button_reply?.title ??
+        null
+      );
     }
     if (message.type === 'location') return message.location?.name ?? 'Location shared';
     if (message.type === 'contacts') return message.contacts?.[0]?.name?.formatted_name ?? 'Contact shared';
@@ -117,8 +129,15 @@ export class WhatsAppNormalizer {
   }
 
   private extractInteractiveId(message: WhatsAppMessage): string | undefined {
+    if (message.type === 'button') {
+      return message.button?.payload;
+    }
     if (message.type === 'interactive' && message.interactive) {
-      return message.interactive.button_reply?.id ?? message.interactive.list_reply?.id;
+      return (
+        message.interactive.button_reply?.id ??
+        message.interactive.list_reply?.id ??
+        (message.interactive as any).carousel_reply?.button_reply?.id
+      );
     }
     return undefined;
   }
