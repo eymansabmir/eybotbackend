@@ -141,7 +141,7 @@ export interface HttpRequestResponseMapping {
 export interface HttpRequestNodeRequest {
   nodeId: string;
   url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'CONNECT' | 'OPTIONS' | 'TRACE';
   headers?: Record<string, string>;
   queryParams?: Record<string, string>;
   body?: string;

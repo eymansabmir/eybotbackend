@@ -96,11 +96,17 @@ export class HttpRequestIntegrationService implements IHttpRequestIntegrationSer
     if (!mapping || mapping.length === 0) return [];
 
     const source = normalizeResponseBody(body);
-    return mapping.map((entry) => ({
-      scope: entry.scope,
-      key: entry.variableName,
-      value: extractJsonPath(source, entry.jsonPath),
-    }));
+    const mutations: HttpRequestMappedMutation[] = [];
+    for (const entry of mapping) {
+      const value = extractJsonPath(source, entry.jsonPath);
+      if (value === undefined) continue;
+      mutations.push({
+        scope: entry.scope,
+        key: entry.variableName,
+        value,
+      });
+    }
+    return mutations;
   }
 }
 
@@ -172,17 +178,17 @@ function normalizeResponseBody(body: unknown): unknown {
 }
 
 function extractJsonPath(input: unknown, jsonPath: string): unknown {
-  if (!jsonPath.startsWith('$')) {
-    return undefined;
-  }
+  const raw = jsonPath.trim();
+  if (!raw) return undefined;
 
-  const path = jsonPath.slice(1);
-  if (!path) {
+  const path = raw.startsWith('$') ? raw.slice(1) : raw;
+  if (!path || path === '.') {
     return input;
   }
 
   const tokens = path
     .replace(/\[(\d+)\]/g, '.$1')
+    .replace(/^\./, '')
     .split('.')
     .filter(Boolean);
 
