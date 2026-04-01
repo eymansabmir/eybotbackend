@@ -106,7 +106,33 @@ export class PrismaFlowRepository implements IFlowRepository {
 
     async delete(id: string): Promise<void> {
         try {
-            await this.prisma.flow.delete({ where: { id } });
+            await this.prisma.$transaction(async (tx) => {
+                // Manual cleanup of loose relations as per "current schema structure"
+                
+                // 1. Delete associated ChatSessions
+                await tx.chatSession.deleteMany({ where: { flowId: id } });
+
+                // 2. Resolve and delete associated Campaigns and their nested dependencies
+                const campaigns = await tx.campaign.findMany({ where: { flowId: id } });
+                for (const campaign of campaigns) {
+                    const versions = await tx.campaignVersion.findMany({ where: { campaignId: campaign.id } });
+                    
+                    for (const version of versions) {
+                        // Delete recipients for each version
+                        await tx.campaignRecipient.deleteMany({ where: { campaignVersionId: version.id } });
+                    }
+                    
+                    // Delete versions, stats, and then the campaign itself
+                    await tx.campaignVersion.deleteMany({ where: { campaignId: campaign.id } });
+                    
+                    // stats is a 1:1 relation potentially, check existence if needed
+                    await tx.campaignStats.deleteMany({ where: { campaignId: campaign.id } });
+                }
+                await tx.campaign.deleteMany({ where: { flowId: id } });
+
+                // 3. Delete the Flow itself (Translations will cascade via schema relation)
+                await tx.flow.delete({ where: { id } });
+            });
         } catch (error: any) {
             if (error.code === 'P2025') {
                 throw new NotFoundError('Flow', id);
