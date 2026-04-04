@@ -1120,7 +1120,7 @@ export class NodeExecutor {
   private handleLanguageNode(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
-    const { message, variable, timeoutSeconds } = node.data as Record<string, any>;
+    const { message, variable, variableName, variableScope, timeoutSeconds } = node.data as Record<string, any>;
     const resolvedMessage = this.text(message as string, ctx);
     
     // Fetch languages from flow settings
@@ -1133,6 +1133,9 @@ export class NodeExecutor {
         // No localization configured, just proceed silently or inform
         return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
     }
+
+    const langVar = variableName || variable || 'selected_language';
+    const langScope = variableScope || 'session';
 
     if (userInput === undefined) {
       const since = new Date();
@@ -1155,14 +1158,13 @@ export class NodeExecutor {
         nextNodeId: node.id,
         outboundMessages: [{ type: outType as NodeType, payload }],
         variableMutations: [], isTerminal: false,
-        waitForInput: { type: 'choice', options, variableName: variable || 'selected_language', variableScope: 'session', since, timeoutAt },
+        waitForInput: { type: 'choice', options, variableName: langVar, variableScope: langScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
 
-    const langVar = variable || 'selected_language';
     const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
-      { scope: 'session', key: langVar, value: userInput },
+      { scope: langScope as 'session' | 'contact', key: langVar, value: userInput },
     ]);
     return { ...result, historyStep: { ...result.historyStep, userInput }, languageChanged: userInput };
   }
