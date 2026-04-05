@@ -339,6 +339,9 @@ const LanguageDataSchema = z.object({
   message: z.string(),
   variable: z.string(),
   timeoutSeconds: z.number().optional(),
+  localizationEnabled: z.boolean().optional(),
+  languages: z.array(z.string()).max(10, 'Language node supports maximum 10 languages').optional(),
+  defaultLanguage: z.string().optional(),
 });
 
 const LocationRequestDataSchema = z.object({

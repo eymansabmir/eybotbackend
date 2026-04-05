@@ -32,5 +32,8 @@ export interface ICredentialRepository {
   findByIdOrFail(orgId: string, id: string): Promise<Credential>;
   findByName(orgId: string, type: CredentialType, name: string): Promise<Credential | null>;
   listByOrgId(orgId: string, options?: CredentialQueryOptions): Promise<Credential[]>;
+  findActiveWhatsAppByBusinessNumber(waBusinessNumber: string): Promise<Credential | null>;
+  findActiveWhatsAppByBusinessNumberForOrg(orgId: string, waBusinessNumber: string): Promise<Credential | null>;
   update(orgId: string, id: string, updates: UpdateEncryptedCredentialInput): Promise<Credential>;
+  hardDelete(orgId: string, id: string): Promise<void>;
 }

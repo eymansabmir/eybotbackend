@@ -19,6 +19,10 @@ export interface IFlowRepository {
 export class PrismaFlowRepository implements IFlowRepository {
     constructor(private readonly prisma: PrismaClient) { }
 
+    private isPrismaNotFound(error: unknown): boolean {
+        return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'P2025';
+    }
+
     async create(flow: FlowEntity): Promise<FlowEntity> {
         const data = FlowMapper.toPrisma(flow);
         const created = await this.prisma.flow.create({ data });
@@ -95,9 +99,9 @@ export class PrismaFlowRepository implements IFlowRepository {
                 data,
             });
             return FlowMapper.toEntity(updated);
-        } catch (error: any) {
+        } catch (error: unknown) {
             // Prisma P2025 is RecordNotFound
-            if (error.code === 'P2025') {
+            if (this.isPrismaNotFound(error)) {
                 throw new NotFoundError('Flow', id);
             }
             throw error;
@@ -133,8 +137,8 @@ export class PrismaFlowRepository implements IFlowRepository {
                 // 3. Delete the Flow itself (Translations will cascade via schema relation)
                 await tx.flow.delete({ where: { id } });
             });
-        } catch (error: any) {
-            if (error.code === 'P2025') {
+        } catch (error: unknown) {
+            if (this.isPrismaNotFound(error)) {
                 throw new NotFoundError('Flow', id);
             }
             throw error;
@@ -142,6 +146,7 @@ export class PrismaFlowRepository implements IFlowRepository {
     }
 
     async getTranslation(flowId: string, language: string): Promise<any> {
+        logger.debug({ flowId, language, operation: 'flowTranslation.findUnique' }, 'STEP 4: DB query');
         return this.prisma.flowTranslation.findUnique({
             where: {
                 flowId_language: { flowId, language },
@@ -150,6 +155,7 @@ export class PrismaFlowRepository implements IFlowRepository {
     }
 
     async saveTranslation(flowId: string, language: string, translatedData: any): Promise<void> {
+        logger.debug({ flowId, language, operation: 'flowTranslation.upsert' }, 'STEP 4: DB query');
         await this.prisma.flowTranslation.upsert({
             where: { flowId_language: { flowId, language } },
             update: { translatedData },

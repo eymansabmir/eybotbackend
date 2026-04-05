@@ -77,15 +77,53 @@ export class WhatsAppAPIService {
     sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
     footer?: string,
   ): Promise<void> {
+    const normalizedSections = this.normalizeListSections(sections);
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
       interactive: {
         type: 'list', body: { text: body },
-        action: { button: this.sliceGraphemes(buttonTitle || 'Options', 20), sections: sections.map(s => ({ title: this.sliceGraphemes(s.title || '', 24), rows: s.rows.map(r => ({ id: r.id, title: this.sliceGraphemes(r.title || '', 24), description: r.description ? this.sliceGraphemes(r.description, 72) : undefined })) })) },
+        action: { button: this.sliceGraphemes(buttonTitle || 'Options', 20), sections: normalizedSections },
       },
     };
     if (footer) payload.interactive.footer = { text: footer };
     await this.call(payload);
+  }
+
+  private normalizeListSections(
+    sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
+  ): Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }> {
+    const MAX_ROWS_TOTAL = 10;
+    const normalized: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }> = [];
+    let usedRows = 0;
+
+    for (const section of sections ?? []) {
+      if (usedRows >= MAX_ROWS_TOTAL) break;
+
+      const rows = (section?.rows ?? [])
+        .filter((row) => typeof row?.id === 'string' && row.id.trim().length > 0)
+        .map((row) => ({
+          id: this.sliceGraphemes(String(row.id).trim(), 200),
+          title: this.sliceGraphemes(String(row.title ?? '').trim() || 'Option', 24),
+          description: row.description ? this.sliceGraphemes(String(row.description).trim(), 72) : undefined,
+        }));
+
+      const remaining = MAX_ROWS_TOTAL - usedRows;
+      const limitedRows = rows.slice(0, remaining);
+      if (limitedRows.length === 0) continue;
+
+      normalized.push({
+        title: this.sliceGraphemes(String(section?.title ?? '').trim() || 'Options', 24),
+        rows: limitedRows,
+      });
+
+      usedRows += limitedRows.length;
+    }
+
+    if (normalized.length === 0) {
+      return [{ title: 'Options', rows: [{ id: 'default_option', title: 'Continue' }] }];
+    }
+
+    return normalized;
   }
 
   private sliceGraphemes(text: string, limit: number): string {

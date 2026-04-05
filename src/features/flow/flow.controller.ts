@@ -63,6 +63,22 @@ export class FlowController {
     } catch (err) { next(err); }
   };
 
+  configureFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] as string;
+      const { triggerConfig, isConfigured, credentials } = req.body;
+      logger.info({ flowId: id }, 'Configuring and Publishing Flow');
+      
+      const payload = {
+        triggerConfig,
+        isConfigured: isConfigured !== undefined ? isConfigured : undefined
+      };
+      
+      const flow = await this.flowService.configureFlow(id, payload, credentials);
+      res.json(flow);
+    } catch (err) { next(err); }
+  };
+
   archiveFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = req.params['id'] as string;

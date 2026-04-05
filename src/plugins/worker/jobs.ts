@@ -3,6 +3,7 @@ import type { NormalizedInboundMessage } from '../whatsapp/normalizer';
 /** Job pushed to wa.inbound exchange by the webhook controller. */
 export interface InboundJob {
   orgId: string;
+  credentialId?: string;
   message: NormalizedInboundMessage;
 }
 

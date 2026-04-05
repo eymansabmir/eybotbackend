@@ -70,7 +70,13 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
   }): Promise<ElevenLabsTestResult> {
     const startedAt = Date.now();
     try {
-      await this.listVoices({ credential: input.credential, timeoutMs: input.timeoutMs ?? 10_000 });
+      // Use an auth-protected endpoint. /voices can be misleading because some
+      // public voices may still be listed without full credential authorization.
+      await this.jsonRequest<Record<string, unknown>>({
+        credential: input.credential,
+        path: '/user/subscription',
+        timeoutMs: input.timeoutMs ?? 10_000,
+      });
       return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (error) {
       if (error instanceof ElevenLabsProviderError) {
@@ -162,7 +168,8 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const providerBody = await this.readProviderErrorBody(response);
+        throw this.mapHttpError(response.status, providerBody);
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -211,7 +218,8 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
       });
 
       if (!response.ok) {
-        throw this.mapHttpError(response.status);
+        const providerBody = await this.readProviderErrorBody(response);
+        throw this.mapHttpError(response.status, providerBody);
       }
 
       return (await response.json()) as T;
@@ -257,16 +265,30 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
     }
   }
 
-  private mapHttpError(status: number): ElevenLabsProviderError {
+  private async readProviderErrorBody(response: Response): Promise<string | undefined> {
+    try {
+      const text = (await response.text()).trim();
+      if (!text) return undefined;
+      // Keep errors compact in logs/API responses.
+      return text.slice(0, 600);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private mapHttpError(status: number, providerBody?: string): ElevenLabsProviderError {
+    const withDetails = (base: string): string =>
+      providerBody ? `${base}. Provider response: ${providerBody}` : base;
+
     if (status === 401 || status === 403) {
-      return new ElevenLabsProviderError('auth_error', status, 'ElevenLabs authentication failed');
+      return new ElevenLabsProviderError('auth_error', status, withDetails('ElevenLabs authentication/authorization failed'));
     }
     if (status === 429) {
-      return new ElevenLabsProviderError('quota_error', status, 'ElevenLabs rate limit or quota exceeded');
+      return new ElevenLabsProviderError('quota_error', status, withDetails('ElevenLabs rate limit or quota exceeded'));
     }
     if (status === 408 || status === 504) {
-      return new ElevenLabsProviderError('timeout', status, 'ElevenLabs request timed out');
+      return new ElevenLabsProviderError('timeout', status, withDetails('ElevenLabs request timed out'));
     }
-    return new ElevenLabsProviderError('provider_error', status, 'ElevenLabs request failed');
+    return new ElevenLabsProviderError('provider_error', status, withDetails(`ElevenLabs request failed with status ${status}`));
   }
 }

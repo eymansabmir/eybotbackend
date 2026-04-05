@@ -12,6 +12,7 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         await this.send(waId, msg);
       } catch (err) {
         logger.error({ waId, messageType: msg.type, err }, 'DirectWhatsAppSender: failed to send message');
+        throw err;
       }
     }
   }

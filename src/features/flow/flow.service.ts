@@ -11,10 +11,16 @@ export interface IFlowService {
   getFlowsByOrgId(orgId: string, status?: string): Promise<FlowEntity[]>;
   updateFlow(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity>;
   publishFlow(id: string): Promise<FlowEntity>;
+  configureFlow(id: string, payload: ConfigureFlowPayload, credentials?: unknown): Promise<FlowEntity>;
   archiveFlow(id: string): Promise<FlowEntity>;
   deleteFlow(id: string): Promise<void>;
   validateGraph(entity: FlowEntity): void;
   syncTranslations(id: string): Promise<void>;
+}
+
+export interface ConfigureFlowPayload {
+  triggerConfig?: FlowProperties['triggerConfig'];
+  isConfigured?: boolean;
 }
 
 export class FlowService implements IFlowService {
@@ -54,7 +60,12 @@ export class FlowService implements IFlowService {
   async updateFlow(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity> {
     const existing = await this.flowRepo.findByIdOrFail(id);
     if (existing.status === 'published') {
-      throw new ValidationError('Cannot update a published flow. Archive it first.');
+      const allowedPublishedUpdateKeys = new Set(['settings', 'triggerConfig', 'isConfigured']);
+      const hasUnsupportedUpdate = Object.keys(updates).some((key) => !allowedPublishedUpdateKeys.has(key));
+
+      if (hasUnsupportedUpdate) {
+        throw new ValidationError('Cannot update published flow structure. Archive it first.');
+      }
     }
     return this.flowRepo.update(id, updates);
   }
@@ -69,16 +80,47 @@ export class FlowService implements IFlowService {
     return this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
   }
 
+  async configureFlow(id: string, payload: ConfigureFlowPayload, credentials?: unknown): Promise<FlowEntity> {
+    const flow = await this.flowRepo.findByIdOrFail(id);
+
+    const triggerConfig = payload.triggerConfig ?? flow.triggerConfig;
+
+    if (credentials) {
+      // Defer storing to CredentialService. Here we just log securely
+      logger.debug('Received WhatsApp Credentials for configuration overlay.');
+    }
+
+    const updates: Partial<FlowProperties> = {
+      triggerConfig,
+      isConfigured: payload.isConfigured !== undefined ? payload.isConfigured : true,
+      status: 'published',
+      publishedAt: new Date()
+    };
+    
+    // Validation and prep. Must pass class instance.
+    const validationClone = flow.clone();
+    Object.assign(validationClone, updates);
+    this.validateGraph(validationClone);
+    await this.syncTranslations(id);
+    
+    return this.flowRepo.update(id, updates);
+  }
+
   async syncTranslations(id: string): Promise<void> {
     const flow = await this.flowRepo.findByIdOrFail(id);
     const localization = (flow.settings as any)?.localization;
 
     if (localization?.isEnabled && Array.isArray(localization.languages) && localization.languages.length > 0) {
-      await syncFlowTranslations(
-        this.flowRepo,
-        id,
-        localization.languages
-      );
+      try {
+        await syncFlowTranslations(
+          this.flowRepo,
+          id,
+          localization.languages
+        );
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Unknown translation error';
+        throw new ValidationError(`Translation sync failed: ${reason}`);
+      }
     }
   }
 

@@ -20,6 +20,7 @@ import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
   CAMPAIGN_REPOSITORY,
+  CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
 } from './features/repositories.interface';
 
@@ -27,6 +28,7 @@ import { PrismaFlowRepository } from './features/flow/flow.repository';
 import { PrismaSessionRepository } from './features/session/session.repository';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import type { CredentialService } from './features/credentials';
+import type { ICredentialRepository } from './features/credentials/credentials.repository.interface';
 
 import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
@@ -68,6 +70,7 @@ import { createGoogleSheetsRouter } from './features/integrations/google-sheets/
 import { createNocoDBRouter } from './features/integrations/nocodb/nocodb.route';
 import { createHttpRequestRouter } from './features/integrations/http-request/http-request.route';
 import { createCredentialRouter } from './features/credentials';
+import { createWhatsAppIntegrationRouter } from './features/integrations/whatsapp/whatsapp-integration.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -127,6 +130,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
   const sessionRepo = registry.get<PrismaSessionRepository>(SESSION_REPOSITORY);
   const campaignRepo = registry.get<PrismaCampaignRepository>(CAMPAIGN_REPOSITORY);
+  const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
@@ -147,7 +151,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const flowController = new FlowController(flowService);
   const sessionController = new SessionController(sessionService);
   const nodeTypesController = new NodeTypesController();
-  const webhookController = new WhatsAppWebhookController(whatsappPlugin, workerPlugin);
+  const webhookController = new WhatsAppWebhookController(whatsappPlugin, workerPlugin, credentialRepo);
   const storageController = new StorageController(storagePlugin);
   const campaignController = new CampaignController(campaignService);
   const whatsappController = new WhatsAppController(whatsappPlugin);
@@ -175,6 +179,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/google-sheets', createGoogleSheetsRouter(googleSheetsController));
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
+  app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

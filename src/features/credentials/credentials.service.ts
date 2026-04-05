@@ -15,7 +15,7 @@ export interface ICredentialService {
   listCredentials(orgId: string, options?: ListCredentialsOptions): Promise<CredentialView[]>;
   updateCredential(orgId: string, id: string, updates: UpdateCredentialPayload): Promise<CredentialView>;
   revokeCredential(orgId: string, id: string): Promise<CredentialView>;
-  deleteCredential(orgId: string, id: string): Promise<CredentialView>;
+  deleteCredential(orgId: string, id: string): Promise<void>;
   markTested(orgId: string, id: string): Promise<CredentialView>;
   decryptSecret(orgId: string, id: string, expectedType: CredentialType): Promise<Record<string, unknown>>;
 }
@@ -99,9 +99,8 @@ export class CredentialService implements ICredentialService {
     return this.toView(revoked);
   }
 
-  async deleteCredential(orgId: string, id: string): Promise<CredentialView> {
-    // Business rule: credentials are system-attached. Deletion is soft revoke only.
-    return this.revokeCredential(orgId, id);
+  async deleteCredential(orgId: string, id: string): Promise<void> {
+    await this.repo.hardDelete(orgId, id);
   }
 
   async markTested(orgId: string, id: string): Promise<CredentialView> {
