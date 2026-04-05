@@ -31,6 +31,11 @@ export const FlowSettingsSchema = z.object({
     languages: z.array(z.string()).default([]),
     defaultLanguage: z.string().optional(),
   }).optional(),
+  variables: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    isSessionVariable: z.boolean().default(true),
+  })).optional(),
 });
 
 export type FlowSettings = z.infer<typeof FlowSettingsSchema>;
