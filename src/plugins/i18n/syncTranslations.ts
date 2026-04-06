@@ -134,7 +134,6 @@ export async function syncFlowTranslations(
     getTranslateClient();
   }
 
-  console.log(`[i18n] Starting syncFlowTranslations for flow ${flowId} with ${targetLanguages.length} languages`);
   const flow = await repo.findByIdOrFail(flowId);
   const nodes = flow.nodes as any as Node[];
   const translatableItems: { nodeId: string; path: string; text: string }[] = [];
@@ -225,7 +224,6 @@ export async function syncFlowTranslations(
   for (const lang of targetLanguages) {
     const requestedLanguage = lang.trim();
     let providerTargetLanguage = requestedLanguage;
-    console.log(`[i18n] Translating flow ${flowId} to "${lang}" via target "${providerTargetLanguage}"...`);
     const texts = translatableItems.map(item => item.text);
     let translatedTexts: string[];
     try {
@@ -250,7 +248,6 @@ export async function syncFlowTranslations(
       );
 
       providerTargetLanguage = fallbackTargetLanguage;
-      console.log(`[i18n] Retrying flow ${flowId} language "${lang}" via fallback target "${providerTargetLanguage}"...`);
 
       try {
         translatedTexts = await translateBatch(texts, providerTargetLanguage);

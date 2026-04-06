@@ -1120,35 +1120,21 @@ export class NodeExecutor {
   private handleLanguageNode(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
-    console.log('STEP 1: UI triggered', {
-      nodeId: node.id,
-      nodeType: node.type,
-      flowId: ctx.flow.id,
-      userInput,
-      hasNodeLanguages: Array.isArray((node.data as Record<string, any>).languages),
-    });
-
+    
     const { message, variable, timeoutSeconds } = node.data as Record<string, any>;
     const resolvedMessage = this.text(message as string, ctx);
 
-    // Prefer node-owned language config; fallback to flow settings for backward compatibility.
+    // Use configured language options; prefer node list, fallback to flow localization list.
     const nodeLanguages = Array.isArray((node.data as Record<string, any>).languages)
       ? ((node.data as Record<string, any>).languages as string[])
       : [];
-    const nodeLocalizationEnabled = (node.data as Record<string, any>).localizationEnabled as boolean | undefined;
-    const nodeDefaultLanguage = (node.data as Record<string, any>).defaultLanguage as string | undefined;
 
     const settings = ctx.flow.settings as Record<string, any>;
     const settingsLanguages = (settings?.localization?.isEnabled && Array.isArray(settings.localization.languages))
       ? settings.localization.languages
       : [];
 
-    const languages =
-      nodeLocalizationEnabled === false
-        ? []
-        : nodeLocalizationEnabled === true
-          ? nodeLanguages
-          : (nodeLanguages.length > 0 ? nodeLanguages : settingsLanguages);
+    const languages = nodeLanguages.length > 0 ? nodeLanguages : settingsLanguages;
 
     const rawLanguageCodes: unknown[] = Array.isArray(languages) ? languages : [];
 
@@ -1179,14 +1165,6 @@ export class NodeExecutor {
       label: ISO_TO_NATIVE_NAME[langCode] || langCode.toUpperCase(),
       branchKey: 'default',
     }));
-
-    if (nodeDefaultLanguage && baseOptions.some((o: { id: string }) => o.id === nodeDefaultLanguage)) {
-      const idx = baseOptions.findIndex((o: { id: string }) => o.id === nodeDefaultLanguage);
-      const [preferred] = baseOptions.splice(idx, 1);
-      if (preferred) {
-        baseOptions.unshift(preferred);
-      }
-    }
 
     if (baseOptions.length === 0) {
         // No localization configured, just proceed silently or inform

@@ -146,7 +146,6 @@ export class PrismaFlowRepository implements IFlowRepository {
     }
 
     async getTranslation(flowId: string, language: string): Promise<any> {
-        logger.debug({ flowId, language, operation: 'flowTranslation.findUnique' }, 'STEP 4: DB query');
         return this.prisma.flowTranslation.findUnique({
             where: {
                 flowId_language: { flowId, language },
@@ -155,7 +154,6 @@ export class PrismaFlowRepository implements IFlowRepository {
     }
 
     async saveTranslation(flowId: string, language: string, translatedData: any): Promise<void> {
-        logger.debug({ flowId, language, operation: 'flowTranslation.upsert' }, 'STEP 4: DB query');
         await this.prisma.flowTranslation.upsert({
             where: { flowId_language: { flowId, language } },
             update: { translatedData },

@@ -52,6 +52,16 @@ export class CredentialService implements ICredentialService {
       throw new ValidationError(`Credential '${name}' already exists for this org and type`);
     }
 
+    if (input.type === 'WHATSAPP_CLOUD') {
+      const metadata = (input.metadata ?? {}) as Record<string, unknown>;
+      if (!metadata.displayPhoneNumber || typeof metadata.displayPhoneNumber !== 'string' || metadata.displayPhoneNumber.trim().length === 0) {
+        throw new ValidationError('displayPhoneNumber is required for WHATSAPP_CLOUD credentials in metadata');
+      }
+      if (!metadata.phoneNumberId || typeof metadata.phoneNumberId !== 'string' || metadata.phoneNumberId.trim().length === 0) {
+        throw new ValidationError('phoneNumberId is required for WHATSAPP_CLOUD credentials in metadata');
+      }
+    }
+
     const encrypted = this.crypto.encryptString(JSON.stringify(input.secret));
 
     const created = await this.repo.create({
