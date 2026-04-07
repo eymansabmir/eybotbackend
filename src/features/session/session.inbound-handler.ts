@@ -71,7 +71,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
       const activeSession = await this.sessionRepo.findCurrentByWhatsApp(waBusinessNumber, waId);
       const outboundMessages: Array<{ type: string; payload: Record<string, unknown> }> = [];
-      let sessionId: string;
+      let sessionId: string | undefined;
 
       if (activeSession) {
         // Strict continuity: do not switch to another flow while current session is active.
