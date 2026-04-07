@@ -38,6 +38,7 @@ export enum NodeType {
   ELEVENLABS = 'elevenlabs',
   ANTHROPIC = 'anthropic',
   DEEPSEEK = 'deepseek',
+  VARIABLE_MANAGER = 'variable_manager',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -64,6 +65,7 @@ export const LOGIC_NODE_TYPES = [
   NodeType.CONDITION,
   NodeType.SET_VARIABLE,
   NodeType.RANDOM_SPLIT,
+  NodeType.VARIABLE_MANAGER,
 ];
 
 export const FLOW_CONTROL_NODE_TYPES = [

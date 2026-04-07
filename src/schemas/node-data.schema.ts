@@ -267,7 +267,7 @@ const SendCardsDataSchema = z.object({
       imageUrl: z.string().optional(),
       title: z.string().optional(),
       description: z.string().optional(),
-      buttons: z.array(
+       buttons: z.array(
         z.object({
           id: z.string(),
           text: z.string(),
@@ -420,6 +420,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.LOCATION_REQUEST), ...LocationRequestDataSchema.shape }),
   z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
   z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
+  z.object({ type: z.literal(NodeType.VARIABLE_MANAGER) }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;
