@@ -1164,6 +1164,7 @@ export class NodeExecutor {
       label: ISO_TO_NATIVE_NAME[langCode] || langCode.toUpperCase(),
       branchKey: 'default',
     }));
+    const options = baseOptions;
 
     if (baseOptions.length === 0) {
         // No localization configured, just proceed silently or inform
@@ -1179,7 +1180,17 @@ export class NodeExecutor {
 
       return {
         nextNodeId: node.id,
-        outboundMessages: [{ type: NodeType.SEND_LIST, payload: buildListPayload(resolvedMessage) }],
+        outboundMessages: [{
+          type: NodeType.SEND_LIST,
+          payload: {
+            body: resolvedMessage,
+            buttonTitle: 'Choose language',
+            sections: [{
+              title: 'Languages',
+              rows: options.map((option) => ({ id: option.id, title: option.label })),
+            }],
+          },
+        }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'choice', options, variableName: langVar, variableScope: langScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
