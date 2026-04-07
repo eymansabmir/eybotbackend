@@ -30,6 +30,10 @@ export class ElevenLabsController {
       const { id } = PathSchema.parse(req.params);
       const { orgId } = OrgBodySchema.parse(req.body);
       const result = await this.service.testCredential(orgId, id);
+      if (!result.ok) {
+        res.status(result.statusCode ?? 400).json(result);
+        return;
+      }
       res.json(result);
     } catch (error) {
       next(error);

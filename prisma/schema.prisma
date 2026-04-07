@@ -23,6 +23,8 @@ model Flow {
 
   publishedAt DateTime?
 
+  isConfigured Boolean @default(false)
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   campaigns     Campaign[]
@@ -269,6 +271,7 @@ enum CredentialType {
   ANTHROPIC
   MAKE
   DEEPSEEK
+  WHATSAPP_CLOUD
 }
 
 model Credential {

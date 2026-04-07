@@ -1122,14 +1122,50 @@ export class NodeExecutor {
   ): NodeExecutionResult {
     const { message, variable, variableName, variableScope, timeoutSeconds } = node.data as Record<string, any>;
     const resolvedMessage = this.text(message as string, ctx);
-    
-    // Fetch languages from flow settings
-    const settings = ctx.flow.settings as Record<string, any>;
-    const languages = (settings?.localization?.isEnabled && Array.isArray(settings.localization.languages)) 
-        ? settings.localization.languages 
-        : [];
 
-    if (languages.length === 0) {
+    // Use configured language options; prefer node list, fallback to flow localization list.
+    const nodeLanguages = Array.isArray((node.data as Record<string, any>).languages)
+      ? ((node.data as Record<string, any>).languages as string[])
+      : [];
+
+    const settings = ctx.flow.settings as Record<string, any>;
+    const settingsLanguages = (settings?.localization?.isEnabled && Array.isArray(settings.localization.languages))
+      ? settings.localization.languages
+      : [];
+
+    const languages = nodeLanguages.length > 0 ? nodeLanguages : settingsLanguages;
+
+    const rawLanguageCodes: unknown[] = Array.isArray(languages) ? languages : [];
+
+    const MAX_LANGUAGE_OPTIONS = 10;
+    const languageCodes = Array.from(
+      new Set(
+        rawLanguageCodes
+          .map((langCode) => String(langCode ?? '').trim())
+          .filter((langCode) => langCode.length > 0),
+      ),
+    );
+    const limitedLanguageCodes = languageCodes.slice(0, MAX_LANGUAGE_OPTIONS);
+
+    if (languageCodes.length > MAX_LANGUAGE_OPTIONS) {
+      logger.warn(
+        {
+          nodeId: node.id,
+          flowId: ctx.flow.id,
+          requestedLanguageCount: languageCodes.length,
+          maxAllowed: MAX_LANGUAGE_OPTIONS,
+        },
+        'Language node has more than supported options for WhatsApp list; trimming to max allowed'
+      );
+    }
+
+    const baseOptions = limitedLanguageCodes.map((langCode: string) => ({
+      id: langCode,
+      label: ISO_TO_NATIVE_NAME[langCode] || langCode.toUpperCase(),
+      branchKey: 'default',
+    }));
+
+    if (baseOptions.length === 0) {
         // No localization configured, just proceed silently or inform
         return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
     }
@@ -1140,23 +1176,10 @@ export class NodeExecutor {
     if (userInput === undefined) {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + (timeoutSeconds || 3600) * 1000);
-      
-      const options = languages.map((langCode: string) => ({
-          id: langCode,
-          label: ISO_TO_NATIVE_NAME[langCode] || langCode.toUpperCase(),
-          branchKey: 'default'
-      }));
-
-      // Map to interactive buttons or list if length > 3
-      const isList = languages.length > 3;
-      const payload = isList 
-          ? { body: resolvedMessage, buttonTitle: "Select Language", sections: [{ title: "Languages", rows: options.map((o: any) => ({ id: o.id, title: o.label })) }] }
-          : { body: resolvedMessage, buttons: options.map((o: any) => ({ id: o.id, title: o.label })) };
-      const outType = isList ? NodeType.SEND_LIST : NodeType.SEND_BUTTONS;
 
       return {
         nextNodeId: node.id,
-        outboundMessages: [{ type: outType as NodeType, payload }],
+        outboundMessages: [{ type: NodeType.SEND_LIST, payload: buildListPayload(resolvedMessage) }],
         variableMutations: [], isTerminal: false,
         waitForInput: { type: 'choice', options, variableName: langVar, variableScope: langScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },

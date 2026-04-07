@@ -3,11 +3,65 @@ import { Node } from '../../schemas/node.schema';
 import { NodeType } from '../../schemas/node-types.enum';
 import type { IFlowRepository } from '../../features/flow/flow.repository';
 
-const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
+const GOOGLE_TRANSLATE_LANGUAGE_FALLBACKS: Record<string, string> = {
+  // Legacy/alias codes
+  iw: 'he',
+  jw: 'jv',
+  'zh-CN': 'zh',
+
+  // Regional languages that often lack direct support in Google v2 target codes
+  bho: 'hi',
+  doi: 'hi',
+  gom: 'hi',
+  mai: 'hi',
+  'mni-Mtei': 'hi',
+  lus: 'hi',
+  kri: 'en',
+};
 
 let translate: v2.Translate | undefined;
-if (apiKey) {
-  translate = new v2.Translate({ key: apiKey });
+let translateKey: string | undefined;
+
+function getTranslateClient(): v2.Translate {
+  const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('Translation provider unavailable: GOOGLE_TRANSLATE_API_KEY is missing');
+  }
+
+  if (!translate || translateKey !== apiKey) {
+    translate = new v2.Translate({ key: apiKey });
+    translateKey = apiKey;
+  }
+
+  return translate;
+}
+
+function resolveProviderFallbackLanguage(requestedLanguage: string): string {
+  const normalized = requestedLanguage.trim();
+  return GOOGLE_TRANSLATE_LANGUAGE_FALLBACKS[normalized] ?? normalized;
+}
+
+export function hasProviderFallbackLanguage(requestedLanguage: string): boolean {
+  const normalized = requestedLanguage.trim();
+  return Boolean(GOOGLE_TRANSLATE_LANGUAGE_FALLBACKS[normalized]);
+}
+
+function normalizeForDiff(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasMeaningfulTranslationChange(source: string[], translated: string[]): boolean {
+  for (let i = 0; i < source.length; i++) {
+    const src = normalizeForDiff(source[i] ?? '');
+    const dst = normalizeForDiff(translated[i] ?? '');
+    if (src.length === 0 || dst.length === 0) continue;
+    if (src !== dst) return true;
+  }
+  return false;
 }
 
 /**
@@ -36,10 +90,12 @@ const restoreVariables = (text: string, variables: string[]): string => {
  * Translate a batch of texts using Google Translate
  */
 async function translateBatch(texts: string[], targetLang: string): Promise<string[]> {
-  if (!translate || texts.length === 0) return texts;
+  if (texts.length === 0) return texts;
+
+  const client = getTranslateClient();
 
   const protectedItems = texts.map(text => protectVariables(text));
-  const [translations] = await translate.translate(protectedItems.map(p => p.protectedText), targetLang);
+  const [translations] = await client.translate(protectedItems.map(p => p.protectedText), targetLang);
 
   const results = Array.isArray(translations) ? translations : [translations];
   return results.map((t, i) => {
@@ -74,7 +130,10 @@ export async function syncFlowTranslations(
   flowId: string,
   targetLanguages: string[],
 ): Promise<void> {
-  console.log(`[i18n] Starting syncFlowTranslations for flow ${flowId} with ${targetLanguages.length} languages`);
+  if (targetLanguages.length > 0) {
+    getTranslateClient();
+  }
+
   const flow = await repo.findByIdOrFail(flowId);
   const nodes = flow.nodes as any as Node[];
   const translatableItems: { nodeId: string; path: string; text: string }[] = [];
@@ -163,13 +222,46 @@ export async function syncFlowTranslations(
 
   // 2. For each target language: translate and save via the repository
   for (const lang of targetLanguages) {
-    console.log(`[i18n] Translating flow ${flowId} to "${lang}"...`);
+    const requestedLanguage = lang.trim();
+    let providerTargetLanguage = requestedLanguage;
     const texts = translatableItems.map(item => item.text);
     let translatedTexts: string[];
     try {
-      translatedTexts = await translateBatch(texts, lang);
+      translatedTexts = await translateBatch(texts, providerTargetLanguage);
     } catch (transErr: any) {
-      continue; // Skip this language if translation fails
+      const fallbackTargetLanguage = resolveProviderFallbackLanguage(requestedLanguage);
+      const shouldRetryWithFallback = fallbackTargetLanguage !== requestedLanguage;
+
+      if (!shouldRetryWithFallback) {
+        const reason = transErr?.message || 'Unknown translation error';
+        throw new Error(`Translation failed for language "${lang}": ${reason}`);
+      }
+
+      logger.warn(
+        {
+          flowId,
+          requestedLanguage: lang,
+          providerTargetLanguage: fallbackTargetLanguage,
+          reason: transErr?.message || 'Unknown translation error',
+        },
+        'i18n: requested language failed on provider; retrying with fallback target language'
+      );
+
+      providerTargetLanguage = fallbackTargetLanguage;
+
+      try {
+        translatedTexts = await translateBatch(texts, providerTargetLanguage);
+      } catch (fallbackErr: any) {
+        const reason = fallbackErr?.message || transErr?.message || 'Unknown translation error';
+        throw new Error(`Translation failed for language "${lang}": ${reason}`);
+      }
+    }
+
+    if (lang !== 'en' && !hasMeaningfulTranslationChange(texts, translatedTexts)) {
+      throw new Error(
+        `Translation failed for language "${lang}": provider returned unchanged text. ` +
+        `Requested=${lang}, target=${providerTargetLanguage}`
+      );
     }
 
     const translatedNodes = JSON.parse(JSON.stringify(nodes));

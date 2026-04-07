@@ -15,7 +15,7 @@ export interface ICredentialService {
   listCredentials(orgId: string, options?: ListCredentialsOptions): Promise<CredentialView[]>;
   updateCredential(orgId: string, id: string, updates: UpdateCredentialPayload): Promise<CredentialView>;
   revokeCredential(orgId: string, id: string): Promise<CredentialView>;
-  deleteCredential(orgId: string, id: string): Promise<CredentialView>;
+  deleteCredential(orgId: string, id: string): Promise<void>;
   markTested(orgId: string, id: string): Promise<CredentialView>;
   decryptSecret(orgId: string, id: string, expectedType: CredentialType): Promise<Record<string, unknown>>;
 }
@@ -50,6 +50,16 @@ export class CredentialService implements ICredentialService {
     const existing = await this.repo.findByName(orgId, input.type, name);
     if (existing) {
       throw new ValidationError(`Credential '${name}' already exists for this org and type`);
+    }
+
+    if (input.type === 'WHATSAPP_CLOUD') {
+      const metadata = (input.metadata ?? {}) as Record<string, unknown>;
+      if (!metadata.displayPhoneNumber || typeof metadata.displayPhoneNumber !== 'string' || metadata.displayPhoneNumber.trim().length === 0) {
+        throw new ValidationError('displayPhoneNumber is required for WHATSAPP_CLOUD credentials in metadata');
+      }
+      if (!metadata.phoneNumberId || typeof metadata.phoneNumberId !== 'string' || metadata.phoneNumberId.trim().length === 0) {
+        throw new ValidationError('phoneNumberId is required for WHATSAPP_CLOUD credentials in metadata');
+      }
     }
 
     const encrypted = this.crypto.encryptString(JSON.stringify(input.secret));
@@ -99,9 +109,8 @@ export class CredentialService implements ICredentialService {
     return this.toView(revoked);
   }
 
-  async deleteCredential(orgId: string, id: string): Promise<CredentialView> {
-    // Business rule: credentials are system-attached. Deletion is soft revoke only.
-    return this.revokeCredential(orgId, id);
+  async deleteCredential(orgId: string, id: string): Promise<void> {
+    await this.repo.hardDelete(orgId, id);
   }
 
   async markTested(orgId: string, id: string): Promise<CredentialView> {

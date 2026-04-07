@@ -14,6 +14,7 @@ export interface FlowProperties {
     nodes: Node[];
     edges: Edge[];
     settings: FlowSettings;
+    isConfigured?: boolean | undefined;
     publishedAt?: Date | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
@@ -31,6 +32,7 @@ export class FlowEntity {
     public nodes: Node[];
     public edges: Edge[];
     public settings: FlowSettings;
+    public isConfigured?: boolean | undefined;
     public publishedAt?: Date | undefined;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
@@ -47,6 +49,7 @@ export class FlowEntity {
         this.nodes = props.nodes;
         this.edges = props.edges;
         this.settings = props.settings;
+        this.isConfigured = props.isConfigured;
         this.publishedAt = props.publishedAt;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
@@ -81,6 +84,7 @@ export class FlowEntity {
             nodes: this.nodes,
             edges: this.edges,
             settings: this.settings,
+            isConfigured: this.isConfigured,
             publishedAt: this.publishedAt,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,

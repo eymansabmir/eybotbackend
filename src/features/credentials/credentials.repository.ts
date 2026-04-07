@@ -10,6 +10,45 @@ import type {
 export class PrismaCredentialRepository implements ICredentialRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  private normalizeBusinessNumber(input: string): string {
+    return input.replace(/\D/g, '');
+  }
+
+  private matchesBusinessNumber(
+    credential: Credential,
+    waBusinessNumber: string,
+    normalizedBusinessNumber: string,
+  ): boolean {
+    const metadata = credential.metadata as Record<string, unknown> | null;
+    if (!metadata) return false;
+
+    const phoneNumberId = typeof metadata.phoneNumberId === 'string' ? metadata.phoneNumberId : '';
+    const displayPhoneNumber = typeof metadata.displayPhoneNumber === 'string' ? metadata.displayPhoneNumber : '';
+
+    if (phoneNumberId && phoneNumberId === waBusinessNumber) return true;
+    if (displayPhoneNumber && this.normalizeBusinessNumber(displayPhoneNumber) === normalizedBusinessNumber) return true;
+    return false;
+  }
+
+  private async findActiveWhatsAppByPhoneNumberId(
+    waBusinessNumber: string,
+    orgId?: string,
+  ): Promise<Credential | null> {
+    return this.prisma.credential.findFirst({
+      where: {
+        ...(orgId ? { orgId } : {}),
+        type: 'WHATSAPP_CLOUD',
+        isActive: true,
+        revokedAt: null,
+        metadata: {
+          path: ['phoneNumberId'],
+          equals: waBusinessNumber,
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   private toPrismaBytes(value: Buffer): Uint8Array<ArrayBuffer> {
     return new Uint8Array(value);
   }
@@ -101,6 +140,47 @@ export class PrismaCredentialRepository implements ICredentialRepository {
     });
   }
 
+  async findActiveWhatsAppByBusinessNumber(waBusinessNumber: string): Promise<Credential | null> {
+    const directMatch = await this.findActiveWhatsAppByPhoneNumberId(waBusinessNumber);
+    if (directMatch) {
+      return directMatch;
+    }
+
+    const normalized = this.normalizeBusinessNumber(waBusinessNumber);
+
+    const candidates = await this.prisma.credential.findMany({
+      where: {
+        type: 'WHATSAPP_CLOUD',
+        isActive: true,
+        revokedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return candidates.find((credential) => this.matchesBusinessNumber(credential, waBusinessNumber, normalized)) ?? null;
+  }
+
+  async findActiveWhatsAppByBusinessNumberForOrg(orgId: string, waBusinessNumber: string): Promise<Credential | null> {
+    const directMatch = await this.findActiveWhatsAppByPhoneNumberId(waBusinessNumber, orgId);
+    if (directMatch) {
+      return directMatch;
+    }
+
+    const normalized = this.normalizeBusinessNumber(waBusinessNumber);
+
+    const candidates = await this.prisma.credential.findMany({
+      where: {
+        orgId,
+        type: 'WHATSAPP_CLOUD',
+        isActive: true,
+        revokedAt: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return candidates.find((credential) => this.matchesBusinessNumber(credential, waBusinessNumber, normalized)) ?? null;
+  }
+
   async update(
     orgId: string,
     id: string,
@@ -119,5 +199,18 @@ export class PrismaCredentialRepository implements ICredentialRepository {
     }
 
     return this.findByIdOrFail(orgId, id);
+  }
+
+  async hardDelete(orgId: string, id: string): Promise<void> {
+    const result = await this.prisma.credential.deleteMany({
+      where: {
+        id,
+        ...this.baseWhere(orgId),
+      },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundError('Credential', id);
+    }
   }
 }

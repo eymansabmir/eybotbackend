@@ -103,6 +103,7 @@ async function startServer(): Promise<void> {
     redisPlugin,
     storagePlugin,
     whatsappPlugin,
+    credentialRepo,
   );
   registry.registerValue(INBOUND_HANDLER, inboundHandler);
 

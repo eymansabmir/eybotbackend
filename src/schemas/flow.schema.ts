@@ -11,6 +11,7 @@ export const TriggerTypeSchema = z.enum(['inbound', 'keyword', 'api']);
 export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 
 export const TriggerConfigSchema = z.object({
+  enabled: z.boolean().optional(),
   keywords: z.array(z.string()).optional(),
   comparisons: z.array(z.object({
     operator: z.enum(['CONTAINS', 'EQUALS', 'STARTS_WITH', 'ENDS_WITH']),
@@ -22,13 +23,14 @@ export const TriggerConfigSchema = z.object({
 export type TriggerConfig = z.infer<typeof TriggerConfigSchema>;
 
 export const FlowSettingsSchema = z.object({
+  credentialId: z.string().optional(),
   timeoutSeconds: z.number().default(300),
   maxSteps: z.number().default(100),
   maxConsecutiveLogicSteps: z.number().default(10),
   fallbackMessage: z.string().default('Sorry, something went wrong. Please try again later.'),
   localization: z.object({
     isEnabled: z.boolean().default(false),
-    languages: z.array(z.string()).default([]),
+    languages: z.array(z.string()).max(10, 'Localization supports maximum 10 languages').default([]),
     defaultLanguage: z.string().optional(),
   }).optional(),
   variables: z.array(z.object({
@@ -52,6 +54,7 @@ export const FlowSchema = z.object({
   nodes: z.array(NodeSchema),
   edges: z.array(EdgeSchema),
   settings: FlowSettingsSchema,
+  isConfigured: z.boolean().default(false),
   publishedAt: z.date().optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),

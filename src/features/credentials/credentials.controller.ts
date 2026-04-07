@@ -108,8 +108,8 @@ export class CredentialController {
     try {
       const { id } = PathSchema.parse(req.params);
       const { orgId } = OrgBodySchema.parse(req.body);
-      const credential = await this.service.deleteCredential(orgId, id);
-      res.json(credential);
+      await this.service.deleteCredential(orgId, id);
+      res.status(204).send();
     } catch (err) {
       next(err);
     }
