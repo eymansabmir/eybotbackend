@@ -1120,8 +1120,7 @@ export class NodeExecutor {
   private handleLanguageNode(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
   ): NodeExecutionResult {
-    
-    const { message, variable, timeoutSeconds } = node.data as Record<string, any>;
+    const { message, variable, variableName, variableScope, timeoutSeconds } = node.data as Record<string, any>;
     const resolvedMessage = this.text(message as string, ctx);
 
     // Use configured language options; prefer node list, fallback to flow localization list.
@@ -1171,11 +1170,8 @@ export class NodeExecutor {
         return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
     }
 
-    const buildListPayload = (bodyText: string) => ({
-      body: bodyText,
-      buttonTitle: 'Select Language',
-      sections: [{ title: 'Languages', rows: baseOptions.map((o: any) => ({ id: o.id, title: o.label })) }],
-    });
+    const langVar = variableName || variable || 'selected_language';
+    const langScope = variableScope || 'session';
 
     if (userInput === undefined) {
       const since = new Date();
@@ -1185,45 +1181,13 @@ export class NodeExecutor {
         nextNodeId: node.id,
         outboundMessages: [{ type: NodeType.SEND_LIST, payload: buildListPayload(resolvedMessage) }],
         variableMutations: [], isTerminal: false,
-        waitForInput: { type: 'choice', options: baseOptions, variableName: variable || 'selected_language', variableScope: 'session', since, timeoutAt },
+        waitForInput: { type: 'choice', options, variableName: langVar, variableScope: langScope, since, timeoutAt },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
 
-    const selectedOption = baseOptions.find((option) => option.id === userInput);
-    if (!selectedOption) {
-      logger.warn(
-        {
-          nodeId: node.id,
-          flowId: ctx.flow.id,
-          sessionId: ctx.session.id,
-          receivedInput: userInput,
-          allowedLanguages: baseOptions.map((option) => option.id),
-        },
-        'Language node received invalid input; prompting user to pick from interactive list'
-      );
-
-      const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || 3600) * 1000);
-      return {
-        nextNodeId: node.id,
-        outboundMessages: [{ type: NodeType.SEND_LIST, payload: buildListPayload(`${resolvedMessage}\n\nPlease choose a language from the list.`) }],
-        variableMutations: [],
-        isTerminal: false,
-        waitForInput: { type: 'choice', options: baseOptions, variableName: variable || 'selected_language', variableScope: 'session', since, timeoutAt },
-        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
-      };
-    }
-
-    const langVar = variable || 'selected_language';
-    console.log('STEP 2: Action received', {
-      nodeId: node.id,
-      selectedLanguage: userInput,
-      variable: langVar,
-      sessionId: ctx.session.id,
-    });
     const result = this.defaultResult(node, 'default', enteredAt, traverser, [], [
-      { scope: 'session', key: langVar, value: userInput },
+      { scope: langScope as 'session' | 'contact', key: langVar, value: userInput },
     ]);
     return { ...result, historyStep: { ...result.historyStep, userInput }, languageChanged: userInput };
   }
