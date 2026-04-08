@@ -11,7 +11,7 @@ import { Readable } from 'stream';
 import type { ICredentialRepository } from '../credentials/credentials.repository.interface';
 import type { FlowEntity } from '../flow/flow.entity';
 import { selectFlowByTrigger } from './trigger-selector';
-import { hasProviderFallbackLanguage, syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
+import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
 
 type RedisLockClient = {
   set(key: string, value: string, ex: 'EX', ttl: number, nx: 'NX'): Promise<string | null>;
@@ -23,11 +23,6 @@ const LOCK_PREFIX = 'wa:lock:';
 const LOCK_TTL = 10; // seconds
 
 export class SessionInboundHandler implements IInboundHandler {
-  private static readonly TRANSLATION_REFRESH_VERSION = '2026-04-05-language-label-refresh-v1';
-  private static readonly TRANSLATION_REFRESH_TTL_MS = 6 * 60 * 60 * 1000;
-  private static readonly MAX_REFRESH_CACHE_KEYS = 5000;
-  private static readonly refreshedTranslationKeys = new Map<string, number>();
-
   constructor(
     private readonly flowRepo: IFlowRepository,
     private readonly sessionRepo: ISessionRepository,
@@ -344,94 +339,23 @@ export class SessionInboundHandler implements IInboundHandler {
 
   private async getTranslationWithLazySync(flowId: string, language: string): Promise<FlowEntity['nodes'] | null> {
     const normalized = (language || '').trim();
-    console.log('STEP 3: Service processing', {
-      flowId,
-      language,
-      normalizedLanguage: normalized,
-      operation: 'getTranslationWithLazySync',
-    });
     if (!normalized) return null;
 
-    const refreshKey = `${SessionInboundHandler.TRANSLATION_REFRESH_VERSION}:${flowId}:${normalized}`;
-    const hasFallback = hasProviderFallbackLanguage(normalized);
-    SessionInboundHandler.pruneRefreshCache();
-    const shouldAttemptRefresh = !SessionInboundHandler.hasFreshRefreshKey(refreshKey);
-
     const existing = await this.flowRepo.getTranslation(flowId, normalized);
-    if (existing?.translatedData && !shouldAttemptRefresh) {
-      console.log('STEP 3: Service processing', {
-        flowId,
-        normalizedLanguage: normalized,
-        status: 'cache_hit',
-      });
+    if (existing?.translatedData) {
       return existing.translatedData as FlowEntity['nodes'];
-    }
-
-    if (existing?.translatedData && shouldAttemptRefresh) {
-      logger.info(
-        { flowId, language: normalized, hasFallback },
-        'SessionInboundHandler: refreshing cached translation once for current translation refresh version'
-      );
     }
 
     try {
       await syncFlowTranslations(this.flowRepo, flowId, [normalized]);
       const synced = await this.flowRepo.getTranslation(flowId, normalized);
-      if (synced?.translatedData) {
-        SessionInboundHandler.markRefreshKey(refreshKey);
-        console.log('STEP 3: Service processing', {
-          flowId,
-          normalizedLanguage: normalized,
-          status: 'synced_from_provider',
-        });
-        return synced.translatedData as FlowEntity['nodes'];
-      }
+      return (synced?.translatedData as FlowEntity['nodes']) || null;
     } catch (err) {
-      logger.warn({ err, flowId, language: normalized }, 'SessionInboundHandler: lazy translation sync failed');
-
-      if (existing?.translatedData) {
-        logger.warn(
-          { flowId, language: normalized },
-          'SessionInboundHandler: translation refresh failed; using existing cached translation'
-        );
-        return existing.translatedData as FlowEntity['nodes'];
-      }
-    }
-
-    return null;
-  }
-
-  private static hasFreshRefreshKey(key: string): boolean {
-    const ts = this.refreshedTranslationKeys.get(key);
-    if (!ts) return false;
-    if (Date.now() - ts > this.TRANSLATION_REFRESH_TTL_MS) {
-      this.refreshedTranslationKeys.delete(key);
-      return false;
-    }
-    return true;
-  }
-
-  private static markRefreshKey(key: string): void {
-    this.refreshedTranslationKeys.set(key, Date.now());
-    if (this.refreshedTranslationKeys.size <= this.MAX_REFRESH_CACHE_KEYS) {
-      return;
-    }
-
-    // Evict oldest key first to keep memory usage bounded.
-    const oldest = this.refreshedTranslationKeys.keys().next().value;
-    if (oldest) {
-      this.refreshedTranslationKeys.delete(oldest);
+      logger.warn({ err, flowId, language: normalized }, 'SessionInboundHandler: fallback translation sync failed');
+      return null;
     }
   }
 
-  private static pruneRefreshCache(): void {
-    const now = Date.now();
-    for (const [key, ts] of this.refreshedTranslationKeys) {
-      if (now - ts > this.TRANSLATION_REFRESH_TTL_MS) {
-        this.refreshedTranslationKeys.delete(key);
-      }
-    }
-  }
 }
 
 async function acquireLock(redis: RedisLockClient, key: string, value: string, ttl: number): Promise<boolean> {

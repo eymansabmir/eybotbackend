@@ -105,4 +105,25 @@ export class FlowController {
       res.status(200).json({ success: true, message: 'Translations synchronized successfully' });
     } catch (err) { next(err); }
   };
+
+  getFlowTranslation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] as string;
+      const language = req.params['language'] as string;
+      logger.info({ flowId: id, language }, 'Fetching flow translation');
+      const translation = await this.flowService.getFlowTranslation(id, language);
+      res.json(translation);
+    } catch (err) { next(err); }
+  };
+
+  updateFlowTranslation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] as string;
+      const language = req.params['language'] as string;
+      const { translatedData } = req.body;
+      logger.info({ flowId: id, language }, 'Updating flow translation');
+      await this.flowService.updateFlowTranslation(id, language, translatedData);
+      res.json({ success: true });
+    } catch (err) { next(err); }
+  };
 }
