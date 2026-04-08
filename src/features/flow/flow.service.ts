@@ -16,6 +16,8 @@ export interface IFlowService {
   deleteFlow(id: string): Promise<void>;
   validateGraph(entity: FlowEntity): void;
   syncTranslations(id: string): Promise<void>;
+  getFlowTranslation(flowId: string, language: string): Promise<any>;
+  updateFlowTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
 }
 
 export interface ConfigureFlowPayload {
@@ -76,7 +78,6 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Flow is already published');
     }
     this.validateGraph(flow);
-    await this.syncTranslations(id);
     return this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
   }
 
@@ -101,7 +102,6 @@ export class FlowService implements IFlowService {
     const validationClone = flow.clone();
     Object.assign(validationClone, updates);
     this.validateGraph(validationClone);
-    await this.syncTranslations(id);
     
     return this.flowRepo.update(id, updates);
   }
@@ -134,6 +134,14 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Cannot delete a published flow. Archive it first.');
     }
     await this.flowRepo.delete(id);
+  }
+
+  async getFlowTranslation(flowId: string, language: string): Promise<any> {
+    return this.flowRepo.getTranslation(flowId, language);
+  }
+
+  async updateFlowTranslation(flowId: string, language: string, translatedData: any): Promise<void> {
+    await this.flowRepo.saveTranslation(flowId, language, translatedData);
   }
 
   validateGraph(entity: FlowEntity): void {
