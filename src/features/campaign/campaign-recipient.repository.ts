@@ -1,10 +1,21 @@
 import { PrismaClient, RecipientStatus } from '@prisma/client';
 
+export interface CampaignRecipientForTracking {
+  id: string;
+  campaignId: string;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+  repliedAt: Date | null;
+}
+
 export interface ICampaignRecipientRepository {
   batchCreate(versionId: string, recipients: Array<{ waId: string; variables: any }>): Promise<void>;
   findPendingByVersion(versionId: string, limit?: number, cursorId?: string): Promise<any[]>;
   updateStatus(id: string, status: RecipientStatus, sentAt?: Date): Promise<void>;
   updateStatusWithStats(id: string, campaignId: string, status: RecipientStatus): Promise<void>;
+  updateMessageId(id: string, messageId: string): Promise<void>;
+  findByCampaignMessageId(messageId: string): Promise<CampaignRecipientForTracking | null>;
+  updateLifecycle(recipientId: string, campaignId: string, lifecycleField: 'deliveredAt' | 'readAt' | 'repliedAt', statsField: 'delivered' | 'read' | 'replied'): Promise<void>;
 }
 
 export class PrismaCampaignRecipientRepository implements ICampaignRecipientRepository {
@@ -50,9 +61,9 @@ export class PrismaCampaignRecipientRepository implements ICampaignRecipientRepo
     await this.prisma.$transaction([
       this.prisma.campaignRecipient.update({
         where: { id },
-        data: { 
-          status, 
-          sentAt: isCompleted ? new Date() : null 
+        data: {
+          status,
+          sentAt: isCompleted ? new Date() : null
         },
       }),
       this.prisma.campaignStats.update({
@@ -62,6 +73,51 @@ export class PrismaCampaignRecipientRepository implements ICampaignRecipientRepo
           ...(isFailed ? { failed: { increment: 1 } } : {}),
           pending: { decrement: 1 },
         },
+      }),
+    ]);
+  }
+
+  async updateMessageId(id: string, messageId: string): Promise<void> {
+    await this.prisma.campaignRecipient.update({
+      where: { id },
+      data: { messageId },
+    });
+  }
+
+  async findByCampaignMessageId(messageId: string): Promise<CampaignRecipientForTracking | null> {
+    const recipient = await this.prisma.campaignRecipient.findUnique({
+      where: { messageId },
+      include: { version: { select: { campaignId: true } } },
+    });
+    if (!recipient) return null;
+    return {
+      id: recipient.id,
+      campaignId: recipient.version.campaignId,
+      deliveredAt: recipient.deliveredAt,
+      readAt: recipient.readAt,
+      repliedAt: recipient.repliedAt,
+    };
+  }
+
+  async updateLifecycle(
+    recipientId: string,
+    campaignId: string,
+    lifecycleField: 'deliveredAt' | 'readAt' | 'repliedAt',
+    statsField: 'delivered' | 'read' | 'replied',
+  ): Promise<void> {
+    const statusMap: Record<string, RecipientStatus> = {
+      deliveredAt: RecipientStatus.delivered,
+      readAt: RecipientStatus.read,
+      repliedAt: RecipientStatus.replied,
+    };
+    await this.prisma.$transaction([
+      this.prisma.campaignRecipient.update({
+        where: { id: recipientId },
+        data: { [lifecycleField]: new Date(), status: statusMap[lifecycleField] },
+      }),
+      this.prisma.campaignStats.update({
+        where: { campaignId },
+        data: { [statsField]: { increment: 1 } },
       }),
     ]);
   }

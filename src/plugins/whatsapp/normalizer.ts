@@ -6,10 +6,18 @@ export interface WhatsAppWebhookPayload {
   }>;
 }
 
+export interface WhatsAppStatusEntry {
+  id: string;
+  status: string;
+  timestamp: string;
+  recipient_id: string;
+}
+
 export interface WhatsAppWebhookValue {
   metadata?: { display_phone_number?: string; phone_number_id?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
   messages?: WhatsAppMessage[];
+  statuses?: WhatsAppStatusEntry[];
 }
 
 export interface WhatsAppMessage {
@@ -17,6 +25,7 @@ export interface WhatsAppMessage {
   id: string;
   timestamp?: string;
   type: string;
+  context?: { id?: string };
   text?: { body?: string };
   button?: { text?: string; payload?: string };
   interactive?: {
@@ -54,6 +63,8 @@ export interface NormalizedInboundMessage {
   mediaFilename?: string;
   location?: { latitude: number; longitude: number; name?: string; address?: string };
   reaction?: { messageId: string; emoji?: string };
+  /** The Meta message_id that this inbound message is replying to (from message.context.id). */
+  contextMessageId?: string;
 }
 
 const MEDIA_TYPES = new Set(['image', 'audio', 'video', 'document', 'sticker', 'voice']);
@@ -101,6 +112,8 @@ export class WhatsAppNormalizer {
     }
 
     Object.assign(base, this.extractMedia(message), this.extractLocation(message), this.extractReaction(message));
+
+    if (message.context?.id) base.contextMessageId = message.context.id;
 
     return base;
   }

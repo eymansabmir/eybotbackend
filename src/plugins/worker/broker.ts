@@ -88,6 +88,7 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.CAMPAIGN_IMPORT, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_DISPATCH, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.WA_STATUS, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -110,6 +111,10 @@ export class RabbitMQBroker {
     // Campaign Dispatch
     await ch.assertQueue('campaign.dispatch.q', { durable: true });
     await ch.bindQueue('campaign.dispatch.q', EXCHANGES.CAMPAIGN_DISPATCH, '');
+
+    // WhatsApp Status Updates (delivered/read callbacks from Meta)
+    await ch.assertQueue('wa.status.q', { durable: true });
+    await ch.bindQueue('wa.status.q', EXCHANGES.WA_STATUS, '');
 
     // Campaign: per-instance exclusive queue bound to fanout exchange.
     // Each running instance gets its own queue → every instance receives

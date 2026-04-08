@@ -2,6 +2,8 @@ import type { IPluginRegistry } from '../../plugin.interface';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from '../../whatsapp';
 import { NodeType } from '../../../schemas/node-types.enum';
 import type { OutboundJob } from '../jobs';
+import { CAMPAIGN_RECIPIENT_REPOSITORY } from '../../../features/repositories.interface';
+import type { ICampaignRecipientRepository } from '../../../features/campaign/campaign-recipient.repository';
 
 export async function handleOutboundJob(data: unknown, registry: IPluginRegistry): Promise<void> {
   const job = data as OutboundJob;
@@ -17,7 +19,19 @@ export async function handleOutboundJob(data: unknown, registry: IPluginRegistry
     const p = payload;
 
     // Build a single OutboundMessage and delegate to the central sender.
-    await sender.sendMessages(waId, [{ type: messageType as NodeType, payload: p }], sessionId);
+    const metaMessageId = await sender.sendMessages(waId, [{ type: messageType as NodeType, payload: p }], sessionId);
+
+    // If this is the first message of a campaign broadcast, persist Meta's message_id
+    // so we can correlate delivery/read status callbacks back to this recipient.
+    if (job.campaignRecipientId && metaMessageId) {
+      try {
+        const recipientRepo = registry.get<ICampaignRecipientRepository>(CAMPAIGN_RECIPIENT_REPOSITORY);
+        await recipientRepo.updateMessageId(job.campaignRecipientId, metaMessageId);
+        logger.info({ campaignRecipientId: job.campaignRecipientId, metaMessageId }, 'OutboundConsumer: campaign message_id saved');
+      } catch (err) {
+        logger.error({ campaignRecipientId: job.campaignRecipientId, err }, 'OutboundConsumer: failed to save campaign message_id');
+      }
+    }
 
     logger.info({ waId, messageType, sessionId }, 'OutboundConsumer: message sent successfully');
 

@@ -15,6 +15,15 @@ export interface OutboundJob {
   payload: Record<string, unknown>;
   orgId: string;
   sessionId?: string;
+  /** When set, the outbound consumer saves Meta's message_id back to CampaignRecipient after sending. */
+  campaignRecipientId?: string;
+}
+
+/** Job pushed to wa.status exchange when Meta sends a delivery/read status callback. */
+export interface StatusUpdateJob {
+  messageId: string;
+  status: 'delivered' | 'read';
+  timestamp: number;
 }
 
 /** Stub for future campaign broadcast jobs. */

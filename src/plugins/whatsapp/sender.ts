@@ -6,18 +6,21 @@ import { WhatsAppAPIService } from './whatsapp-api.service';
 export class DirectWhatsAppSender implements IWhatsAppSender {
   constructor(private readonly api: WhatsAppAPIService) {}
 
-  async sendMessages(waId: string, messages: OutboundMessage[], _sessionId?: string): Promise<void> {
+  async sendMessages(waId: string, messages: OutboundMessage[], _sessionId?: string): Promise<string | undefined> {
+    let firstMessageId: string | undefined;
     for (const msg of messages) {
       try {
-        await this.send(waId, msg);
+        const messageId = await this.send(waId, msg);
+        if (firstMessageId === undefined) firstMessageId = messageId;
       } catch (err) {
         logger.error({ waId, messageType: msg.type, err }, 'DirectWhatsAppSender: failed to send message');
         throw err;
       }
     }
+    return firstMessageId;
   }
 
-  private async send(waId: string, msg: OutboundMessage): Promise<void> {
+  private async send(waId: string, msg: OutboundMessage): Promise<string | undefined> {
     const p = msg.payload;
     switch (msg.type) {
       case NodeType.SEND_TEXT:
@@ -46,9 +49,9 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         const sticker = (p['mediaId'] as string) || (p['url'] as string);
         if (sticker && sticker.startsWith('http')) {
           const mediaId = await this.api.uploadMedia(sticker, 'sticker');
-          return this.api.sendSticker(waId, mediaId);
+          return await this.api.sendSticker(waId, mediaId);
         }
-        return this.api.sendSticker(waId, sticker);
+        return await this.api.sendSticker(waId, sticker);
       }
       case NodeType.SEND_REACTION:
         return this.api.sendReaction(waId, p['messageId'] as string, p['emoji'] as string);
@@ -97,6 +100,7 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
         return this.api.sendCarousel(waId, p['bodyText'] as string | undefined, p['cards'] as any[]);
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
+        return undefined;
     }
   }
 
@@ -106,8 +110,9 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
 }
 
 export class StubWhatsAppSender implements IWhatsAppSender {
-  async sendMessages(waId: string, messages: OutboundMessage[]): Promise<void> {
+  async sendMessages(waId: string, messages: OutboundMessage[]): Promise<string | undefined> {
     logger.debug({ waId, messages }, 'StubWhatsAppSender: would send message(s)');
+    return undefined;
   }
 
   async uploadMedia(_url: string, _type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string> {

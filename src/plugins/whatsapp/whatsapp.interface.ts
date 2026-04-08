@@ -5,7 +5,8 @@ import type { WhatsAppDeduplicator } from './deduplicator';
 export const WHATSAPP_PLUGIN = 'whatsapp' as const;
 
 export interface IWhatsAppSender {
-  sendMessages(waId: string, messages: OutboundMessage[], sessionId?: string): Promise<void>;
+  /** Sends messages and returns the Meta message_id of the first message sent (undefined on failure). */
+  sendMessages(waId: string, messages: OutboundMessage[], sessionId?: string): Promise<string | undefined>;
   uploadMedia(url: string, type: 'image' | 'video' | 'audio' | 'document' | 'sticker'): Promise<string>;
 }
 

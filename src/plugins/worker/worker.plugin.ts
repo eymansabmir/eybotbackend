@@ -6,6 +6,7 @@ import { handleOutboundJob } from './consumers/outbound.consumer';
 import { handleImportJob } from './consumers/import.consumer';
 import { handleDispatchJob } from './consumers/dispatcher.consumer';
 import { handleExecutionJob } from './consumers/execution.consumer';
+import { handleStatusUpdateJob } from './consumers/status.consumer';
 
 export class WorkerPlugin implements IPlugin, IWorkerPlugin {
   readonly name = 'worker';
@@ -39,6 +40,10 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
         await this.broker.consume('campaign.import.q', data => handleImportJob(data, registry), 1);
         await this.broker.consume('campaign.start.q', data => handleDispatchJob(data, registry), 5);
         await this.broker.consume('campaign.dispatch.q', data => handleExecutionJob(data, registry), 50);
+      }
+
+      if (role === 'all' || role === 'inbound' || role === 'status') {
+        await this.broker.consume('wa.status.q', data => handleStatusUpdateJob(data, registry), 10);
       }
 
       logger.info({ role }, 'WorkerPlugin: consumers started');

@@ -152,16 +152,22 @@ model CampaignRecipient {
   id                String          @id @default(uuid())
   campaignVersionId String
   waId              String
+  messageId         String?         @unique // Tracking the specific message sent by Meta
   variables         Json?
   status            RecipientStatus @default(pending)
-  attempts          Int             @default(0)
+  
+  // Lifecycle Timestamps
   sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?       // Seen
+  repliedAt         DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   version CampaignVersion @relation(fields: [campaignVersionId], references: [id])
 
+  @@index([messageId])
   @@index([campaignVersionId, status])
   @@index([waId])
 }
@@ -170,6 +176,9 @@ model CampaignStats {
   campaignId String @id
   total      Int    @default(0)
   sent       Int    @default(0)
+  delivered  Int    @default(0)
+  read       Int    @default(0)
+  replied    Int    @default(0)
   failed     Int    @default(0)
   pending    Int    @default(0)
   completed  Int    @default(0)
@@ -210,6 +219,9 @@ enum CampaignVersionStatus {
 enum RecipientStatus {
   pending
   sent
+  delivered
+  read
+  replied
   failed
   completed
 }

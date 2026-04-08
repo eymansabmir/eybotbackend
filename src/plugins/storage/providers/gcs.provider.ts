@@ -20,12 +20,39 @@ export class GcsProvider implements IStorageProvider {
       : `https://storage.googleapis.com/${this.bucket.name}/${filePath}`;
   }
 
+  private normalizePath(pathOrUrl: string): string {
+    if (!pathOrUrl.startsWith('http')) {
+      return pathOrUrl;
+    }
+
+    // Handle BASE_MEDIA_URL if present
+    if (env.BASE_MEDIA_URL && pathOrUrl.startsWith(env.BASE_MEDIA_URL)) {
+      return pathOrUrl.substring(env.BASE_MEDIA_URL.length).replace(/^\/+/, '');
+    }
+
+    // Handle GCS standard URL: https://storage.googleapis.com/{bucket}/
+    const gcsPrefix = `https://storage.googleapis.com/${this.bucket.name}/`;
+    if (pathOrUrl.startsWith(gcsPrefix)) {
+      return pathOrUrl.substring(gcsPrefix.length).replace(/^\/+/, '');
+    }
+
+    // Handle bucket-first URL: https://{bucket}.storage.googleapis.com/
+    const bucketFirstPrefix = `https://${this.bucket.name}.storage.googleapis.com/`;
+    if (pathOrUrl.startsWith(bucketFirstPrefix)) {
+      return pathOrUrl.substring(bucketFirstPrefix.length).replace(/^\/+/, '');
+    }
+
+    return pathOrUrl;
+  }
+
   async delete(filePath: string): Promise<void> {
-    await this.bucket.file(filePath).delete();
+    const normalizedPath = this.normalizePath(filePath);
+    await this.bucket.file(normalizedPath).delete();
   }
 
   async getSignedUrl(filePath: string): Promise<string> {
-    const [url] = await this.bucket.file(filePath).getSignedUrl({
+    const normalizedPath = this.normalizePath(filePath);
+    const [url] = await this.bucket.file(normalizedPath).getSignedUrl({
       action: 'read',
       version: 'v4',
       expires: Date.now() + 3600 * 1000,
@@ -49,7 +76,9 @@ export class GcsProvider implements IStorageProvider {
   }
 
   async download(filePath: string): Promise<Buffer> {
-    const [buffer] = await this.bucket.file(filePath).download();
+    const normalizedPath = this.normalizePath(filePath);
+    logger.debug({ filePath, normalizedPath }, 'Downloading file from GCS');
+    const [buffer] = await this.bucket.file(normalizedPath).download();
     return buffer;
   }
 }

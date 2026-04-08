@@ -44,8 +44,9 @@ export async function handleExecutionJob(data: unknown, registry: IPluginRegistr
     const savedSession = await sessionRepo.create(result.session);
     logger.debug({ sessionId: savedSession.id, recipientId: job.recipientId }, 'ExecutionWorker: session created');
 
-    // Queue outbound messages
-    for (const msg of result.outboundMessages) {
+    // Queue outbound messages — tag the first one with recipientId so the outbound
+    // consumer can save Meta's message_id back for delivery/read tracking.
+    for (const [index, msg] of result.outboundMessages.entries()) {
       const outJob: OutboundJob = {
         waId,
         waBusinessNumber,
@@ -53,6 +54,7 @@ export async function handleExecutionJob(data: unknown, registry: IPluginRegistr
         messageType: msg.type,
         payload: msg.payload as Record<string, unknown>,
         ...(savedSession.id !== undefined ? { sessionId: savedSession.id } : {}),
+        ...(index === 0 ? { campaignRecipientId: job.recipientId } : {}),
       };
       await workerPlugin.publish(EXCHANGES.OUTBOUND, outJob);
     }

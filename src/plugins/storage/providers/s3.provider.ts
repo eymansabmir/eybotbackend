@@ -30,14 +30,42 @@ export class S3Provider implements IStorageProvider {
       : `https://${this.bucket}.s3.amazonaws.com/${key}`;
   }
 
+  private normalizePath(pathOrUrl: string): string {
+    if (!pathOrUrl.startsWith('http')) {
+      return pathOrUrl;
+    }
+
+    // Handle BASE_MEDIA_URL if present
+    if (env.BASE_MEDIA_URL && pathOrUrl.startsWith(env.BASE_MEDIA_URL)) {
+      return pathOrUrl.substring(env.BASE_MEDIA_URL.length).replace(/^\/+/, '');
+    }
+
+    // Handle S3 standard URL: https://{bucket}.s3.amazonaws.com/
+    const s3Prefix = `https://${this.bucket}.s3.amazonaws.com/`;
+    if (pathOrUrl.startsWith(s3Prefix)) {
+      return pathOrUrl.substring(s3Prefix.length).replace(/^\/+/, '');
+    }
+
+    // Handle S3 region-specific URL: https://{bucket}.s3.{region}.amazonaws.com/
+    const s3RegionPrefixRegex = new RegExp(`^https://${this.bucket}\\.s3\\.[a-z0-9-]+\\.amazonaws\\.com/`);
+    const match = pathOrUrl.match(s3RegionPrefixRegex);
+    if (match) {
+      return pathOrUrl.substring(match[0].length).replace(/^\/+/, '');
+    }
+
+    return pathOrUrl;
+  }
+
   async delete(filePath: string): Promise<void> {
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: filePath }));
+    const key = this.normalizePath(filePath);
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
   async getSignedUrl(filePath: string): Promise<string> {
+    const key = this.normalizePath(filePath);
     return awsGetSignedUrl(
       this.client,
-      new GetObjectCommand({ Bucket: this.bucket, Key: filePath }),
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
       { expiresIn: 3600 },
     );
   }
@@ -57,8 +85,9 @@ export class S3Provider implements IStorageProvider {
   }
 
   async download(filePath: string): Promise<Buffer> {
+    const key = this.normalizePath(filePath);
     const response = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: filePath }),
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
     );
     const stream = response.Body as any;
     const chunks: Buffer[] = [];

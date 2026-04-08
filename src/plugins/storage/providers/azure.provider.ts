@@ -28,12 +28,33 @@ export class AzureProvider implements IStorageProvider {
       : blockBlobClient.url;
   }
 
+  private normalizePath(pathOrUrl: string): string {
+    if (!pathOrUrl.startsWith('http')) {
+      return pathOrUrl;
+    }
+
+    // Handle BASE_MEDIA_URL if present
+    if (env.BASE_MEDIA_URL && pathOrUrl.startsWith(env.BASE_MEDIA_URL)) {
+      return pathOrUrl.substring(env.BASE_MEDIA_URL.length).replace(/^\/+/, '');
+    }
+
+    // Handle Azure standard URL: https://{account}.blob.core.windows.net/{container}/
+    const azurePrefix = this.containerClient.url;
+    if (pathOrUrl.startsWith(azurePrefix)) {
+      return pathOrUrl.substring(azurePrefix.length).replace(/^\/+/, '');
+    }
+
+    return pathOrUrl;
+  }
+
   async delete(filePath: string): Promise<void> {
-    await this.containerClient.getBlockBlobClient(filePath).delete();
+    const blobName = this.normalizePath(filePath);
+    await this.containerClient.getBlockBlobClient(blobName).delete();
   }
 
   async getSignedUrl(filePath: string): Promise<string> {
-    return this.buildSasUrl(filePath, BlobSASPermissions.parse('r'), 60);
+    const blobName = this.normalizePath(filePath);
+    return this.buildSasUrl(blobName, BlobSASPermissions.parse('r'), 60);
   }
 
   async getSignedUploadUrl(filePath: string, _contentType: string): Promise<{ uploadUrl: string; fileUrl: string }> {
@@ -62,7 +83,8 @@ export class AzureProvider implements IStorageProvider {
   }
 
   async download(filePath: string): Promise<Buffer> {
-    const blockBlobClient = this.containerClient.getBlockBlobClient(filePath);
+    const blobName = this.normalizePath(filePath);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
     return blockBlobClient.downloadToBuffer();
   }
 }

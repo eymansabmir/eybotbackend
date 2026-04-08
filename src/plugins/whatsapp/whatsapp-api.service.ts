@@ -9,42 +9,42 @@ export interface WhatsAppConfig {
 export class WhatsAppAPIService {
   constructor(private readonly config: WhatsAppConfig) { }
 
-  async sendText(to: string, text: string): Promise<void> {
-    await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } });
+  async sendText(to: string, text: string): Promise<string> {
+    return this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } });
   }
 
-  async sendImage(to: string, url: string, caption?: string): Promise<void> {
+  async sendImage(to: string, url: string, caption?: string): Promise<string> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'image', image: { link: url } };
     if (caption) payload.image.caption = caption;
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendVideo(to: string, url: string, caption?: string): Promise<void> {
+  async sendVideo(to: string, url: string, caption?: string): Promise<string> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'video', video: { link: url } };
     if (caption) payload.video.caption = caption;
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendAudio(to: string, url: string): Promise<void> {
-    await this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'audio', audio: { link: url } });
+  async sendAudio(to: string, url: string): Promise<string> {
+    return this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'audio', audio: { link: url } });
   }
 
-  async sendDocument(to: string, url: string, caption?: string, filename?: string): Promise<void> {
+  async sendDocument(to: string, url: string, caption?: string, filename?: string): Promise<string> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'document', document: { link: url } };
     if (caption) payload.document.caption = caption;
     if (filename) payload.document.filename = filename;
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendLocation(to: string, latitude: number, longitude: number, name?: string, address?: string): Promise<void> {
+  async sendLocation(to: string, latitude: number, longitude: number, name?: string, address?: string): Promise<string> {
     const payload: any = { messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'location', location: { latitude, longitude } };
     if (name) payload.location.name = name;
     if (address) payload.location.address = address;
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendLocationRequest(to: string, body: string): Promise<void> {
-    await this.call({
+  async sendLocationRequest(to: string, body: string): Promise<string> {
+    return this.call({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to,
@@ -57,7 +57,7 @@ export class WhatsAppAPIService {
     });
   }
 
-  async sendButtons(to: string, body: string, buttons: Array<{ id: string; title: string }>, footer?: string, header?: any): Promise<void> {
+  async sendButtons(to: string, body: string, buttons: Array<{ id: string; title: string }>, footer?: string, header?: any): Promise<string> {
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
       interactive: {
@@ -69,14 +69,14 @@ export class WhatsAppAPIService {
     if (header?.type === 'text' && header.text) header.text = String(header.text).trim().slice(0, 60);
     if (header) payload.interactive.header = header;
     if (footer) payload.interactive.footer = { text: String(footer).trim().slice(0, 60) };
-    await this.call(payload);
+    return this.call(payload);
   }
 
   async sendList(
     to: string, body: string, buttonTitle: string,
     sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>,
     footer?: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const normalizedSections = this.normalizeListSections(sections);
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
@@ -86,7 +86,7 @@ export class WhatsAppAPIService {
       },
     };
     if (footer) payload.interactive.footer = { text: footer };
-    await this.call(payload);
+    return this.call(payload);
   }
 
   private normalizeListSections(
@@ -139,7 +139,7 @@ export class WhatsAppAPIService {
     }
   }
 
-  async sendCarousel(to: string, bodyText: string | undefined, cards: any[]): Promise<void> {
+  async sendCarousel(to: string, bodyText: string | undefined, cards: any[]): Promise<string> {
     const payload: any = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
@@ -186,21 +186,21 @@ export class WhatsAppAPIService {
         },
       },
     };
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendTemplate(to: string, templateName: string, languageCode: string, components?: unknown[]): Promise<void> {
+  async sendTemplate(to: string, templateName: string, languageCode: string, components?: unknown[]): Promise<string> {
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'template',
       template: { name: templateName, language: { code: languageCode } },
     };
     if (components) payload.template.components = components;
-    await this.call(payload);
+    return this.call(payload);
   }
 
-  async sendSticker(to: string, sticker: string): Promise<void> {
+  async sendSticker(to: string, sticker: string): Promise<string> {
     const isId = !sticker.startsWith('http');
-    await this.call({
+    return this.call({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to,
@@ -249,8 +249,8 @@ export class WhatsAppAPIService {
     }
   }
 
-  async sendReaction(to: string, messageId: string, emoji: string): Promise<void> {
-    await this.call({
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<string> {
+    return this.call({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to,
@@ -259,7 +259,7 @@ export class WhatsAppAPIService {
     });
   }
 
-  private async call(payload: any): Promise<void> {
+  private async call(payload: any): Promise<string> {
     const msgType = payload.type;
     logger.info(
       { messageType: msgType, to: payload.to },
@@ -279,10 +279,15 @@ export class WhatsAppAPIService {
       throw new WhatsAppAPIError(`WhatsApp API error: ${response.status} - ${errorText}`, response.status);
     }
 
+    const data = await response.json() as { messages?: Array<{ id: string }> };
+    const messageId = data.messages?.[0]?.id ?? '';
+
     logger.info(
-      { messageType: msgType, to: payload.to },
+      { messageType: msgType, to: payload.to, messageId },
       'WhatsAppAPI: message sent to Meta successfully',
     );
+
+    return messageId;
   }
 
   async getMediaUrl(mediaId: string): Promise<string> {

@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import type { IWhatsAppPlugin } from '../../plugins/whatsapp/whatsapp.interface';
-import type { IWorkerPlugin } from '../../plugins/worker/worker.interface';
-import { EXCHANGES } from '../../plugins/worker/worker.interface';
-import type { WhatsAppWebhookPayload } from '../../plugins/whatsapp/normalizer';
-import type { InboundJob } from '../../plugins/worker/jobs';
 import type { ICredentialRepository } from '../credentials/credentials.repository.interface';
+import type { IWhatsAppPlugin } from '../../plugins/whatsapp';
+import type { IWorkerPlugin } from '../../plugins/worker';
+import { EXCHANGES } from '../../plugins/worker';
+import type { WhatsAppWebhookPayload } from '../../plugins/whatsapp';
+import type { InboundJob, StatusUpdateJob } from '../../plugins/worker/jobs';
 
 const RESERVED_ORG_ROUTE_VALUES = new Set(['webhook']);
 
@@ -53,6 +53,23 @@ export class WhatsAppWebhookController {
       logger.debug({ payload }, 'WhatsApp webhook payload received');
 
       const message = this.whatsappPlugin.normalizer.normalize(context.orgId, payload);
+      const value = payload.entry?.[0]?.changes?.[0]?.value;
+
+      // Handle status update callbacks (delivered/read receipts from Meta)
+      if (value?.statuses?.length) {
+        for (const s of value.statuses) {
+          if (s.status !== 'delivered' && s.status !== 'read') continue;
+          const job: StatusUpdateJob = {
+            messageId: s.id,
+            status: s.status as 'delivered' | 'read',
+            timestamp: Number(s.timestamp) * 1000,
+          };
+          await this.workerPlugin.publish(EXCHANGES.WA_STATUS, job);
+          logger.info({ messageId: s.id, status: s.status }, 'Status update enqueued');
+        }
+        return;
+      }
+
       if (!message) {
         logger.debug('Webhook payload had no actionable message, skipping');
         return;
