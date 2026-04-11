@@ -34,6 +34,8 @@ export interface RuntimeIntegrations {
   executeDeepSeek?(input: DeepSeekNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   executeElevenLabs?(input: ElevenLabsNodeExecutionInput): Promise<{ value: string; message: OutboundMessage }>;
   getTranslation?(language: string): Promise<any[] | null>;
+  getPreferredLanguage?(botId: string, waId: string): Promise<string | null>;
+  setPreferredLanguage?(botId: string, waId: string, language: string): Promise<void>;
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
@@ -163,14 +165,100 @@ export class FlowOrchestrator {
     let stepCount = 0;
     let isFirstStep = true;
 
+    // --- TOP-LEVEL LANGUAGE RESOLUTION ---
+    // Check DB preference FIRST to prevent English flickering in step 0
+    let detectedLang: string | undefined;
+
+    if (runtime?.getPreferredLanguage) {
+      console.log(`[Orchestrator] Step 0: Checking DB for persistent preference...`);
+      const dbPref = await runtime.getPreferredLanguage(flow.id!, session.waId);
+      if (dbPref) {
+        console.log(`[Orchestrator] Step 0: Found DB preference '${dbPref}'. Using as primary.`);
+        detectedLang = dbPref;
+      }
+    }
+
+    // Fallback to session/contact if DB was empty
+    if (!detectedLang) {
+      const langKeys = ['selected_language', 'user_lang'];
+      for (const key of langKeys) {
+        detectedLang = (session.variables[key] as string) || (contact.customFields[key] as string);
+        if (detectedLang) {
+          console.log(`[Orchestrator] Step 0: Found preference in variables: '${detectedLang}' (key: ${key})`);
+          break;
+        }
+      }
+    }
+
+    if (detectedLang && runtime?.getTranslation) {
+      console.log(`[Orchestrator] Step 0: Loading translations for '${detectedLang}'...`);
+      try {
+        const translations = await runtime.getTranslation(detectedLang);
+        if (translations && Array.isArray(translations)) {
+          console.log(`[Orchestrator] Step 0: Successfully applied translations. Journey will start in '${detectedLang}'.`);
+          traverser.updateNodes(translations as any);
+        }
+      } catch (err) {
+        console.error(`[Orchestrator] Step 0: Error loading translations:`, err);
+      }
+    }
+    // ------------------------------------
+
     while (stepCount < MAX_LOOP_STEPS) {
 
       const currentNode = traverser.getNode(session.currentNodeId);
+      console.log(`[Orchestrator] [Step ${stepCount}] Processing ${currentNode.type} node: ${currentNode.id}`);
+
+      // --- STRICT LANGUAGE SKIP LOGIC ---
+      if (currentNode.type === NodeType.LANGUAGE && runtime?.getPreferredLanguage) {
+        const nodeData = (currentNode.data as any) || {};
+        const skipEnabledRaw = nodeData.skipIfAlreadySelected;
+        const skipEnabled = !!skipEnabledRaw;
+        const preferenceInDB = detectedLang || await runtime.getPreferredLanguage(flow.id!, session.waId);
+
+        // Rule 1: database has a valid pref lang + skip toggle on -> SKIP
+        if (preferenceInDB && skipEnabled) {
+
+          const varName = nodeData.variableName || nodeData.variable || 'selected_language';
+          const varScope = nodeData.variableScope || 'session';
+
+          this.applyMutation({
+            scope: varScope as any,
+            key: varName,
+            value: preferenceInDB
+          }, session, contact, allContactMutations);
+
+          if (runtime?.getTranslation && preferenceInDB !== detectedLang) {
+            const translations = await runtime.getTranslation(preferenceInDB);
+            if (translations) traverser.updateNodes(translations as any);
+          }
+
+          // Execute skip
+          const skipInput = { context: { session, contact, flow }, currentNode, userInput: preferenceInDB };
+          const skipResult = this.executor.execute(skipInput, traverser);
+
+          stepCount++;
+          session.addToHistory(skipResult.historyStep);
+          if (skipResult.nextNodeId) {
+            session.moveToNode(skipResult.nextNodeId);
+            continue;
+          }
+        } else {
+          // Rule 2 & 3: Skip OFF or No Preference -> PROMPT
+        }
+      }
+      // -------------------------------------
+
       const execInput = isFirstStep && userInput !== undefined
         ? { context: { session, contact, flow }, currentNode, userInput }
         : { context: { session, contact, flow }, currentNode };
 
+      console.log(`[Orchestrator] Step ${stepCount}: Executing ${currentNode.type} (${currentNode.id}). Input: '${(execInput as any).userInput ?? 'undefined'}'`);
+
       const stepResult = this.executor.execute(execInput, traverser);
+
+      console.log(`[Orchestrator] Step ${stepCount}: Execution finished. Messages sent: ${stepResult.outboundMessages.length}, Next Node: ${stepResult.nextNodeId}`);
+
       isFirstStep = false;
       stepCount++;
 
@@ -180,10 +268,19 @@ export class FlowOrchestrator {
         this.applyMutation(m, session, contact, allContactMutations);
       }
 
-      if (stepResult.languageChanged && runtime?.getTranslation) {
-        const translatedNodes = await runtime.getTranslation(stepResult.languageChanged);
-        if (translatedNodes) {
-          traverser.updateNodes(translatedNodes as any);
+      if (stepResult.languageChanged) {
+        console.log(`[Orchestrator] Language changed to '${stepResult.languageChanged}'. Updating traverser and saving preference.`);
+        if (runtime?.getTranslation) {
+          const translatedNodes = await runtime.getTranslation(stepResult.languageChanged);
+          if (translatedNodes) {
+            console.log(`[Orchestrator] Applying fetched translations for '${stepResult.languageChanged}'.`);
+            traverser.updateNodes(translatedNodes as any);
+          }
+        }
+
+        // PERSIST LOGIC
+        if (runtime?.setPreferredLanguage) {
+          await runtime.setPreferredLanguage(flow.id!, session.waId, stepResult.languageChanged);
         }
       }
 

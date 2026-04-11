@@ -26,6 +26,7 @@ import { GoogleSheetsIntegrationService } from '../google-sheets/google-sheets.s
 import { STORAGE_PLUGIN, type IStoragePlugin } from '../storage';
 import { NocoDBIntegrationService } from '../nocodb/nocodb.service';
 import { FlowOrchestrator, type RuntimeIntegrations } from './orchestrator';
+import type { IDatabasePlugin } from '../database/database.interface';
 
 export class EnginePlugin implements IPlugin, IEnginePlugin {
   readonly name = 'engine';
@@ -63,7 +64,7 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       input.flowId,
       input.waId,
       input.waBusinessNumber,
-      this.runtimeIntegrations(getTranslation),
+      this.runtimeIntegrations(flow, getTranslation),
     );
   }
 
@@ -79,13 +80,12 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
       contact,
       session,
       input.userInput,
-      this.runtimeIntegrations(getTranslation),
+      this.runtimeIntegrations(flow, getTranslation),
     );
   }
 
-  private runtimeIntegrations(getTranslation?: (language: string) => Promise<any[] | null>): RuntimeIntegrations {
+  private runtimeIntegrations(flow: FlowEntity, _getTranslation?: (language: string) => Promise<any[] | null>): RuntimeIntegrations {
     return {
-      getTranslation,
       executeOpenAI: async ({ orgId, request }) => {
         const service = this.openAIService();
         const output = await service.executeNode({
@@ -284,6 +284,45 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
             value: mutation.value,
           })),
         };
+      },
+      getTranslation: async (language: string) => {
+        console.log(`[EnginePlugin] FETCHING TRANSLATIONS for: '${language}'`);
+        const db = this._registry.get<IDatabasePlugin>('database');
+        const flowId = flow.id;
+        if (!flowId) {
+          console.log(`[EnginePlugin] Error: No flow ID provided for translation lookup.`);
+          return null;
+        }
+
+        const translation = await db.prisma.flowTranslation.findUnique({
+          where: { flowId_language: { flowId, language } },
+        });
+
+        if (translation) {
+          console.log(`[EnginePlugin] SUCCESS: Found translation entry for '${language}'.`);
+          return translation.translatedData as any[] | null;
+        }
+
+        console.log(`[EnginePlugin] WARNING: No translation entry found in DB for language '${language}'. Falling back to English.`);
+        return null;
+      },
+      getPreferredLanguage: async (botId: string, waId: string) => {
+        console.log(`[EnginePlugin] Checking persistent preference for bot: ${botId}, waId: ${waId}`);
+        const db = this._registry.get<IDatabasePlugin>('database');
+        const pref = await db.prisma.userLanguagePreference.findUnique({
+          where: { botId_waId: { botId, waId } },
+        });
+        console.log(`[EnginePlugin] Preference lookup result: ${pref?.preferredLanguage || 'NONE'}`);
+        return pref?.preferredLanguage || null;
+      },
+      setPreferredLanguage: async (botId: string, waId: string, language: string) => {
+        console.log(`[EnginePlugin] SAVING persistent preference: '${language}' for bot: ${botId}, waId: ${waId}`);
+        const db = this._registry.get<IDatabasePlugin>('database');
+        await db.prisma.userLanguagePreference.upsert({
+          where: { botId_waId: { botId, waId } },
+          update: { preferredLanguage: language },
+          create: { botId, waId, preferredLanguage: language },
+        });
       },
     };
   }

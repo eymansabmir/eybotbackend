@@ -337,11 +337,14 @@ const ElevenLabsDataSchema = z.object({
 
 const LanguageDataSchema = z.object({
   message: z.string(),
-  variable: z.string(),
+  variable: z.string().optional(),
+  variableName: z.string().optional(),
+  variableScope: z.enum(['session', 'contact']).optional(),
   timeoutSeconds: z.number().optional(),
   localizationEnabled: z.boolean().optional(),
   languages: z.array(z.string()).max(10, 'Language node supports maximum 10 languages').optional(),
   defaultLanguage: z.string().optional(),
+  skipIfAlreadySelected: z.boolean().optional(),
 });
 
 const LocationRequestDataSchema = z.object({

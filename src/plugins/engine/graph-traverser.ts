@@ -12,8 +12,45 @@ export class GraphTraverser {
   }
 
   updateNodes(nodes: Node[]): void {
-    for (const node of nodes) {
-      this.nodes.set(node.id, node);
+    // Technical fields on language nodes that must ALWAYS come from the master
+    // flow, never from translation records. Translation records may contain stale
+    // snapshots of these values which would silently override the user's latest
+    // master-flow settings (e.g. skipIfAlreadySelected toggled OFF but the
+    // translation still carries the old `true` value).
+    const LANGUAGE_PROTECTED_KEYS = new Set([
+      'skipIfAlreadySelected',
+      'variableName',
+      'variable',
+      'variableScope',
+      'localizationEnabled',
+      'languages',
+      'defaultLanguage',
+      'timeoutSeconds',
+    ]);
+
+    for (const translatedNode of nodes) {
+      const originalNode = this.nodes.get(translatedNode.id);
+      if (originalNode) {
+        // Build a safe copy of translation data, stripping protected keys for
+        // language nodes so that only content fields (message, labels) are overlaid.
+        let safeTranslatedData: Record<string, unknown> = { ...translatedNode.data };
+        if (originalNode.type === 'language') {
+          for (const key of LANGUAGE_PROTECTED_KEYS) {
+            delete safeTranslatedData[key];
+          }
+        }
+
+        this.nodes.set(translatedNode.id, {
+          ...originalNode,
+          data: {
+            ...originalNode.data,       // Keep ALL original fields (technical + content)
+            ...safeTranslatedData,       // Overlay only safe translated content
+          },
+        });
+      } else {
+        // Node doesn't exist in original — add it as-is
+        this.nodes.set(translatedNode.id, translatedNode);
+      }
     }
   }
 

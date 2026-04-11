@@ -152,7 +152,11 @@ export class SessionInboundHandler implements IInboundHandler {
           const translatedNodes = await this.getTranslationWithLazySync(flow.id!, language);
           if (translatedNodes) {
             flowToExecute = flow.clone();
-            flowToExecute.nodes = translatedNodes as unknown as FlowEntity['nodes'];
+            // MERGE: Keep technical data from original nodes (skipIfAlreadySelected, etc.)
+            flowToExecute.nodes = flow.nodes.map(orig => {
+              const trans = (translatedNodes as any[]).find(t => t.id === orig.id);
+              return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
+            }) as any;
           }
         } else if (language && isAtLanguageNode) {
           logger.info(
@@ -285,7 +289,11 @@ export class SessionInboundHandler implements IInboundHandler {
       const translatedNodes = await this.getTranslationWithLazySync(matchedFlow.id!, language);
       if (translatedNodes) {
         flowToExecute = matchedFlow.clone();
-        flowToExecute.nodes = translatedNodes as unknown as FlowEntity['nodes'];
+        // MERGE: Keep technical data from original nodes (skipIfAlreadySelected, etc.)
+        flowToExecute.nodes = matchedFlow.nodes.map(orig => {
+          const trans = (translatedNodes as any[]).find(t => t.id === orig.id);
+          return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
+        }) as any;
       }
     } else if (language && hasLanguageNode) {
       logger.info(
@@ -331,7 +339,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
   private resolveLanguageVariableKey(flow: FlowEntity): string {
     const languageNode = flow.nodes.find((node) => node.type === NodeType.LANGUAGE);
-    const configured = languageNode?.data?.['variable'];
+    const configured = languageNode?.data?.['variableName'] || languageNode?.data?.['variable'];
     return typeof configured === 'string' && configured.trim().length > 0
       ? configured.trim()
       : 'selected_language';
@@ -354,6 +362,33 @@ export class SessionInboundHandler implements IInboundHandler {
       logger.warn({ err, flowId, language: normalized }, 'SessionInboundHandler: fallback translation sync failed');
       return null;
     }
+  }
+
+  /**
+   * Strips protected technical fields from translation data for language nodes.
+   * Translation records may contain stale snapshots of settings like
+   * skipIfAlreadySelected that would silently override the master flow's
+   * current values.
+   */
+  private safeTranslationData(originalNode: any, translatedNode: any): Record<string, unknown> {
+    const LANGUAGE_PROTECTED_KEYS = new Set([
+      'skipIfAlreadySelected',
+      'variableName',
+      'variable',
+      'variableScope',
+      'localizationEnabled',
+      'languages',
+      'defaultLanguage',
+      'timeoutSeconds',
+    ]);
+
+    const transData: Record<string, unknown> = { ...(translatedNode.data || {}) };
+    if (originalNode.type === 'language') {
+      for (const key of LANGUAGE_PROTECTED_KEYS) {
+        delete transData[key];
+      }
+    }
+    return transData;
   }
 
 }
