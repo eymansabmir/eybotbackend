@@ -352,6 +352,22 @@ const LocationRequestDataSchema = z.object({
   variablePrefix: z.string(),
 });
 
+const MediaConditionalDataSchema = z.object({
+  message: z.string(),
+  invalidMessage: z.string().optional(),
+  variable: z.string().optional(),
+  variableScope: z.enum(['session', 'contact']).optional(),
+  timeoutSeconds: z.number().optional(),
+  maxRetries: z.number().optional(),
+  maxRetriesMessage: z.string().optional(),
+  config: z.array(z.object({
+    id: z.string(),
+    type: z.string(),
+    subTypes: z.array(z.string()).optional(),
+    branchKey: z.string(),
+  })),
+});
+
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
   credentialId: z.string().min(1).optional(),
@@ -427,6 +443,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.ANTHROPIC) }).merge(AnthropicDataSchema),
   z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
   z.object({ type: z.literal(NodeType.VARIABLE_MANAGER) }),
+  z.object({ type: z.literal(NodeType.MEDIA_CONDITIONAL), ...MediaConditionalDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

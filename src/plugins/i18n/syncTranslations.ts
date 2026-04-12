@@ -149,6 +149,11 @@ export async function syncFlowTranslations(
       case NodeType.LANGUAGE:
         paths.push('data.message');
         break;
+      case NodeType.MEDIA_CONDITIONAL:
+        if (node.data.message) paths.push('data.message');
+        if (node.data.invalidMessage) paths.push('data.invalidMessage');
+        if (node.data.maxRetriesMessage) paths.push('data.maxRetriesMessage');
+        break;
       case NodeType.HUMAN_HANDOFF:
         if (node.data.message) paths.push('data.message');
         break;
