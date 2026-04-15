@@ -9,7 +9,9 @@ import { AUTH_PLUGIN, type IAuthPlugin } from './plugins/auth';
 import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
 import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
+import { VOICE_PROVIDERS_PLUGIN, type IVoiceProvidersPlugin } from './plugins/voice-providers';
 import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
+import { REDIS_PLUGIN, type IRedisPlugin } from './plugins/redis';
 import { OPENAI_PLUGIN, type IOpenAIPlugin } from './plugins/openai';
 import { ELEVENLABS_PLUGIN, type IElevenLabsPlugin } from './plugins/elevenlabs';
 import { ANTHROPIC_PLUGIN, type IAnthropicPlugin } from './plugins/anthropic';
@@ -22,17 +24,24 @@ import {
   CAMPAIGN_REPOSITORY,
   CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
+  VOICE_ENTITY_REPOSITORY,
+  VOICE_ROUTING_REPOSITORY,
 } from './features/repositories.interface';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
 import { PrismaSessionRepository } from './features/session/session.repository';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
+import { PrismaEntityRepository } from './features/voice-tech/data/entity.repository';
+import { PrismaVoiceRoutingRepository } from './features/voice-tech/data/routing.repository';
 import type { CredentialService } from './features/credentials';
 import type { ICredentialRepository } from './features/credentials/credentials.repository.interface';
 
 import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
 import { CampaignService } from './features/campaign/campaign.service';
+import { EntityQueryService } from './features/voice-tech/services/entity-query.service';
+import { IngestionService } from './features/voice-tech/services/ingestion.service';
+import { VoiceRoutingService } from './features/voice-tech/services/voice-routing.service';
 import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
@@ -53,6 +62,8 @@ import { GoogleSheetsController } from './features/integrations/google-sheets/go
 import { NocoDBController } from './features/integrations/nocodb/nocodb.controller';
 import { HttpRequestController } from './features/integrations/http-request/http-request.controller';
 import { CredentialController } from './features/credentials';
+import { VoiceEntityController } from './features/voice-tech/entity.controller';
+import { VoiceRoutingController } from './features/voice-tech/routing.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -71,6 +82,8 @@ import { createNocoDBRouter } from './features/integrations/nocodb/nocodb.route'
 import { createHttpRequestRouter } from './features/integrations/http-request/http-request.route';
 import { createCredentialRouter } from './features/credentials';
 import { createWhatsAppIntegrationRouter } from './features/integrations/whatsapp/whatsapp-integration.route';
+import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
+import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -119,7 +132,9 @@ export function createApp(registry: IPluginRegistry): Application {
   const enginePlugin = registry.get<IEnginePlugin>(ENGINE_PLUGIN);
   const whatsappPlugin = registry.get<IWhatsAppPlugin>(WHATSAPP_PLUGIN);
   const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
+  const voiceProvidersPlugin = registry.get<IVoiceProvidersPlugin>(VOICE_PROVIDERS_PLUGIN);
   const storagePlugin = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
+  const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
   const openAIPlugin = registry.get<IOpenAIPlugin>(OPENAI_PLUGIN);
   const elevenLabsPlugin = registry.get<IElevenLabsPlugin>(ELEVENLABS_PLUGIN);
   const anthropicPlugin = registry.get<IAnthropicPlugin>(ANTHROPIC_PLUGIN);
@@ -130,6 +145,8 @@ export function createApp(registry: IPluginRegistry): Application {
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
   const sessionRepo = registry.get<PrismaSessionRepository>(SESSION_REPOSITORY);
   const campaignRepo = registry.get<PrismaCampaignRepository>(CAMPAIGN_REPOSITORY);
+  const voiceEntityRepo = registry.get<PrismaEntityRepository>(VOICE_ENTITY_REPOSITORY);
+  const voiceRoutingRepo = registry.get<PrismaVoiceRoutingRepository>(VOICE_ROUTING_REPOSITORY);
   const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
 
@@ -137,6 +154,9 @@ export function createApp(registry: IPluginRegistry): Application {
   const flowService = new FlowService(flowRepo);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
+  const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
+  const entityQueryService = new EntityQueryService(voiceEntityRepo);
+  const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
   const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
@@ -163,6 +183,13 @@ export function createApp(registry: IPluginRegistry): Application {
   const nocodbController = new NocoDBController(registry, credentialService);
   const httpRequestController = new HttpRequestController(httpRequestService);
   const credentialController = new CredentialController(credentialService);
+  const voiceEntityController = new VoiceEntityController(
+    ingestionService,
+    voiceEntityRepo,
+    workerPlugin,
+    redisPlugin,
+  );
+  const voiceRoutingController = new VoiceRoutingController(voiceRoutingService, entityQueryService, voiceRoutingRepo);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -180,6 +207,8 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
+  app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
+  app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

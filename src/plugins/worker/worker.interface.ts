@@ -9,6 +9,9 @@ export const EXCHANGES = {
   CAMPAIGN_START: 'campaign.start',
   CAMPAIGN_DISPATCH: 'campaign.dispatch',
   WA_STATUS: 'wa.status',
+  VOICE_INGEST: 'voice.ingest',
+  VOICE_INGEST_RETRY: 'voice.ingest.retry',
+  VOICE_INGEST_DLQ: 'voice.ingest.dlq',
 } as const;
 
 export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];

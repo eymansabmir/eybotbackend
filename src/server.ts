@@ -33,6 +33,8 @@ import {
   CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
   INBOUND_HANDLER,
+  VOICE_ENTITY_REPOSITORY,
+  VOICE_ROUTING_REPOSITORY,
 } from './features/repositories.interface';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
@@ -43,7 +45,10 @@ import { DeepSeekPlugin } from './plugins/deepseek/deepseek.plugin';
 import { HttpRequestPlugin } from './plugins/http-request/http-request.plugin';
 import { GoogleSheetsPlugin } from './plugins/google-sheets/google-sheets.plugin';
 import { NocoDBPlugin } from './plugins/nocodb/nocodb.plugin';
+import { VoiceProvidersPlugin } from './plugins/voice-providers';
 import { CredentialService, PrismaCredentialRepository } from './features/credentials';
+import { PrismaEntityRepository } from './features/voice-tech/data/entity.repository';
+import { PrismaVoiceRoutingRepository } from './features/voice-tech/data/routing.repository';
 
 
 async function startServer(): Promise<void> {
@@ -59,6 +64,7 @@ async function startServer(): Promise<void> {
   registry.register(new EnginePlugin());
   registry.register(new WhatsAppPlugin());
   registry.register(new AuthPlugin());
+  registry.register(new VoiceProvidersPlugin());
 
   if (enableWorker) {
     registry.register(new WorkerPlugin());
@@ -88,6 +94,8 @@ async function startServer(): Promise<void> {
   const recipientRepo = new PrismaCampaignRecipientRepository(dbPlugin.prisma);
   const credentialRepo = new PrismaCredentialRepository(dbPlugin.prisma);
   const credentialService = new CredentialService(credentialRepo);
+  const voiceEntityRepo = new PrismaEntityRepository(dbPlugin.prisma, redisPlugin.client);
+  const voiceRoutingRepo = new PrismaVoiceRoutingRepository(dbPlugin.prisma, redisPlugin.client);
 
   registry.registerValue(FLOW_REPOSITORY, flowRepo);
   registry.registerValue(SESSION_REPOSITORY, sessionRepo);
@@ -95,6 +103,8 @@ async function startServer(): Promise<void> {
   registry.registerValue(CAMPAIGN_RECIPIENT_REPOSITORY, recipientRepo);
   registry.registerValue(CREDENTIAL_REPOSITORY, credentialRepo);
   registry.registerValue(CREDENTIAL_SERVICE, credentialService);
+  registry.registerValue(VOICE_ENTITY_REPOSITORY, voiceEntityRepo);
+  registry.registerValue(VOICE_ROUTING_REPOSITORY, voiceRoutingRepo);
 
   const inboundHandler = new SessionInboundHandler(
     flowRepo,

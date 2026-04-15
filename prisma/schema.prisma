@@ -307,3 +307,72 @@ model Credential {
   @@index([orgId, type, isActive])
   @@map("credentials")
 }
+
+model EntityType {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+
+  @@unique([tenantId, name])
+}
+
+model Entity {
+  id            String   @id @default(uuid())
+  tenantId      String
+  entityTypeId  String
+  attributes    Json
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, entityTypeId])
+}
+
+model EntityAttribute {
+  id            String   @id @default(uuid())
+  tenantId      String
+  entityTypeId  String
+  key           String
+  type          String
+  operators     Json
+  values        Json?
+
+  @@unique([tenantId, entityTypeId, key])
+}
+
+model VoiceProvider {
+  id           String   @id @default(uuid())
+  tenantId     String
+  providerName String
+  config       Json
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("voice_providers")
+}
+
+model RoutingConfig {
+  id         String        @id @default(uuid())
+  tenantId   String
+  name       String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  rules      RoutingRule[]
+
+  @@index([tenantId])
+  @@map("routing_configs")
+}
+
+model RoutingRule {
+  id              String        @id @default(uuid())
+  routingConfigId String
+  priority        Int
+  conditions      Json
+  action          Json
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  routingConfig   RoutingConfig @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
+
+  @@index([routingConfigId])
+  @@map("routing_rules")
+}
