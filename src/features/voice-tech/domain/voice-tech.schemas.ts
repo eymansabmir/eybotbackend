@@ -65,6 +65,24 @@ export const ExecuteRoutingSchema = z.object({
   executeProvider: z.boolean().optional(),
 });
 
+export const UpsertRoutingRuleSchema = z.object({
+  id: z.string().uuid().optional(),
+  routingConfigId: z.string().uuid(),
+  priority: z.number().int().min(1),
+  conditions: ConditionNodeSchema,
+  action: ProviderActionSchema,
+  isActive: z.boolean().optional(),
+});
+
+export const DeleteRoutingRuleSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const CreateRoutingConfigSchema = z.object({
+  tenantId: z.string().min(1),
+  name: z.string().min(1),
+});
+
 export const QueryByRuleSchema = z.object({
   tenantId: z.string().min(1),
   entityType: z.string().min(1),

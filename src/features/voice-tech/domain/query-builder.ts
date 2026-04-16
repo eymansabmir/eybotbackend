@@ -1,7 +1,17 @@
 import type { RoutingConditionNode } from './condition.types';
 
 export class QueryBuilder {
-  private static readonly SAFE_FIELD_PATTERN = /^[a-zA-Z0-9_]+$/;
+  private static readonly SAFE_FIELD_PATTERN = /^[a-zA-Z0-9_\.]+$/;
+
+  private static formatField(field: string): string {
+    if (!this.SAFE_FIELD_PATTERN.test(field)) {
+      throw new Error(`Unsupported field '${field}' in query condition`);
+    }
+    // Keys are stored lowercase (e.g. "location.city").
+    // Lowercase the field here to match, regardless of how the rule was authored.
+    const normalizedField = field.toLowerCase();
+    return `attributes->>'${normalizedField}'`;
+  }
 
   static build(node: RoutingConditionNode, params: unknown[] = [], index = { i: 3 }): string {
     if ('children' in node) {
@@ -9,32 +19,35 @@ export class QueryBuilder {
       return `(${clauses.join(` ${node.operator} `)})`;
     }
 
-    if (!this.SAFE_FIELD_PATTERN.test(node.field)) {
-      throw new Error(`Unsupported field '${node.field}' in query condition`);
-    }
-
+    const fieldExpression = `LOWER(TRIM(${this.formatField(node.field)}))`;
     const paramKey = `$${index.i++}`;
-    params.push(node.value);
+    
+    // Process value for case-insensitive matching
+    if (node.operator === 'in' || node.operator === 'not_in') {
+      params.push(Array.isArray(node.value) ? node.value.map(v => String(v).toLowerCase().trim()) : []);
+    } else {
+      params.push(String(node.value).toLowerCase().trim());
+    }
 
     switch (node.operator) {
       case 'equals':
-        return `attributes->>'${node.field}' = ${paramKey}`;
+        return `${fieldExpression} = ${paramKey}`;
       case 'not_equals':
-        return `attributes->>'${node.field}' <> ${paramKey}`;
+        return `${fieldExpression} <> ${paramKey}`;
       case '<':
-        return `(attributes->>'${node.field}')::numeric < ${paramKey}::numeric`;
+        return `(${fieldExpression})::numeric < ${paramKey}::numeric`;
       case '>':
-        return `(attributes->>'${node.field}')::numeric > ${paramKey}::numeric`;
+        return `(${fieldExpression})::numeric > ${paramKey}::numeric`;
       case '<=':
-        return `(attributes->>'${node.field}')::numeric <= ${paramKey}::numeric`;
+        return `(${fieldExpression})::numeric <= ${paramKey}::numeric`;
       case '>=':
-        return `(attributes->>'${node.field}')::numeric >= ${paramKey}::numeric`;
+        return `(${fieldExpression})::numeric >= ${paramKey}::numeric`;
       case 'in':
-        return `attributes->>'${node.field}' = ANY(${paramKey}::text[])`;
+        return `${fieldExpression} = ANY(${paramKey}::text[])`;
       case 'not_in':
-        return `NOT (attributes->>'${node.field}' = ANY(${paramKey}::text[]))`;
+        return `NOT (${fieldExpression} = ANY(${paramKey}::text[]))`;
       case 'contains':
-        return `attributes->>'${node.field}' ILIKE '%' || ${paramKey} || '%'`;
+        return `${fieldExpression} ILIKE '%' || ${paramKey} || '%'`;
       default:
         throw new Error('Unsupported operator in query builder');
     }

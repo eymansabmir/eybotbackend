@@ -5,10 +5,13 @@ import type { EntityQueryService } from './services/entity-query.service';
 import type { IVoiceRoutingRepository } from './data/routing.repository';
 import type { VoiceRoutingService } from './services/voice-routing.service';
 import {
+  CreateRoutingConfigSchema,
+  DeleteRoutingRuleSchema,
   ExecuteRoutingSchema,
   GetRoutingConfigSchema,
   ListRoutingConfigsSchema,
   QueryByRuleSchema,
+  UpsertRoutingRuleSchema,
 } from './domain/voice-tech.schemas';
 
 export class VoiceRoutingController {
@@ -28,6 +31,18 @@ export class VoiceRoutingController {
     }
   };
 
+  createConfig = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const payload = CreateRoutingConfigSchema.parse(req.body);
+      // Repository doesn't have createConfig yet, so we use prisma directly or add it.
+      // Let's assume we add it to the repository for consistency.
+      const config = await (this.routingRepo as any).createConfig?.(payload);
+      res.status(201).json({ success: true, config });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   getConfig = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const payload = GetRoutingConfigSchema.parse({ ...req.params, ...req.query });
@@ -36,6 +51,26 @@ export class VoiceRoutingController {
         throw new NotFoundError('RoutingConfig', payload.id);
       }
       res.json({ success: true, config });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  upsertRule = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const payload = UpsertRoutingRuleSchema.parse(req.body);
+      const rule = await this.routingRepo.upsertRule(payload as any);
+      res.status(200).json({ success: true, rule });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteRule = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = DeleteRoutingRuleSchema.parse(req.params);
+      await this.routingRepo.deleteRule(id);
+      res.status(200).json({ success: true });
     } catch (err) {
       next(err);
     }
@@ -55,8 +90,10 @@ export class VoiceRoutingController {
     try {
       const payload = QueryByRuleSchema.parse(req.body);
       const entities = await this.entityQueryService.fetchEntitiesByRule({
-        ...payload,
+        tenantId: payload.tenantId,
+        entityType: payload.entityType,
         conditions: payload.conditions as RoutingConditionNode,
+        limit: payload.limit
       });
       res.json({ success: true, count: entities.length, entities });
     } catch (err) {

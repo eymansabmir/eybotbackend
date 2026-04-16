@@ -11,6 +11,7 @@ function routingConfigCacheKey(configId: string, tenantId: string): string {
 
 export interface RoutingRuleView {
   id: string;
+  routingConfigId: string;
   priority: number;
   conditions: RoutingConditionNode;
   action: RoutingAction;
@@ -26,6 +27,17 @@ export interface RoutingConfigView {
 export interface IVoiceRoutingRepository {
   getRoutingConfig(configId: string, tenantId: string): Promise<RoutingConfigView | null>;
   listConfigs(tenantId: string): Promise<Omit<RoutingConfigView, 'rules'>[]>;
+  upsertRule(data: {
+    id?: string;
+    routingConfigId: string;
+    priority: number;
+    conditions: RoutingConditionNode;
+    action: RoutingAction;
+    isActive?: boolean;
+  }): Promise<RoutingRuleView>;
+  deleteRule(ruleId: string): Promise<void>;
+  invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
+  createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
 }
 
 export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
@@ -39,10 +51,12 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     if (this.redis) {
       const cached = await this.redis.get(cacheKey);
       if (cached) {
+        console.log(`[VoiceRouting] Cache HIT for config ${configId}`);
         return JSON.parse(cached) as RoutingConfigView;
       }
     }
 
+    console.log(`[VoiceRouting] Cache MISS for config ${configId}, fetching from DB...`);
     const config = await this.prisma.routingConfig.findFirst({
       where: {
         id: configId,
@@ -50,15 +64,17 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       },
       include: {
         rules: {
-          where: { isActive: true },
           orderBy: { priority: 'asc' },
         },
       },
     });
 
     if (!config) {
+      console.log(`[VoiceRouting] Config ${configId} NOT FOUND in DB`);
       return null;
     }
+
+    console.log(`[VoiceRouting] Found ${config.rules.length} rules in DB for config ${configId}`);
 
     const response = {
       id: config.id,
@@ -66,6 +82,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       name: config.name,
       rules: config.rules.map((rule) => ({
         id: rule.id,
+        routingConfigId: rule.routingConfigId,
         priority: rule.priority,
         conditions: rule.conditions as unknown as RoutingConditionNode,
         action: rule.action as unknown as RoutingAction,
@@ -91,5 +108,81 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     });
 
     return configs;
+  }
+
+  async upsertRule(data: {
+    id?: string;
+    routingConfigId: string;
+    priority: number;
+    conditions: RoutingConditionNode;
+    action: RoutingAction;
+    isActive?: boolean;
+  }): Promise<RoutingRuleView> {
+    const isNew = !data.id;
+    const rule = await this.prisma.routingRule.upsert({
+      where: { id: data.id ?? 'new' },
+      create: {
+        routingConfigId: data.routingConfigId,
+        priority: data.priority,
+        conditions: data.conditions as any,
+        action: data.action as any,
+        isActive: data.isActive ?? true,
+      },
+      update: {
+        priority: data.priority,
+        conditions: data.conditions as any,
+        action: data.action as any,
+        isActive: data.isActive ?? true,
+      },
+    });
+
+    // Invalidate cache for the parent config
+    const config = await this.prisma.routingConfig.findUnique({
+      where: { id: data.routingConfigId },
+    });
+    if (config) {
+      await this.invalidateConfigCache(config.id, config.tenantId);
+    }
+
+    return {
+      id: rule.id,
+      routingConfigId: rule.routingConfigId,
+      priority: rule.priority,
+      conditions: rule.conditions as any,
+      action: rule.action as any,
+    };
+  }
+
+  async deleteRule(ruleId: string): Promise<void> {
+    const rule = await this.prisma.routingRule.findUnique({
+      where: { id: ruleId },
+      include: { routingConfig: true },
+    });
+    
+    if (rule) {
+      await this.prisma.routingRule.delete({ where: { id: ruleId } });
+      await this.invalidateConfigCache(rule.routingConfig.id, rule.routingConfig.tenantId);
+    }
+  }
+
+  async invalidateConfigCache(configId: string, tenantId: string): Promise<void> {
+    if (this.redis) {
+      const cacheKey = routingConfigCacheKey(configId, tenantId);
+      await this.redis.del(cacheKey);
+    }
+  }
+
+  async createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
+    const config = await this.prisma.routingConfig.create({
+      data: {
+        tenantId: data.tenantId,
+        name: data.name,
+      },
+    });
+    return {
+      id: config.id,
+      tenantId: config.tenantId,
+      name: config.name,
+    };
   }
 }

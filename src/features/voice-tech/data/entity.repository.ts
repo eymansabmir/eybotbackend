@@ -159,12 +159,23 @@ export class PrismaEntityRepository implements IEntityRepository {
       operators: item.operators,
       values: item.values,
     }));
+    
+    logger.info({ tenantId, entityType, attributeCount: response.length }, 'PrismaEntityRepository: listed attributes');
 
     if (this.redis) {
       await this.redis.set(cacheKey, JSON.stringify(response), 'EX', ATTRIBUTE_CACHE_TTL_SECONDS);
     }
 
     return response;
+  }
+
+  async listEntityTypes(tenantId: string): Promise<string[]> {
+    const types = await this.prisma.entityType.findMany({
+      where: { tenantId },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    });
+    return types.map((t) => t.name);
   }
 
   async findEntityTypeId(tenantId: string, entityType: string): Promise<string | null> {
@@ -176,11 +187,12 @@ export class PrismaEntityRepository implements IEntityRepository {
       }
     }
 
-    const entityTypeRecord = await this.prisma.entityType.findUnique({
+    const entityTypeRecord = await this.prisma.entityType.findFirst({
       where: {
-        tenantId_name: {
-          tenantId,
-          name: entityType,
+        tenantId,
+        name: {
+          equals: entityType,
+          mode: 'insensitive',
         },
       },
       select: { id: true },

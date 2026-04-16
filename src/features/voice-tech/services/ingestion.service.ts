@@ -19,6 +19,8 @@ export class IngestionService {
 
     const entityTypeRecord = await this.entityRepo.ensureEntityType(input.tenantId, input.entityType);
 
+    // Normalize: produce flat records with lowercase dot-notation keys.
+    // e.g. { "Location.City": "Delhi" } → { "location.city": "Delhi" }
     const normalizedRecords = input.records
       .map((record) => this.normalize(record))
       .filter((record) => Object.keys(record).length > 0);
@@ -56,11 +58,18 @@ export class IngestionService {
     });
   }
 
+  /**
+   * Normalize a record into a flat object with lowercase dot-notation keys.
+   * Keys are lowercased so they match query conditions case-insensitively at
+   * the schema level. Values are stored as their original parsed types;
+   * LOWER()/TRIM() in the query covers runtime case/whitespace differences.
+   */
   private normalize(record: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(record)) {
-      const normalizedKey = key.trim();
+      // Normalize key: trim whitespace, lowercase
+      const normalizedKey = key.trim().toLowerCase();
       if (!normalizedKey || value == null) {
         continue;
       }
@@ -86,7 +95,7 @@ export class IngestionService {
       }
 
       const parsedDate = Date.parse(text);
-      if (!Number.isNaN(parsedDate)) {
+      if (!Number.isNaN(parsedDate) && isNaN(Number(text))) {
         result[normalizedKey] = new Date(parsedDate).toISOString();
         continue;
       }
@@ -97,20 +106,19 @@ export class IngestionService {
     return result;
   }
 
+  /**
+   * Collect all attribute keys and their sample values from normalized records.
+   * Since records are already flat, we just iterate top-level keys.
+   */
   private collectAttributes(records: Record<string, unknown>[]): Record<string, unknown[]> {
     const map: Record<string, unknown[]> = {};
 
-    records.forEach((record) => {
-      Object.entries(record).forEach(([key, value]) => {
-        if (!map[key]) {
-          map[key] = [];
-        }
-
-        if (map[key]!.length < 100) {
-          map[key]!.push(value);
-        }
-      });
-    });
+    for (const record of records) {
+      for (const [key, value] of Object.entries(record)) {
+        if (!map[key]) map[key] = [];
+        if (map[key]!.length < 100) map[key]!.push(value);
+      }
+    }
 
     return map;
   }

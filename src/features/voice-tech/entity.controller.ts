@@ -134,4 +134,18 @@ export class VoiceEntityController {
       next(err);
     }
   };
+
+  listEntityTypes = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const tenantId = (req.params.tenantId || req.query.tenantId) as string;
+      if (!tenantId) {
+        res.status(400).json({ success: false, message: 'Missing tenantId' });
+        return;
+      }
+      const types = await this.entityRepo.listEntityTypes(tenantId);
+      res.json({ success: true, types });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
