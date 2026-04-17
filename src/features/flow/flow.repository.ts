@@ -96,8 +96,14 @@ export class PrismaFlowRepository implements IFlowRepository {
 
             const updated = await this.prisma.flow.update({
                 where: { id },
-                data,
+                data: {
+                    ...data,
+                    ...(data.nodes ? { nodes: data.nodes } : {})
+                },
             });
+            if (data.nodes) {
+                console.log(`[PrismaFlowRepository] Updated nodes for flow ${id}:`, JSON.stringify(data.nodes, null, 2));
+            }
             return FlowMapper.toEntity(updated);
         } catch (error: unknown) {
             // Prisma P2025 is RecordNotFound

@@ -301,6 +301,9 @@ export class NodeExecutor {
       case NodeType.LANGUAGE:
         return this.handleLanguageNode(currentNode, context, enteredAt, traverser, userInput);
 
+      case NodeType.MEDIA_CONDITIONAL:
+        return this.handleMediaConditional(currentNode, context, enteredAt, traverser, userInput);
+
       case NodeType.CONDITION:
         return this.handleCondition(currentNode, context, enteredAt, traverser);
 
@@ -1276,6 +1279,76 @@ export class NodeExecutor {
     } catch (e) {
       const result = this.defaultResult(node, 'default', enteredAt, traverser);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
+    }
+  }
+
+  private handleMediaConditional(
+    node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser, userInput?: string,
+  ): NodeExecutionResult {
+    const data = node.data as Record<string, any>;
+    const variableKey = data.variable || data.variableName; // Support both for safety
+    const variableScope = data.variableScope || 'session';
+    const config = (data.config as any[]) || [];
+    
+    const resolvedMessage = this.text(data.message as string || "Please send the requested media.", ctx);
+    const resolvedInvalidMessage = this.text(data.invalidMessage as string || "Invalid media type. Please try again.", ctx);
+
+    // Initial trip through the node: show prompt and wait
+    if (userInput === undefined) {
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedMessage } }],
+        variableMutations: [],
+        isTerminal: false,
+        waitForInput: { type: 'media_conditional', variableName: variableKey, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
+    }
+
+    // Processing actual user input
+    let mediaType: string | undefined;
+    let mediaValue: string | undefined;
+
+    try {
+      const parsed = JSON.parse(userInput);
+      mediaType = parsed.type;
+      mediaValue = parsed.value;
+    } catch (e) {
+      // If not JSON, check if text is an allowed type
+      mediaType = 'text';
+      mediaValue = userInput;
+    }
+
+    // Validate if the input type is allowed in the node's config
+    const matched = config.find(c => c.type === mediaType);
+
+    if (matched) {
+      const branchKey = matched.branchKey || mediaType;
+      const mutations: VariableMutation[] = [];
+      if (variableKey) {
+        mutations.push({
+          scope: variableScope as 'session' | 'contact',
+          key: variableKey,
+          value: mediaValue!,
+        });
+      }
+
+      const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
+      return { ...result, historyStep: { ...result.historyStep, userInput: mediaValue } };
+    } else {
+      // INVALID INPUT: Stay on the same node, send invalid message, and wait again
+      const since = new Date();
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      return {
+        nextNodeId: node.id,
+        outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedInvalidMessage } }],
+        variableMutations: [],
+        isTerminal: false,
+        waitForInput: { type: 'media_conditional', variableName: variableKey, variableScope, since, timeoutAt },
+        historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+      };
     }
   }
 }

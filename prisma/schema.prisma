@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 model Flow {
@@ -306,4 +307,17 @@ model Credential {
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
   @@map("credentials")
+}
+
+model UserLanguagePreference {
+  id                String   @id @default(uuid())
+  botId             String
+  waId              String
+  preferredLanguage String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([botId, waId])
+  @@index([botId, waId])
+  @@map("user_language_preferences")
 }
