@@ -42,6 +42,7 @@ import { CampaignService } from './features/campaign/campaign.service';
 import { EntityQueryService } from './features/voice-tech/services/entity-query.service';
 import { IngestionService } from './features/voice-tech/services/ingestion.service';
 import { VoiceRoutingService } from './features/voice-tech/services/voice-routing.service';
+import { VoiceCampaignService } from './features/voice-tech/services/voice-campaign.service';
 import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
@@ -157,6 +158,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin);
+  const voiceCampaignService = new VoiceCampaignService(entityQueryService, voiceProvidersPlugin);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
   const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
@@ -189,7 +191,12 @@ export function createApp(registry: IPluginRegistry): Application {
     workerPlugin,
     redisPlugin,
   );
-  const voiceRoutingController = new VoiceRoutingController(voiceRoutingService, entityQueryService, voiceRoutingRepo);
+  const voiceRoutingController = new VoiceRoutingController(
+    voiceRoutingService,
+    entityQueryService,
+    voiceCampaignService,
+    voiceRoutingRepo
+  );
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));

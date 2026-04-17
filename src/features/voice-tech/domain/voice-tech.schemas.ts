@@ -98,3 +98,11 @@ export const GetRoutingConfigSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
 });
+
+export const ToggleRuleActiveSchema = z.object({
+  ruleId: z.string().uuid(),
+  tenantId: z.string().min(1),
+  entityType: z.string().min(1), // Required to find recipients for the campaign
+  isActive: z.boolean(),
+  triggerCampaign: z.boolean().optional(),
+});

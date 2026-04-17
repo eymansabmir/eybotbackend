@@ -60,50 +60,52 @@ export class IngestionService {
 
   /**
    * Normalize a record into a flat object with lowercase dot-notation keys.
-   * Keys are lowercased so they match query conditions case-insensitively at
-   * the schema level. Values are stored as their original parsed types;
-   * LOWER()/TRIM() in the query covers runtime case/whitespace differences.
+   * This is a recursive process that handles nested JSON data, ensuring
+   * that all attributes are searchable via the flat 'attributes->>key' contract.
    */
   private normalize(record: Record<string, unknown>): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
+    const flat: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(record)) {
-      // Normalize key: trim whitespace, lowercase
-      const normalizedKey = key.trim().toLowerCase();
-      if (!normalizedKey || value == null) {
-        continue;
+    const flatten = (obj: any, prefix = '') => {
+      if (obj === null || obj === undefined) return;
+
+      for (const [key, value] of Object.entries(obj)) {
+        const normalizedKey = key.trim().toLowerCase();
+        const fullKey = prefix ? `${prefix}.${normalizedKey}` : normalizedKey;
+
+        if (value == null) continue;
+
+        // Depth protection: stop flattening if we reach a certain level of nesting?
+        // For now, let's just flatten everything into dot notation.
+        
+        if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          flatten(value, fullKey);
+        } else {
+          // Process primitive values
+          if (typeof value === 'number' || typeof value === 'boolean') {
+            flat[fullKey] = value;
+          } else if (Array.isArray(value)) {
+            flat[fullKey] = JSON.stringify(value);
+          } else {
+            // It's a string or other primitive
+            const text = String(value).trim();
+            if (!text) continue;
+
+            // Attempt to cast string primitives
+            if (text.toLowerCase() === 'true' || text.toLowerCase() === 'false') {
+               flat[fullKey] = text.toLowerCase() === 'true';
+            } else if (!Number.isNaN(Number(text)) && text !== '') {
+               flat[fullKey] = Number(text);
+            } else {
+               flat[fullKey] = text;
+            }
+          }
+        }
       }
+    };
 
-      if (typeof value === 'number' || typeof value === 'boolean') {
-        result[normalizedKey] = value;
-        continue;
-      }
-
-      const text = String(value).trim();
-      if (!text) {
-        continue;
-      }
-
-      if (text === 'true' || text === 'false') {
-        result[normalizedKey] = text === 'true';
-        continue;
-      }
-
-      if (!Number.isNaN(Number(text)) && text !== '') {
-        result[normalizedKey] = Number(text);
-        continue;
-      }
-
-      const parsedDate = Date.parse(text);
-      if (!Number.isNaN(parsedDate) && isNaN(Number(text))) {
-        result[normalizedKey] = new Date(parsedDate).toISOString();
-        continue;
-      }
-
-      result[normalizedKey] = text;
-    }
-
-    return result;
+    flatten(record);
+    return flat;
   }
 
   /**

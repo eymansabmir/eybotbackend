@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { NotFoundError } from '../../utils/errors';
 import type { RoutingConditionNode } from './domain/condition.types';
 import type { EntityQueryService } from './services/entity-query.service';
+import type { VoiceCampaignService } from './services/voice-campaign.service';
 import type { IVoiceRoutingRepository } from './data/routing.repository';
 import type { VoiceRoutingService } from './services/voice-routing.service';
 import {
@@ -11,6 +12,7 @@ import {
   GetRoutingConfigSchema,
   ListRoutingConfigsSchema,
   QueryByRuleSchema,
+  ToggleRuleActiveSchema,
   UpsertRoutingRuleSchema,
 } from './domain/voice-tech.schemas';
 
@@ -18,6 +20,7 @@ export class VoiceRoutingController {
   constructor(
     private readonly voiceRoutingService: VoiceRoutingService,
     private readonly entityQueryService: EntityQueryService,
+    private readonly voiceCampaignService: VoiceCampaignService,
     private readonly routingRepo: IVoiceRoutingRepository,
   ) {}
 
@@ -66,6 +69,39 @@ export class VoiceRoutingController {
     }
   };
 
+  toggleRuleActive = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const payload = ToggleRuleActiveSchema.parse(req.body);
+      
+      const config = await this.routingRepo.getRuleById(payload.ruleId);
+      if (!config) {
+        throw new NotFoundError('RoutingRule', payload.ruleId);
+      }
+
+      const rule = await this.routingRepo.upsertRule({
+        ...config,
+        isActive: payload.isActive
+      } as any);
+
+      let campaignResult = null;
+      if (payload.isActive && payload.triggerCampaign) {
+        campaignResult = await this.voiceCampaignService.executeForRule(
+          payload.tenantId,
+          payload.entityType,
+          rule as any
+        );
+      }
+
+      res.status(200).json({ 
+        success: true, 
+        rule,
+        campaign: campaignResult 
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   deleteRule = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = DeleteRoutingRuleSchema.parse(req.params);
@@ -89,14 +125,28 @@ export class VoiceRoutingController {
   queryEntitiesByRule = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const payload = QueryByRuleSchema.parse(req.body);
+      
+      // Log the intent for debugging
+      console.log(`[VoiceRouting] Querying entities for type: ${payload.entityType}, tenant: ${payload.tenantId}`);
+      
       const entities = await this.entityQueryService.fetchEntitiesByRule({
         tenantId: payload.tenantId,
         entityType: payload.entityType,
         conditions: payload.conditions as RoutingConditionNode,
         limit: payload.limit
       });
-      res.json({ success: true, count: entities.length, entities });
+
+      res.json({ 
+        success: true, 
+        count: entities.length, 
+        entities,
+        debug: {
+            entityType: payload.entityType,
+            tenantId: payload.tenantId
+        }
+      });
     } catch (err) {
+      console.error(`[VoiceRouting] Query failed:`, err);
       next(err);
     }
   };

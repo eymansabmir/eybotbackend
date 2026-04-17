@@ -38,6 +38,7 @@ export interface IVoiceRoutingRepository {
   deleteRule(ruleId: string): Promise<void>;
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
   createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
+  getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
 }
 
 export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
@@ -183,6 +184,22 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       id: config.id,
       tenantId: config.tenantId,
       name: config.name,
+    };
+  }
+  
+  async getRuleById(ruleId: string): Promise<RoutingRuleView | null> {
+    const rule = await this.prisma.routingRule.findUnique({
+      where: { id: ruleId },
+    });
+    
+    if (!rule) return null;
+    
+    return {
+      id: rule.id,
+      routingConfigId: rule.routingConfigId,
+      priority: rule.priority,
+      conditions: rule.conditions as any,
+      action: rule.action as any,
     };
   }
 }
