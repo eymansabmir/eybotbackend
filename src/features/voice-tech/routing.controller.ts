@@ -112,6 +112,23 @@ export class VoiceRoutingController {
     }
   };
 
+  deleteConfig = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const tenantId = (req.body?.tenantId || req.query?.tenantId) as string;
+      
+      if (!id || !tenantId) {
+        res.status(400).json({ success: false, message: 'Missing config id or tenantId' });
+        return;
+      }
+
+      await this.routingRepo.deleteConfig(id, tenantId);
+      res.status(200).json({ success: true, message: 'Routing configuration deleted' });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   executeRouting = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const payload = ExecuteRoutingSchema.parse(req.body);
@@ -147,6 +164,21 @@ export class VoiceRoutingController {
       });
     } catch (err) {
       console.error(`[VoiceRouting] Query failed:`, err);
+      next(err);
+    }
+  };
+
+  bulkExecute = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { tenantId, routingConfigId, entityTypes } = req.body;
+      if (!tenantId || !routingConfigId || !Array.isArray(entityTypes)) {
+        res.status(400).json({ success: false, message: 'Missing tenantId, routingConfigId, or entityTypes' });
+        return;
+      }
+
+      const result = await this.voiceCampaignService.executeForConfig(tenantId, routingConfigId, entityTypes);
+      res.json({ success: true, result });
+    } catch (err) {
       next(err);
     }
   };

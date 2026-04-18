@@ -4,6 +4,7 @@ import type { IRedisPlugin } from '../../plugins/redis';
 import { EXCHANGES, type IWorkerPlugin } from '../../plugins/worker';
 import type { VoiceIngestJob } from '../../plugins/worker/jobs';
 import type { IEntityRepository } from './data/entity.repository';
+import type { IVoiceRoutingRepository } from './data/routing.repository';
 import type { IngestionService } from './services/ingestion.service';
 import {
   IngestEntitiesSchema,
@@ -19,6 +20,7 @@ export class VoiceEntityController {
   constructor(
     private readonly ingestionService: IngestionService,
     private readonly entityRepo: IEntityRepository,
+    private readonly routingRepo: IVoiceRoutingRepository,
     private readonly workerPlugin: IWorkerPlugin,
     private readonly redisPlugin: IRedisPlugin,
   ) {}
@@ -144,6 +146,38 @@ export class VoiceEntityController {
       }
       const types = await this.entityRepo.listEntityTypes(tenantId);
       res.json({ success: true, types });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  deleteEntityType = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const tenantId = (req.body?.tenantId || req.query?.tenantId) as string;
+      const name = req.params.name as string;
+      if (!tenantId || !name) {
+        res.status(400).json({ success: false, message: 'Missing tenantId or entityType name' });
+        return;
+      }
+
+      // 1. Delete associated stack (RoutingConfig) if exists
+      let associatedStackId: string | null = null;
+      if (this.routingRepo && typeof this.routingRepo.findConfigByName === 'function') {
+        associatedStackId = await this.routingRepo.findConfigByName(name, tenantId);
+        if (associatedStackId) {
+          await this.routingRepo.deleteConfig(associatedStackId, tenantId);
+        }
+      }
+
+      // 2. Delete the dataset (EntityType)
+      await this.entityRepo.deleteEntityType(tenantId, name);
+
+      res.json({ 
+        success: true, 
+        message: associatedStackId 
+          ? `Dataset "${name}" and its associated stack were deleted` 
+          : `Dataset "${name}" deleted` 
+      });
     } catch (err) {
       next(err);
     }

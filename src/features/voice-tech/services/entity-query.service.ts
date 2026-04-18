@@ -38,4 +38,8 @@ export class EntityQueryService {
 
     return rows;
   }
+
+  async queryRaw<T = unknown>(query: string, ...params: unknown[]): Promise<T[]> {
+    return this.entityRepo.queryRaw<T>(query, ...params);
+  }
 }

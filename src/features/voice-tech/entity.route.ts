@@ -11,6 +11,7 @@ export function createVoiceEntityRouter(controller: VoiceEntityController): Rout
   router.get('/ingest/jobs/:jobId', controller.getIngestJobStatus);
   router.get('/attributes', controller.listAttributes);
   router.get('/entity-types', controller.listEntityTypes);
+  router.delete('/entity-types/:name', controller.deleteEntityType);
 
   return router;
 }

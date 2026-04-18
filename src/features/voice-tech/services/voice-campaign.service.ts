@@ -4,11 +4,13 @@ import type { EntityQueryService } from './entity-query.service';
 import { PhoneDiscoveryService } from './phone-discovery.service';
 import type { RoutingRuleView } from '../data/routing.repository';
 import type { RoutingConditionNode } from '../domain/condition.types';
+import type { VoiceRoutingService } from './voice-routing.service';
 
 export class VoiceCampaignService {
   constructor(
     private readonly entityQueryService: EntityQueryService,
     private readonly voiceProvidersPlugin: IVoiceProvidersPlugin,
+    private readonly voiceRoutingService: VoiceRoutingService,
   ) {}
 
   /**
@@ -98,5 +100,74 @@ export class VoiceCampaignService {
       failed,
       details
     };
+  }
+
+  /**
+   * Executes a bulk campaign for a whole routing config across multiple entity types.
+   */
+  async executeForConfig(tenantId: string, routingConfigId: string, entityTypes: string[]): Promise<{
+    totalProcessed: number;
+    initiated: number;
+    failed: number;
+    skipped: number;
+    details: any[];
+  }> {
+    logger.info({ tenantId, routingConfigId, entityTypes }, 'VoiceCampaign: Executing for config');
+
+    let totalProcessed = 0;
+    let initiated = 0;
+    let failed = 0;
+    let skipped = 0;
+    const details: any[] = [];
+
+    for (const type of entityTypes) {
+      // Fetch all entities for this type (with a reasonable limit for now)
+      const entities = await this.entityQueryService.queryRaw<{ id: string; attributes: Record<string, unknown> }>(
+        `SELECT id, attributes FROM "Entity" WHERE "tenantId" = $1 AND "entityTypeId" = (SELECT id FROM "EntityType" WHERE "tenantId" = $1 AND "name" = $2) LIMIT 1000`,
+        tenantId,
+        type
+      );
+
+      for (const entity of entities) {
+        totalProcessed++;
+        const phone = PhoneDiscoveryService.getE164Phone(entity.attributes);
+
+        if (!phone) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          // Use routing service to find match
+          const routeResult = await this.voiceRoutingService.route({
+            tenantId,
+            routingConfigId,
+            attributes: entity.attributes,
+            phone,
+            executeProvider: true,
+            userId: entity.id
+          });
+
+          if (routeResult.matchedRuleId && routeResult.providerResult?.accepted) {
+            initiated++;
+          } else {
+            failed++;
+          }
+
+          details.push({
+            entityId: entity.id,
+            entityType: type,
+            phone,
+            matchedRuleId: routeResult.matchedRuleId,
+            success: routeResult.providerResult?.accepted ?? false
+          });
+        } catch (err) {
+          failed++;
+          logger.error({ entityId: entity.id, err }, 'VoiceCampaign: Bulk execution failed for entity');
+        }
+      }
+    }
+
+    return { totalProcessed, initiated, failed, skipped, details };
   }
 }

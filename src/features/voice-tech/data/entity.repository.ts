@@ -41,6 +41,7 @@ export interface IEntityRepository {
   invalidateEntityTypeCache(tenantId: string, entityType: string): Promise<void>;
   invalidateAttributesCache(tenantId: string, entityType: string): Promise<void>;
   queryRaw<T = unknown>(query: string, ...values: unknown[]): Promise<T[]>;
+  deleteEntityType(tenantId: string, entityType: string): Promise<void>;
 }
 
 export class PrismaEntityRepository implements IEntityRepository {
@@ -224,5 +225,48 @@ export class PrismaEntityRepository implements IEntityRepository {
 
   async queryRaw<T = unknown>(query: string, ...values: unknown[]): Promise<T[]> {
     return this.prisma.$queryRawUnsafe(query, ...values);
+  }
+
+  async deleteEntityType(tenantId: string, entityType: string): Promise<void> {
+    const entityTypeRecord = await this.prisma.entityType.findUnique({
+      where: {
+        tenantId_name: {
+          tenantId,
+          name: entityType,
+        },
+      },
+    });
+
+    if (!entityTypeRecord) {
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete Entities
+      await tx.entity.deleteMany({
+        where: {
+          tenantId,
+          entityTypeId: entityTypeRecord.id,
+        },
+      });
+
+      // 2. Delete Attributes
+      await tx.entityAttribute.deleteMany({
+        where: {
+          tenantId,
+          entityTypeId: entityTypeRecord.id,
+        },
+      });
+
+      // 3. Delete EntityType itself
+      await tx.entityType.delete({
+        where: {
+          id: entityTypeRecord.id,
+        },
+      });
+    });
+
+    await this.invalidateEntityTypeCache(tenantId, entityType);
+    await this.invalidateAttributesCache(tenantId, entityType);
   }
 }

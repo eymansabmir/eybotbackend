@@ -36,6 +36,8 @@ export interface IVoiceRoutingRepository {
     isActive?: boolean;
   }): Promise<RoutingRuleView>;
   deleteRule(ruleId: string): Promise<void>;
+  deleteConfig(id: string, tenantId: string): Promise<void>;
+  findConfigByName(name: string, tenantId: string): Promise<string | null>;
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
   createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
   getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
@@ -163,6 +165,28 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       await this.prisma.routingRule.delete({ where: { id: ruleId } });
       await this.invalidateConfigCache(rule.routingConfig.id, rule.routingConfig.tenantId);
     }
+  }
+
+  async deleteConfig(id: string, tenantId: string): Promise<void> {
+    const config = await this.prisma.routingConfig.findUnique({
+      where: { id, tenantId },
+    });
+
+    if (config) {
+      // Prisma Cascade handles rules deletion
+      await this.prisma.routingConfig.delete({
+        where: { id, tenantId },
+      });
+      await this.invalidateConfigCache(id, tenantId);
+    }
+  }
+
+  async findConfigByName(name: string, tenantId: string): Promise<string | null> {
+    const config = await this.prisma.routingConfig.findFirst({
+      where: { name, tenantId },
+      select: { id: true },
+    });
+    return config?.id || null;
   }
 
   async invalidateConfigCache(configId: string, tenantId: string): Promise<void> {

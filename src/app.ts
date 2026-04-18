@@ -158,7 +158,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin);
-  const voiceCampaignService = new VoiceCampaignService(entityQueryService, voiceProvidersPlugin);
+  const voiceCampaignService = new VoiceCampaignService(entityQueryService, voiceProvidersPlugin, voiceRoutingService);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
   const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
@@ -188,6 +188,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const voiceEntityController = new VoiceEntityController(
     ingestionService,
     voiceEntityRepo,
+    voiceRoutingRepo,
     workerPlugin,
     redisPlugin,
   );
