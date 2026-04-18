@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type Redis from 'ioredis';
+import { logger } from '../../../utils/logger';
 
 const ATTRIBUTE_CACHE_TTL_SECONDS = 60;
 const ENTITY_TYPE_ID_CACHE_TTL_SECONDS = 60;

@@ -32,6 +32,8 @@ export const ProviderActionSchema = z.object({
   type: z.literal('VOICE_PROVIDER'),
   provider: z.string().min(1),
   agentId: z.string().min(1),
+  mode: z.enum(['single', 'batch']).optional(),
+  transport: z.enum(['telephony', 'whatsapp']).optional(),
   config: z.record(z.unknown()).optional(),
 });
 

@@ -165,6 +165,10 @@ export class VapiVoiceProviderAdapter implements VoiceProviderAdapter {
         ? input.providerConfig['batchIntervalMs']
         : 250;
 
+    // NOTE: Vapi does not expose a native batch-call endpoint today.
+    // We submit one call at a time with a configurable delay to reduce rate-limit pressure.
+    // For very large batches, prefer a queue/worker fan-out strategy.
+
     let successCount = 0;
     let failureCount = 0;
     let firstReference: string | undefined;

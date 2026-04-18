@@ -4,6 +4,8 @@ export interface Action {
   type: 'VOICE_PROVIDER';
   provider: string;
   agentId: string;
+  mode?: 'single' | 'batch';
+  transport?: 'telephony' | 'whatsapp';
   config?: Record<string, any>;
 }
 

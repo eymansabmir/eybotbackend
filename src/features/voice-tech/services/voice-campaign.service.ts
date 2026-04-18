@@ -55,7 +55,6 @@ export class VoiceCampaignService {
           phone,
           attributes: entity.attributes,
           agentId: rule.action.agentId,
-          config: rule.action.config,
           providerConfig: rule.action.config,
           // userId can be entity ID for tracking
           userId: entity.id,

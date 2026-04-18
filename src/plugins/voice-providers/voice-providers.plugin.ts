@@ -3,6 +3,7 @@ import type { ExecuteVoiceProviderInput, IVoiceProvidersPlugin, VoiceProviderAda
 import { ElevenLabsVoiceProviderAdapter } from './providers/elevenlabs/elevenlabs-voice.provider';
 import { SarvamVoiceProviderAdapter } from './providers/sarvam/sarvam-voice.provider';
 import { VapiVoiceProviderAdapter } from './providers/vapi/vapi-voice.provider';
+import { logger } from '../../utils/logger';
 
 export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
   readonly name = 'voice-providers';
@@ -29,7 +30,7 @@ export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
       return {
         name: providerName,
         async initiateCall(_input: ExecuteVoiceProviderInput): Promise<{ accepted: boolean; message?: string }> {
-          logger.warn({ provider: providerName }, 'Voice provider not registered. Execution accepted without outbound call.');
+          logger.warn({ provider: providerName }, 'Voice provider not registered. Outbound execution rejected.');
           return { accepted: false, message: `Provider '${providerName}' is not registered` };
         },
       };

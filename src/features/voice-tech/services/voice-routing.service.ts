@@ -4,7 +4,7 @@ import type { VoiceExecutionRequest } from '../../../plugins/voice-providers';
 import { NotFoundError } from '../../../utils/errors';
 import { ConditionEvaluator } from '../domain/evaluator';
 import type { IVoiceRoutingRepository } from '../data/routing.repository';
-import type { RoutingActionResult, RoutingExecutionInput } from '../domain/rule.types';
+import type { RoutingAction, RoutingActionResult, RoutingExecutionInput } from '../domain/rule.types';
 
 export class VoiceRoutingService {
   constructor(
@@ -40,7 +40,7 @@ export class VoiceRoutingService {
     }
 
     const provider = this.voiceProvidersPlugin.get(matchedRule.action.provider);
-    const request = this.buildExecutionRequest(input, matchedRule.action.config);
+    const request = this.buildExecutionRequest(input, matchedRule.action);
     const providerResult = await provider.initiateCall({
       provider: matchedRule.action.provider,
       tenantId: input.tenantId,
@@ -48,7 +48,6 @@ export class VoiceRoutingService {
       phone: input.phone,
       attributes: input.attributes,
       agentId: matchedRule.action.agentId,
-      config: matchedRule.action.config,
       providerConfig: matchedRule.action.config,
       request,
     });
@@ -62,10 +61,11 @@ export class VoiceRoutingService {
 
   private buildExecutionRequest(
     input: RoutingExecutionInput,
-    config?: Record<string, unknown>,
+    action: RoutingAction,
   ): VoiceExecutionRequest {
-    const mode = config?.['mode'] === 'batch' ? 'batch' : 'single';
-    const transport = config?.['transport'] === 'whatsapp' ? 'whatsapp' : 'telephony';
+    const config = action.config;
+    const mode = action.mode ?? (config?.['mode'] === 'batch' ? 'batch' : 'single');
+    const transport = action.transport ?? (config?.['transport'] === 'whatsapp' ? 'whatsapp' : 'telephony');
 
     if (mode === 'single') {
       return {
