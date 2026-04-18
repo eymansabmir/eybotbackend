@@ -2,7 +2,7 @@ import { logger } from '../../../utils/logger';
 import type { IVoiceProvidersPlugin } from '../../../plugins/voice-providers';
 import type { EntityQueryService } from './entity-query.service';
 import { PhoneDiscoveryService } from './phone-discovery.service';
-import type { RoutingRule } from '../types';
+import type { RoutingRuleView } from '../data/routing.repository';
 import type { RoutingConditionNode } from '../domain/condition.types';
 
 export class VoiceCampaignService {
@@ -15,7 +15,7 @@ export class VoiceCampaignService {
    * Executes a campaign by finding all entities matching a rule 
    * and initiating outbound calls for each.
    */
-  async executeForRule(tenantId: string, entityType: string, rule: RoutingRule): Promise<{ 
+  async executeForRule(tenantId: string, entityType: string, rule: RoutingRuleView): Promise<{ 
     total: number; 
     initiated: number; 
     failed: number;
@@ -50,12 +50,23 @@ export class VoiceCampaignService {
       try {
         const provider = this.voiceProvidersPlugin.get(rule.action.provider);
         const result = await provider.initiateCall({
+          provider: rule.action.provider,
+          tenantId,
           phone,
           attributes: entity.attributes,
           agentId: rule.action.agentId,
           config: rule.action.config,
+          providerConfig: rule.action.config,
           // userId can be entity ID for tracking
           userId: entity.id,
+          request: {
+            mode: 'single',
+            transport: 'telephony',
+            recipient: {
+              phoneE164: phone,
+              attributes: entity.attributes,
+            },
+          },
         });
 
         if (result.accepted) {

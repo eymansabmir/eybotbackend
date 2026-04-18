@@ -33,6 +33,7 @@ export interface RoutingExecutionInput {
 export interface RoutingActionResult {
   accepted: boolean;
   providerReference?: string;
+  message?: string;
 }
 
 export type RoutingAction = Action;

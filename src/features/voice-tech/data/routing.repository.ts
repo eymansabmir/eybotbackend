@@ -119,7 +119,6 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     action: RoutingAction;
     isActive?: boolean;
   }): Promise<RoutingRuleView> {
-    const isNew = !data.id;
     const rule = await this.prisma.routingRule.upsert({
       where: { id: data.id ?? 'new' },
       create: {

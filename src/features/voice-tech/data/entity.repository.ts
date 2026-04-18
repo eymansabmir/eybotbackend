@@ -34,6 +34,7 @@ export interface IEntityRepository {
     entityTypeId: string;
     records: Record<string, unknown>[];
   }): Promise<void>;
+  listEntityTypes(tenantId: string): Promise<string[]>;
   listAttributes(tenantId: string, entityType: string): Promise<EntityAttributeView[]>;
   findEntityTypeId(tenantId: string, entityType: string): Promise<string | null>;
   invalidateEntityTypeCache(tenantId: string, entityType: string): Promise<void>;

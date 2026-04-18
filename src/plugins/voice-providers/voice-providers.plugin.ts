@@ -28,9 +28,9 @@ export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
     if (!provider) {
       return {
         name: providerName,
-        async initiateCall(_input: ExecuteVoiceProviderInput): Promise<{ accepted: boolean }> {
+        async initiateCall(_input: ExecuteVoiceProviderInput): Promise<{ accepted: boolean; message?: string }> {
           logger.warn({ provider: providerName }, 'Voice provider not registered. Execution accepted without outbound call.');
-          return { accepted: true };
+          return { accepted: false, message: `Provider '${providerName}' is not registered` };
         },
       };
     }

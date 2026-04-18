@@ -1,5 +1,3 @@
-import { logger } from '../../../utils/logger';
-
 /**
  * Service to discover and format phone numbers from dynamic attribute sets.
  * Mirrors the logic used in the core Campaign Import consumer for consistency.
