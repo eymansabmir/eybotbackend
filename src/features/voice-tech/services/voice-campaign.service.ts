@@ -56,6 +56,7 @@ export class VoiceCampaignService {
           tenantId,
           phone,
           attributes: entity.attributes,
+          entityType, // Pass context for multi-entity rules
           agentId: rule.action.agentId,
           providerConfig: rule.action.config,
           // userId can be entity ID for tracking
@@ -110,6 +111,7 @@ export class VoiceCampaignService {
     initiated: number;
     failed: number;
     skipped: number;
+    excluded: number;
     details: any[];
   }> {
     logger.info({ tenantId, routingConfigId, entityTypes }, 'VoiceCampaign: Executing for config');
@@ -118,6 +120,7 @@ export class VoiceCampaignService {
     let initiated = 0;
     let failed = 0;
     let skipped = 0;
+    let excluded = 0;
     const details: any[] = [];
 
     for (const type of entityTypes) {
@@ -143,15 +146,22 @@ export class VoiceCampaignService {
             tenantId,
             routingConfigId,
             attributes: entity.attributes,
+            entityType: type, // Pass context for multi-entity rules
             phone,
             executeProvider: true,
             userId: entity.id
           });
 
-          if (routeResult.matchedRuleId && routeResult.providerResult?.accepted) {
-            initiated++;
+          if (routeResult.matchedRuleId) {
+            if (routeResult.providerResult?.accepted) {
+              initiated++;
+            } else {
+              // Rule matched but provider rejected (technical failure)
+              failed++;
+            }
           } else {
-            failed++;
+            // No rule matched this specific entity (excluded by logic)
+            excluded++;
           }
 
           details.push({
@@ -159,7 +169,8 @@ export class VoiceCampaignService {
             entityType: type,
             phone,
             matchedRuleId: routeResult.matchedRuleId,
-            success: routeResult.providerResult?.accepted ?? false
+            success: routeResult.providerResult?.accepted ?? false,
+            excluded: !routeResult.matchedRuleId
           });
         } catch (err) {
           failed++;
@@ -168,6 +179,6 @@ export class VoiceCampaignService {
       }
     }
 
-    return { totalProcessed, initiated, failed, skipped, details };
+    return { totalProcessed, initiated, failed, skipped, excluded, details };
   }
 }

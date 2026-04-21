@@ -18,7 +18,7 @@ export class EntityQueryService {
     }
 
     const params: unknown[] = [input.tenantId, entityTypeId];
-    const whereClause = QueryBuilder.build(input.conditions, params);
+    const whereClause = QueryBuilder.build(input.conditions, params, { i: 3 }, input.entityType);
     const limit = input.limit ?? 1000;
 
     const query = `

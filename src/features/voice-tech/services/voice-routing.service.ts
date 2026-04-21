@@ -23,7 +23,19 @@ export class VoiceRoutingService {
     }
 
     const sortedRules = [...config.rules].sort((a, b) => a.priority - b.priority);
-    const matchedRule = sortedRules.find((rule) => ConditionEvaluator.evaluate(rule.conditions, input.attributes));
+    
+    // Prepare evaluation context: ensure attributes are prefixed with entity type for mixed-entity rules
+    const evalContext = { ...input.attributes };
+    if (input.entityType) {
+      const prefix = `${input.entityType}.`;
+      Object.entries(input.attributes).forEach(([key, value]) => {
+        if (!key.includes('.')) {
+          evalContext[`${prefix}${key}`] = value;
+        }
+      });
+    }
+
+    const matchedRule = sortedRules.find((rule) => ConditionEvaluator.evaluate(rule.conditions, evalContext));
 
     if (!matchedRule) {
       return {

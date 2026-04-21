@@ -27,6 +27,7 @@ export interface RoutingExecutionInput {
   tenantId: string;
   routingConfigId: string;
   attributes: Record<string, unknown>;
+  entityType?: string; // Optional: used to prefix attributes for mixed-entity rules
   userId?: string;
   phone?: string;
   executeProvider?: boolean;

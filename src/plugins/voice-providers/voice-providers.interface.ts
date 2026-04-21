@@ -33,6 +33,7 @@ export interface ExecuteVoiceProviderInput {
   userId?: string;
   phone?: string;
   attributes: Record<string, unknown>;
+  entityType?: string; // Optional: context for multi-entity rules
   agentId: string;
 
   // Legacy/general config (kept for compatibility)
