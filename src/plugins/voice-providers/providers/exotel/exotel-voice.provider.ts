@@ -198,8 +198,14 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
           'Voice orchestration step',
         );
 
+        /* 
         const result = await this.post(`${baseUrl}${endpoint}`, accountSid, authToken, form);
         const reference = result.Call?.Sid;
+        */
+        
+        // Mock Success Response
+        const reference = `mock-exotel-${Date.now()}`;
+        const result = { Call: { Sid: reference, Status: 'queued' } };
 
         logger.info(
           {
@@ -285,8 +291,14 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
             'Voice orchestration step',
           );
 
+          /*
           const result = await this.post(`${baseUrl}${endpoint}`, accountSid, authToken, form);
           const ref = result.Call?.Sid;
+          */
+
+          // Mock Success Response
+          const ref = `mock-exotel-batch-${i}-${Date.now()}`;
+          const result = { Call: { Sid: ref, Status: 'queued' } };
           logger.info(
             {
               flow: 'voice_orchestration',

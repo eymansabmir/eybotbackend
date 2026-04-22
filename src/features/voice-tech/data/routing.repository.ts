@@ -42,6 +42,18 @@ export interface IVoiceRoutingRepository {
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
   createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
   getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
+  recordEvent(data: {
+    tenantId: string;
+    traceId: string;
+    step: string;
+    provider?: string;
+    matchedRuleId?: string;
+    status?: number;
+    accepted?: boolean;
+    message?: string;
+    durationMs?: number;
+    metadata?: any;
+  }): Promise<void>;
 }
 
 export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
@@ -225,5 +237,27 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       conditions: rule.conditions as any,
       action: rule.action as any,
     };
+  }
+
+  async recordEvent(data: any): Promise<void> {
+    try {
+      await this.prisma.voiceOrchestrationEvent.create({
+        data: {
+          tenantId: data.tenantId,
+          traceId: data.traceId,
+          step: data.step,
+          provider: data.provider,
+          matchedRuleId: data.matchedRuleId,
+          status: data.status,
+          accepted: data.accepted,
+          message: data.message,
+          durationMs: data.durationMs,
+          metadata: data.metadata,
+        },
+      });
+    } catch (err) {
+      // Don't fail the orchestration if logging fails
+      logger.error({ err, traceId: data.traceId }, 'Failed to record orchestration event');
+    }
   }
 }

@@ -4,6 +4,7 @@ import type { VoiceRoutingController } from './routing.controller';
 export function createVoiceRoutingRouter(controller: VoiceRoutingController): Router {
   const router = Router();
 
+  router.get('/analytics/orchestration', controller.getOrchestrationStats);
   router.get('/', controller.listConfigs);
   router.post('/', controller.createConfig);
   router.get('/:id', controller.getConfig);

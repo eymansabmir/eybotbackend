@@ -379,3 +379,23 @@ model RoutingRule {
   @@index([routingConfigId])
   @@map("routing_rules")
 }
+
+model VoiceOrchestrationEvent {
+  id              String   @id @default(uuid())
+  tenantId        String
+  traceId         String
+  flow            String   @default("voice_orchestration")
+  step            String
+  provider        String?
+  matchedRuleId   String?
+  status          Int?     // HTTP status or custom code
+  accepted        Boolean?
+  message         String?
+  durationMs      Int?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, traceId])
+  @@index([createdAt])
+  @@map("voice_orchestration_events")
+}

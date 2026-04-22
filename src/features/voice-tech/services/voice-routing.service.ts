@@ -21,8 +21,23 @@ export class VoiceRoutingService {
     action: unknown;
     providerResult?: RoutingActionResult;
   }> {
+    const startTime = Date.now();
     const traceId = input.traceId ?? `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     const attributeKeys = Object.keys(input.attributes);
+
+    const baseEvent = {
+      tenantId: input.tenantId,
+      traceId,
+    };
+
+    await this.routingRepo.recordEvent({
+      ...baseEvent,
+      step: 'STEP_3_SERVICE_PROCESSING',
+      metadata: {
+        routingConfigId: input.routingConfigId,
+        attributeKeyCount: attributeKeys.length,
+      }
+    });
 
     logger.info(
       {
@@ -41,6 +56,15 @@ export class VoiceRoutingService {
     if (!config) {
       throw new NotFoundError('RoutingConfig', input.routingConfigId);
     }
+
+    await this.routingRepo.recordEvent({
+      ...baseEvent,
+      step: 'STEP_4_ROUTING_CONFIG_LOADED',
+      metadata: {
+        routingConfigId: config.id,
+        ruleCount: config.rules.length,
+      }
+    });
 
     logger.info(
       {
@@ -68,6 +92,17 @@ export class VoiceRoutingService {
 
     let matchedRule = sortedRules.find((rule) => {
       const matched = ConditionEvaluator.evaluate(rule.conditions, evalContext);
+      
+      this.routingRepo.recordEvent({
+        ...baseEvent,
+        step: 'STEP_5_RULE_EVALUATED',
+        matchedRuleId: rule.id,
+        metadata: {
+          matched,
+          priority: rule.priority,
+        }
+      }).catch(() => {}); // Fire and forget
+
       logger.info(
         {
           flow: 'voice_orchestration',
@@ -83,6 +118,11 @@ export class VoiceRoutingService {
     });
 
     if (!matchedRule) {
+      await this.routingRepo.recordEvent({
+        ...baseEvent,
+        step: 'STEP_6_NO_RULE_MATCH',
+      });
+
       logger.info(
         {
           flow: 'voice_orchestration',
@@ -98,6 +138,12 @@ export class VoiceRoutingService {
       };
     }
 
+    await this.routingRepo.recordEvent({
+      ...baseEvent,
+      step: 'STEP_6_RULE_MATCHED',
+      matchedRuleId: matchedRule.id,
+    });
+
     logger.info(
       {
         flow: 'voice_orchestration',
@@ -110,6 +156,12 @@ export class VoiceRoutingService {
     );
 
     if (!input.executeProvider) {
+      await this.routingRepo.recordEvent({
+        ...baseEvent,
+        step: 'STEP_7_PROVIDER_EXECUTION_SKIPPED',
+        matchedRuleId: matchedRule.id,
+      });
+
       logger.info(
         {
           flow: 'voice_orchestration',
@@ -130,6 +182,18 @@ export class VoiceRoutingService {
     const selectedVoiceProvider = this.getVoiceProviderName(matchedRule.action);
     const selectedExecutionProvider = this.getExecutionProviderName(matchedRule.action, request.transport);
 
+    await this.routingRepo.recordEvent({
+      ...baseEvent,
+      step: 'STEP_7_ROUTING_REDIRECTION_DECIDED',
+      matchedRuleId: matchedRule.id,
+      provider: selectedExecutionProvider,
+      metadata: {
+        voiceProvider: selectedVoiceProvider,
+        transport: request.transport,
+        mode: request.mode,
+      }
+    });
+
     logger.info(
       {
         flow: 'voice_orchestration',
@@ -146,6 +210,13 @@ export class VoiceRoutingService {
 
     const provider = this.voiceProvidersPlugin.get(selectedExecutionProvider);
     const providerConfig = await this.resolveProviderConfig(input.tenantId, matchedRule.action);
+
+    await this.routingRepo.recordEvent({
+      ...baseEvent,
+      step: 'STEP_8_PROVIDER_INVOCATION_START',
+      matchedRuleId: matchedRule.id,
+      provider: provider.name,
+    });
 
     logger.info(
       {
@@ -176,6 +247,21 @@ export class VoiceRoutingService {
         request,
       });
 
+      const durationMs = Date.now() - startTime;
+
+      await this.routingRepo.recordEvent({
+        ...baseEvent,
+        step: 'STEP_9_PROVIDER_RESULT',
+        matchedRuleId: matchedRule.id,
+        provider: provider.name,
+        accepted: providerResult.accepted,
+        message: providerResult.message,
+        durationMs,
+        metadata: {
+          providerReference: providerResult.providerReference,
+        }
+      });
+
       logger.info(
         {
           flow: 'voice_orchestration',
@@ -195,6 +281,18 @@ export class VoiceRoutingService {
         providerResult,
       };
     } catch (err) {
+      const durationMs = Date.now() - startTime;
+
+      await this.routingRepo.recordEvent({
+        ...baseEvent,
+        step: 'STEP_ERROR_PROVIDER_INVOCATION',
+        matchedRuleId: matchedRule.id,
+        provider: provider.name,
+        accepted: false,
+        message: (err as Error).message,
+        durationMs,
+      });
+
       logger.error(
         {
           flow: 'voice_orchestration',
