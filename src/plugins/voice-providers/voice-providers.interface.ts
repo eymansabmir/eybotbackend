@@ -30,6 +30,7 @@ export interface ExecuteVoiceProviderInput {
   // Required across providers
   provider: string;
   tenantId: string;
+  traceId?: string;
   userId?: string;
   phone?: string;
   attributes: Record<string, unknown>;

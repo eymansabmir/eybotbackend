@@ -1,5 +1,4 @@
 import { logger } from '../../../utils/logger';
-import type { IVoiceProvidersPlugin } from '../../../plugins/voice-providers';
 import type { EntityQueryService } from './entity-query.service';
 import { PhoneDiscoveryService } from './phone-discovery.service';
 import type { RoutingRuleView } from '../data/routing.repository';
@@ -9,7 +8,6 @@ import type { VoiceRoutingService } from './voice-routing.service';
 export class VoiceCampaignService {
   constructor(
     private readonly entityQueryService: EntityQueryService,
-    private readonly voiceProvidersPlugin: IVoiceProvidersPlugin,
     private readonly voiceRoutingService: VoiceRoutingService,
   ) {}
 
@@ -50,28 +48,18 @@ export class VoiceCampaignService {
       }
 
       try {
-        const provider = this.voiceProvidersPlugin.get(rule.action.provider);
-        const result = await provider.initiateCall({
-          provider: rule.action.provider,
+        const result = await this.voiceRoutingService.route({
           tenantId,
-          phone,
           attributes: entity.attributes,
-          entityType, // Pass context for multi-entity rules
-          agentId: rule.action.agentId,
-          providerConfig: rule.action.config,
-          // userId can be entity ID for tracking
+          routingConfigId: rule.routingConfigId,
+          entityType,
           userId: entity.id,
-          request: {
-            mode: 'single',
-            transport: 'telephony',
-            recipient: {
-              phoneE164: phone,
-              attributes: entity.attributes,
-            },
-          },
+          phone,
+          executeProvider: true,
         });
 
-        if (result.accepted) {
+        const accepted = Boolean(result.providerResult?.accepted);
+        if (accepted) {
           initiated++;
         } else {
           failed++;
@@ -80,8 +68,8 @@ export class VoiceCampaignService {
         details.push({
           entityId: entity.id,
           phone,
-          success: result.accepted,
-          ref: result.providerReference
+          success: accepted,
+          ref: result.providerResult?.providerReference,
         });
       } catch (err) {
         logger.error({ entityId: entity.id, err }, 'VoiceCampaign: Initiation failed');

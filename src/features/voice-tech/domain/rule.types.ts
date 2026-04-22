@@ -2,11 +2,14 @@ import type { RoutingConditionNode } from './condition.types';
 
 export interface Action {
   type: 'VOICE_PROVIDER';
-  provider: string;
+  voiceProvider: string;
+  telephonyProvider: string;
+  voiceCredentialId: string;
+  telephonyCredentialId: string;
+  channel: 'telephony' | 'whatsapp';
   agentId: string;
   mode?: 'single' | 'batch';
-  transport?: 'telephony' | 'whatsapp';
-  config?: Record<string, any>;
+  runtimeConfig?: Record<string, any>;
 }
 
 export interface Rule {
@@ -31,6 +34,7 @@ export interface RoutingExecutionInput {
   userId?: string;
   phone?: string;
   executeProvider?: boolean;
+  traceId?: string;
 }
 
 export interface RoutingActionResult {

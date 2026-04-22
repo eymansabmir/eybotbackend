@@ -1,4 +1,5 @@
 import { NotFoundError } from '../../../utils/errors';
+import { logger } from '../../../utils/logger';
 import type { RoutingConditionNode } from '../domain/condition.types';
 import type { IEntityRepository } from '../data/entity.repository';
 import { QueryBuilder } from '../domain/query-builder';
@@ -11,6 +12,7 @@ export class EntityQueryService {
     entityType: string;
     conditions: RoutingConditionNode;
     limit?: number;
+    traceId?: string;
   }): Promise<Array<{ id: string; attributes: Record<string, unknown> }>> {
     const entityTypeId = await this.entityRepo.findEntityTypeId(input.tenantId, input.entityType);
     if (!entityTypeId) {
@@ -31,9 +33,33 @@ export class EntityQueryService {
       LIMIT ${Math.min(limit, 5000)}
     `;
 
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_4_DB_QUERY',
+        traceId: input.traceId,
+        tenantId: input.tenantId,
+        entityType: input.entityType,
+        entityTypeId,
+        limit: Math.min(limit, 5000),
+      },
+      'Voice orchestration step',
+    );
+
     const rows = await this.entityRepo.queryRaw<{ id: string; attributes: Record<string, unknown> }>(
       query,
       ...params,
+    );
+
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_5_ENTITY_MATCH_COMPLETED',
+        traceId: input.traceId,
+        entityType: input.entityType,
+        matchedCount: rows.length,
+      },
+      'Voice orchestration step',
     );
 
     return rows;

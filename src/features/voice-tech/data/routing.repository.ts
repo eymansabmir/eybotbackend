@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import type Redis from 'ioredis';
 import type { RoutingConditionNode } from '../domain/condition.types';
 import type { RoutingAction } from '../domain/rule.types';
+import { logger } from '../../../utils/logger';
 
 const ROUTING_CONFIG_CACHE_TTL_SECONDS = 30;
 
@@ -54,12 +55,12 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     if (this.redis) {
       const cached = await this.redis.get(cacheKey);
       if (cached) {
-        console.log(`[VoiceRouting] Cache HIT for config ${configId}`);
+        logger.debug({ configId, tenantId }, 'Voice routing config cache hit');
         return JSON.parse(cached) as RoutingConfigView;
       }
     }
 
-    console.log(`[VoiceRouting] Cache MISS for config ${configId}, fetching from DB...`);
+    logger.debug({ configId, tenantId }, 'Voice routing config cache miss, loading from DB');
     const config = await this.prisma.routingConfig.findFirst({
       where: {
         id: configId,
@@ -73,11 +74,11 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     });
 
     if (!config) {
-      console.log(`[VoiceRouting] Config ${configId} NOT FOUND in DB`);
+      logger.warn({ configId, tenantId }, 'Voice routing config not found');
       return null;
     }
 
-    console.log(`[VoiceRouting] Found ${config.rules.length} rules in DB for config ${configId}`);
+    logger.info({ configId, tenantId, ruleCount: config.rules.length }, 'Voice routing config loaded from DB');
 
     const response = {
       id: config.id,

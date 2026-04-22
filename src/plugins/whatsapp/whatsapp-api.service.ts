@@ -261,6 +261,7 @@ export class WhatsAppAPIService {
 
   private async call(payload: any): Promise<string> {
     const msgType = payload.type;
+    console.log("STEP 5: WhatsApp API Service preparing Meta request", JSON.stringify(payload, null, 2));
     logger.info(
       { messageType: msgType, to: payload.to },
       'WhatsAppAPI: sending message to Meta',
@@ -268,6 +269,7 @@ export class WhatsAppAPIService {
     logger.debug({ payload }, 'WhatsAppAPI: full payload');
 
     const url = `${this.config.apiUrl}/${this.config.phoneNumberId}/messages`;
+    console.log("STEP 6: Actually calling Meta API URL", url);
     const response = await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.config.apiToken}`, 'Content-Type': 'application/json' },
@@ -276,8 +278,11 @@ export class WhatsAppAPIService {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.log("STEP 7 [ERROR]: Meta API responded with failure", { status: response.status, errorText });
       throw new WhatsAppAPIError(`WhatsApp API error: ${response.status} - ${errorText}`, response.status);
     }
+
+    console.log("STEP 7 [SUCCESS]: Meta API accepted the message");
 
     const data = await response.json() as { messages?: Array<{ id: string }> };
     const messageId = data.messages?.[0]?.id ?? '';

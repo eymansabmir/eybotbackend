@@ -30,11 +30,14 @@ export const ConditionNodeSchema: z.ZodType<ConditionNodeInput> = z.lazy(() =>
 
 export const ProviderActionSchema = z.object({
   type: z.literal('VOICE_PROVIDER'),
-  provider: z.string().min(1),
+  voiceProvider: z.string().min(1),
+  telephonyProvider: z.string().min(1),
+  voiceCredentialId: z.string().uuid(),
+  telephonyCredentialId: z.string().uuid(),
+  channel: z.enum(['telephony', 'whatsapp']),
   agentId: z.string().min(1),
   mode: z.enum(['single', 'batch']).optional(),
-  transport: z.enum(['telephony', 'whatsapp']).optional(),
-  config: z.record(z.unknown()).optional(),
+  runtimeConfig: z.record(z.unknown()).default({}),
 });
 
 export const IngestEntitiesSchema = z.object({
@@ -62,6 +65,7 @@ export const ExecuteRoutingSchema = z.object({
   tenantId: z.string().min(1),
   routingConfigId: z.string().min(1),
   attributes: z.record(z.unknown()),
+  entityType: z.string().min(1).optional(),
   userId: z.string().min(1).optional(),
   phone: z.string().min(1).optional(),
   executeProvider: z.boolean().optional(),

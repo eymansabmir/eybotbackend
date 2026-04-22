@@ -1,7 +1,10 @@
+import type { CredentialType } from '@prisma/client';
 import type { IVoiceProvidersPlugin } from '../../../plugins/voice-providers';
 import type { VoiceCallRecipient } from '../../../plugins/voice-providers';
 import type { VoiceExecutionRequest } from '../../../plugins/voice-providers';
-import { NotFoundError } from '../../../utils/errors';
+import type { ICredentialService } from '../../credentials/credentials.service';
+import { NotFoundError, ValidationError } from '../../../utils/errors';
+import { logger } from '../../../utils/logger';
 import { ConditionEvaluator } from '../domain/evaluator';
 import type { IVoiceRoutingRepository } from '../data/routing.repository';
 import type { RoutingAction, RoutingActionResult, RoutingExecutionInput } from '../domain/rule.types';
@@ -10,20 +13,48 @@ export class VoiceRoutingService {
   constructor(
     private readonly routingRepo: IVoiceRoutingRepository,
     private readonly voiceProvidersPlugin: IVoiceProvidersPlugin,
-  ) {}
+    private readonly credentialService?: ICredentialService,
+  ) { }
 
   async route(input: RoutingExecutionInput): Promise<{
     matchedRuleId: string | null;
     action: unknown;
     providerResult?: RoutingActionResult;
   }> {
+    const traceId = input.traceId ?? `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const attributeKeys = Object.keys(input.attributes);
+
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_3_SERVICE_PROCESSING',
+        traceId,
+        tenantId: input.tenantId,
+        routingConfigId: input.routingConfigId,
+        attributeKeyCount: attributeKeys.length,
+        attributeKeySample: attributeKeys.slice(0, 10),
+      },
+      'Voice orchestration step',
+    );
+
     const config = await this.routingRepo.getRoutingConfig(input.routingConfigId, input.tenantId);
     if (!config) {
       throw new NotFoundError('RoutingConfig', input.routingConfigId);
     }
 
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_4_ROUTING_CONFIG_LOADED',
+        traceId,
+        routingConfigId: config.id,
+        ruleCount: config.rules.length,
+      },
+      'Voice orchestration step',
+    );
+
     const sortedRules = [...config.rules].sort((a, b) => a.priority - b.priority);
-    
+
     // Prepare evaluation context: ensure attributes are prefixed with entity type for mixed-entity rules
     const evalContext = { ...input.attributes };
     if (input.entityType) {
@@ -35,49 +66,157 @@ export class VoiceRoutingService {
       });
     }
 
-    const matchedRule = sortedRules.find((rule) => ConditionEvaluator.evaluate(rule.conditions, evalContext));
+    let matchedRule = sortedRules.find((rule) => {
+      const matched = ConditionEvaluator.evaluate(rule.conditions, evalContext);
+      logger.info(
+        {
+          flow: 'voice_orchestration',
+          step: 'STEP_5_RULE_EVALUATED',
+          traceId,
+          ruleId: rule.id,
+          priority: rule.priority,
+          matched,
+        },
+        'Voice orchestration step',
+      );
+      return matched;
+    });
 
     if (!matchedRule) {
+      logger.info(
+        {
+          flow: 'voice_orchestration',
+          step: 'STEP_6_NO_RULE_MATCH',
+          traceId,
+        },
+        'Voice orchestration step',
+      );
+
       return {
         matchedRuleId: null,
         action: null,
       };
     }
 
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_6_RULE_MATCHED',
+        traceId,
+        matchedRuleId: matchedRule.id,
+        priority: matchedRule.priority,
+      },
+      'Voice orchestration step',
+    );
+
     if (!input.executeProvider) {
+      logger.info(
+        {
+          flow: 'voice_orchestration',
+          step: 'STEP_7_PROVIDER_EXECUTION_SKIPPED',
+          traceId,
+          matchedRuleId: matchedRule.id,
+        },
+        'Voice orchestration step',
+      );
+
       return {
         matchedRuleId: matchedRule.id,
         action: matchedRule.action,
       };
     }
 
-    const provider = this.voiceProvidersPlugin.get(matchedRule.action.provider);
     const request = this.buildExecutionRequest(input, matchedRule.action);
-    const providerResult = await provider.initiateCall({
-      provider: matchedRule.action.provider,
-      tenantId: input.tenantId,
-      userId: input.userId,
-      phone: input.phone,
-      attributes: input.attributes,
-      agentId: matchedRule.action.agentId,
-      providerConfig: matchedRule.action.config,
-      request,
-    });
+    const selectedVoiceProvider = this.getVoiceProviderName(matchedRule.action);
+    const selectedExecutionProvider = this.getExecutionProviderName(matchedRule.action, request.transport);
 
-    return {
-      matchedRuleId: matchedRule.id,
-      action: matchedRule.action,
-      providerResult,
-    };
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_7_ROUTING_REDIRECTION_DECIDED',
+        traceId,
+        matchedRuleId: matchedRule.id,
+        voiceProvider: selectedVoiceProvider,
+        executionProvider: selectedExecutionProvider,
+        transport: request.transport,
+        mode: request.mode,
+      },
+      'Voice orchestration step',
+    );
+
+    const provider = this.voiceProvidersPlugin.get(selectedExecutionProvider);
+    const providerConfig = await this.resolveProviderConfig(input.tenantId, matchedRule.action);
+
+    logger.info(
+      {
+        flow: 'voice_orchestration',
+        step: 'STEP_8_PROVIDER_INVOCATION_START',
+        traceId,
+        matchedRuleId: matchedRule.id,
+        provider: provider.name,
+      },
+      'Voice orchestration step',
+    );
+
+    try {
+      const providerResult = await provider.initiateCall({
+        provider: selectedExecutionProvider,
+        tenantId: input.tenantId,
+        traceId,
+        userId: input.userId,
+        phone: input.phone,
+        attributes: input.attributes,
+        entityType: input.entityType,
+        agentId: matchedRule.action.agentId,
+        providerConfig: {
+          ...providerConfig,
+          voiceProvider: selectedVoiceProvider,
+          telephonyProvider: matchedRule.action.telephonyProvider,
+        },
+        request,
+      });
+
+      logger.info(
+        {
+          flow: 'voice_orchestration',
+          step: 'STEP_9_PROVIDER_RESULT',
+          traceId,
+          matchedRuleId: matchedRule.id,
+          accepted: providerResult.accepted,
+          providerReference: providerResult.providerReference,
+          message: providerResult.message,
+        },
+        'Voice orchestration step',
+      );
+
+      return {
+        matchedRuleId: matchedRule.id,
+        action: matchedRule.action,
+        providerResult,
+      };
+    } catch (err) {
+      logger.error(
+        {
+          flow: 'voice_orchestration',
+          step: 'STEP_ERROR_PROVIDER_INVOCATION',
+          traceId,
+          matchedRuleId: matchedRule.id,
+          provider: provider.name,
+          err,
+        },
+        'Voice orchestration failed while invoking provider',
+      );
+      throw err;
+    }
   }
 
   private buildExecutionRequest(
     input: RoutingExecutionInput,
     action: RoutingAction,
   ): VoiceExecutionRequest {
-    const config = action.config;
+    const config = this.getProviderConfig(action);
     const mode = action.mode ?? (config?.['mode'] === 'batch' ? 'batch' : 'single');
-    const transport = action.transport ?? (config?.['transport'] === 'whatsapp' ? 'whatsapp' : 'telephony');
+    const transport = action.channel;
 
     if (mode === 'single') {
       return {
@@ -125,5 +264,64 @@ export class VoiceRoutingService {
           : undefined,
       },
     };
+  }
+
+  private getVoiceProviderName(action: RoutingAction): string {
+    return action.voiceProvider;
+  }
+
+  private getExecutionProviderName(action: RoutingAction, transport: VoiceExecutionRequest['transport']): string {
+    if (transport === 'telephony' && action.telephonyProvider) {
+      return action.telephonyProvider;
+    }
+    return this.getVoiceProviderName(action);
+  }
+
+  private getProviderConfig(action: RoutingAction): Record<string, unknown> {
+    return action.runtimeConfig ?? {};
+  }
+
+  private async resolveProviderConfig(orgId: string, action: RoutingAction): Promise<Record<string, unknown>> {
+    const baseConfig = this.getProviderConfig(action);
+    if (!this.credentialService) {
+      return baseConfig;
+    }
+
+    const mergedConfig: Record<string, unknown> = { ...baseConfig };
+
+    const expectedVoiceType = this.resolveVoiceCredentialType(action);
+    if (!expectedVoiceType) {
+      throw new ValidationError(`Unsupported voice provider: ${action.voiceProvider}`);
+    }
+    const voiceSecret = await this.credentialService.decryptSecret(orgId, action.voiceCredentialId, expectedVoiceType);
+    Object.assign(mergedConfig, voiceSecret);
+    mergedConfig['voiceCredentialId'] = action.voiceCredentialId;
+
+    const expectedTelephonyType = this.resolveTelephonyCredentialType(action);
+    if (!expectedTelephonyType) {
+      throw new ValidationError(`Unsupported telephony provider: ${action.telephonyProvider}`);
+    }
+    const telephonySecret = await this.credentialService.decryptSecret(orgId, action.telephonyCredentialId, expectedTelephonyType);
+    mergedConfig['telephonySecret'] = telephonySecret;
+    mergedConfig['telephonyCredentialId'] = action.telephonyCredentialId;
+
+    return mergedConfig;
+  }
+
+  private resolveVoiceCredentialType(action: RoutingAction): CredentialType | null {
+    const provider = action.voiceProvider.toLowerCase();
+    if (provider === 'elevenlabs') return 'ELEVENLABS';
+    if (provider === 'sarvam') return 'SARVAM';
+    if (provider === 'vapi') return 'VAPI';
+    return null;
+  }
+
+  private resolveTelephonyCredentialType(action: RoutingAction): CredentialType | null {
+    const provider = action.telephonyProvider?.toLowerCase();
+    if (provider === 'exotel') return 'EXOTEL';
+    if (provider === 'sarvam') return 'SARVAM';
+    if (provider === 'vapi') return 'VAPI';
+    if (provider === 'elevenlabs') return 'ELEVENLABS';
+    return null;
   }
 }

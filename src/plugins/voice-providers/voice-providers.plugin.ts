@@ -3,6 +3,7 @@ import type { ExecuteVoiceProviderInput, IVoiceProvidersPlugin, VoiceProviderAda
 import { ElevenLabsVoiceProviderAdapter } from './providers/elevenlabs/elevenlabs-voice.provider';
 import { SarvamVoiceProviderAdapter } from './providers/sarvam/sarvam-voice.provider';
 import { VapiVoiceProviderAdapter } from './providers/vapi/vapi-voice.provider';
+import { ExotelVoiceProviderAdapter } from './providers/exotel/exotel-voice.provider';
 import { logger } from '../../utils/logger';
 
 export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
@@ -13,6 +14,7 @@ export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
     this.register(new ElevenLabsVoiceProviderAdapter());
     this.register(new SarvamVoiceProviderAdapter());
     this.register(new VapiVoiceProviderAdapter());
+    this.register(new ExotelVoiceProviderAdapter());
     logger.info({ count: this.providers.size }, 'VoiceProvidersPlugin: providers ready');
   }
 
@@ -35,6 +37,8 @@ export class VoiceProvidersPlugin implements IVoiceProvidersPlugin {
         },
       };
     }
+
+    logger.info({ provider: providerName }, 'Voice provider resolved from registry');
 
     return provider;
   }

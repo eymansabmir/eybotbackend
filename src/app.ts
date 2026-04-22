@@ -22,6 +22,7 @@ import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
   CAMPAIGN_REPOSITORY,
+  CAMPAIGN_RECIPIENT_REPOSITORY,
   CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
   VOICE_ENTITY_REPOSITORY,
@@ -35,6 +36,7 @@ import { PrismaEntityRepository } from './features/voice-tech/data/entity.reposi
 import { PrismaVoiceRoutingRepository } from './features/voice-tech/data/routing.repository';
 import type { CredentialService } from './features/credentials';
 import type { ICredentialRepository } from './features/credentials/credentials.repository.interface';
+import type { ICampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 
 import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
@@ -65,6 +67,7 @@ import { HttpRequestController } from './features/integrations/http-request/http
 import { CredentialController } from './features/credentials';
 import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
+import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -85,6 +88,7 @@ import { createCredentialRouter } from './features/credentials';
 import { createWhatsAppIntegrationRouter } from './features/integrations/whatsapp/whatsapp-integration.route';
 import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
+import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -148,6 +152,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignRepo = registry.get<PrismaCampaignRepository>(CAMPAIGN_REPOSITORY);
   const voiceEntityRepo = registry.get<PrismaEntityRepository>(VOICE_ENTITY_REPOSITORY);
   const voiceRoutingRepo = registry.get<PrismaVoiceRoutingRepository>(VOICE_ROUTING_REPOSITORY);
+  const campaignRecipientRepo = registry.get<ICampaignRecipientRepository>(CAMPAIGN_RECIPIENT_REPOSITORY);
   const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
 
@@ -157,8 +162,8 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignService = new CampaignService(campaignRepo, workerPlugin);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
-  const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin);
-  const voiceCampaignService = new VoiceCampaignService(entityQueryService, voiceProvidersPlugin, voiceRoutingService);
+  const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
+  const voiceCampaignService = new VoiceCampaignService(entityQueryService, voiceRoutingService);
   const openAIService = new OpenAIIntegrationService(credentialService, openAIPlugin, storagePlugin);
   const elevenLabsService = new ElevenLabsIntegrationService(credentialService, elevenLabsPlugin, storagePlugin);
   const anthropicService = new AnthropicIntegrationService(credentialService, anthropicPlugin);
@@ -198,6 +203,7 @@ export function createApp(registry: IPluginRegistry): Application {
     voiceCampaignService,
     voiceRoutingRepo
   );
+  const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -217,6 +223,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
+  app.use('/api/voice-tech/providers/exotel', createExotelCallbackRouter(exotelCallbackController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
