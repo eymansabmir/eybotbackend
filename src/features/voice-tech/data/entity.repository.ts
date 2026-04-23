@@ -35,7 +35,7 @@ export interface IEntityRepository {
     entityTypeId: string;
     records: Record<string, unknown>[];
   }): Promise<void>;
-  listEntityTypes(tenantId: string): Promise<string[]>;
+  listEntityTypes(tenantId: string): Promise<{ id: string; name: string }[]>;
   listAttributes(tenantId: string, entityType: string): Promise<EntityAttributeView[]>;
   findEntityTypeId(tenantId: string, entityType: string): Promise<string | null>;
   invalidateEntityTypeCache(tenantId: string, entityType: string): Promise<void>;
@@ -172,13 +172,12 @@ export class PrismaEntityRepository implements IEntityRepository {
     return response;
   }
 
-  async listEntityTypes(tenantId: string): Promise<string[]> {
-    const types = await this.prisma.entityType.findMany({
+  async listEntityTypes(tenantId: string): Promise<{ id: string; name: string }[]> {
+    return this.prisma.entityType.findMany({
       where: { tenantId },
-      select: { name: true },
+      select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
-    return types.map((t) => t.name);
   }
 
   async findEntityTypeId(tenantId: string, entityType: string): Promise<string | null> {

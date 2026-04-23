@@ -25,24 +25,24 @@ model Flow {
 
   isConfigured Boolean @default(false)
 
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  campaigns     Campaign[]
-  translations  FlowTranslation[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  campaigns    Campaign[]
+  translations FlowTranslation[]
 
   @@index([orgId, status])
 }
 
 model FlowTranslation {
-  id             String   @id @default(uuid())
+  id             String @id @default(uuid())
   flowId         String
   language       String
   translatedData Json
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  flow           Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@unique([flowId, language], name: "flowId_language")
   @@index([flowId])
@@ -155,12 +155,12 @@ model CampaignRecipient {
   messageId         String?         @unique // Tracking the specific message sent by Meta
   variables         Json?
   status            RecipientStatus @default(pending)
-  
+
   // Lifecycle Timestamps
-  sentAt            DateTime?
-  deliveredAt       DateTime?
-  readAt            DateTime?       // Seen
-  repliedAt         DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime? // Seen
+  repliedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,90 +312,128 @@ model Credential {
 }
 
 model EntityType {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
+  id             String          @id @default(uuid())
+  tenantId       String
+  name           String
+  routingConfigs RoutingConfig[]
 
   @@unique([tenantId, name])
 }
 
 model Entity {
-  id            String   @id @default(uuid())
-  tenantId      String
-  entityTypeId  String
-  attributes    Json
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  tenantId     String
+  entityTypeId String
+  attributes   Json
+  createdAt    DateTime @default(now())
 
   @@index([tenantId, entityTypeId])
 }
 
 model EntityAttribute {
-  id            String   @id @default(uuid())
-  tenantId      String
-  entityTypeId  String
-  key           String
-  type          String
-  operators     Json
-  values        Json?
+  id           String @id @default(uuid())
+  tenantId     String
+  entityTypeId String
+  key          String
+  type         String
+  operators    Json
+  values       Json?
 
   @@unique([tenantId, entityTypeId, key])
 }
 
 model VoiceProvider {
-  id           String   @id @default(uuid())
+  id           String        @id @default(uuid())
   tenantId     String
   providerName String
   config       Json
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  routingRules RoutingRule[]
 
   @@index([tenantId])
   @@map("voice_providers")
 }
 
+enum RoutingType {
+  MANUAL
+  AUTOMATIC
+}
+
+enum ConfigStatus {
+  ACTIVE
+  DRAFT
+  PAUSED
+}
+
 model RoutingConfig {
-  id         String        @id @default(uuid())
-  tenantId   String
-  name       String
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  rules      RoutingRule[]
+  id           String        @id @default(uuid())
+  tenantId     String
+  entityTypeId String? // Link to dataset
+  name         String
+  description  String?
+  type         RoutingType   @default(AUTOMATIC)
+  status       ConfigStatus  @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  rules        RoutingRule[]
+
+  entityType EntityType? @relation(fields: [entityTypeId], references: [id])
 
   @@index([tenantId])
   @@map("routing_configs")
 }
 
 model RoutingRule {
-  id              String        @id @default(uuid())
+  id              String   @id @default(uuid())
   routingConfigId String
+  voiceProviderId String? // Explicit Vendor Link
   priority        Int
   conditions      Json
   action          Json
-  isActive        Boolean       @default(true)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  routingConfig   RoutingConfig @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  routingConfig RoutingConfig  @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
+  voiceProvider VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
 
   @@index([routingConfigId])
   @@map("routing_rules")
 }
 
 model VoiceOrchestrationEvent {
-  id              String   @id @default(uuid())
-  tenantId        String
-  traceId         String
-  flow            String   @default("voice_orchestration")
-  step            String
-  provider        String?
-  matchedRuleId   String?
-  status          Int?     // HTTP status or custom code
-  accepted        Boolean?
-  message         String?
-  durationMs      Int?
-  metadata        Json?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  tenantId      String
+  traceId       String
+  flow          String   @default("voice_orchestration")
+  step          String
+  provider      String?
+  matchedRuleId String?
+  status        Int? // HTTP status or custom code
+  accepted      Boolean?
+  message       String?
+  durationMs    Int?
+  metadata      Json?
+  createdAt     DateTime @default(now())
 
   @@index([tenantId, traceId])
   @@index([createdAt])
   @@map("voice_orchestration_events")
+}
+
+model OrchestrationLog {
+  id               String   @id @default(uuid())
+  tenantId         String
+  entityId         String?
+  routingRuleId    String?
+  voiceProviderId  String?
+  status           String // e.g., "SUCCESS", "FAILED"
+  providerResponse Json?
+  executionTime    Int? // in ms
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([routingRuleId])
+  @@map("orchestration_logs")
 }

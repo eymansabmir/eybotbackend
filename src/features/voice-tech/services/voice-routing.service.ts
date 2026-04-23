@@ -262,6 +262,16 @@ export class VoiceRoutingService {
         }
       });
 
+      await this.routingRepo.recordOrchestrationLog({
+        tenantId: input.tenantId,
+        entityId: input.entityId,
+        routingRuleId: matchedRule.id,
+        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
+        status: providerResult.accepted ? 'SUCCESS' : 'FAILED',
+        providerResponse: providerResult as any,
+        executionTime: durationMs,
+      });
+
       logger.info(
         {
           flow: 'voice_orchestration',
@@ -291,6 +301,16 @@ export class VoiceRoutingService {
         accepted: false,
         message: (err as Error).message,
         durationMs,
+      });
+
+      await this.routingRepo.recordOrchestrationLog({
+        tenantId: input.tenantId,
+        entityId: input.entityId,
+        routingRuleId: matchedRule.id,
+        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
+        status: 'ERROR',
+        providerResponse: { message: (err as Error).message },
+        executionTime: durationMs,
       });
 
       logger.error(

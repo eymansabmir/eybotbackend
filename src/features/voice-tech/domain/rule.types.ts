@@ -14,6 +14,7 @@ export interface Action {
 
 export interface Rule {
   ruleId: string;
+  voiceProviderId: string | null;
   priority: number;
   conditions: RoutingConditionNode;
   action: Action;
@@ -30,6 +31,7 @@ export interface RoutingExecutionInput {
   tenantId: string;
   routingConfigId: string;
   attributes: Record<string, unknown>;
+  entityId?: string;
   entityType?: string; // Optional: used to prefix attributes for mixed-entity rules
   userId?: string;
   phone?: string;

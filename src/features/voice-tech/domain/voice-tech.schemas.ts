@@ -87,6 +87,9 @@ export const DeleteRoutingRuleSchema = z.object({
 export const CreateRoutingConfigSchema = z.object({
   tenantId: z.string().min(1),
   name: z.string().min(1),
+  entityTypeId: z.string().min(1),
+  description: z.string().optional(),
+  type: z.enum(['MANUAL', 'AUTOMATIC']).optional(),
 });
 
 export const QueryByRuleSchema = z.object({

@@ -13,6 +13,7 @@ function routingConfigCacheKey(configId: string, tenantId: string): string {
 export interface RoutingRuleView {
   id: string;
   routingConfigId: string;
+  voiceProviderId: string | null;
   priority: number;
   conditions: RoutingConditionNode;
   action: RoutingAction;
@@ -31,6 +32,7 @@ export interface IVoiceRoutingRepository {
   upsertRule(data: {
     id?: string;
     routingConfigId: string;
+    voiceProviderId?: string | null;
     priority: number;
     conditions: RoutingConditionNode;
     action: RoutingAction;
@@ -40,7 +42,7 @@ export interface IVoiceRoutingRepository {
   deleteConfig(id: string, tenantId: string): Promise<void>;
   findConfigByName(name: string, tenantId: string): Promise<string | null>;
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
-  createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
+  createConfig(data: { tenantId: string; name: string; entityTypeId: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
   getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
   recordEvent(data: {
     tenantId: string;
@@ -53,6 +55,15 @@ export interface IVoiceRoutingRepository {
     message?: string;
     durationMs?: number;
     metadata?: any;
+  }): Promise<void>;
+  recordOrchestrationLog(data: {
+    tenantId: string;
+    entityId?: string;
+    routingRuleId?: string;
+    voiceProviderId?: string;
+    status: string;
+    providerResponse?: any;
+    executionTime?: number;
   }): Promise<void>;
 }
 
@@ -99,6 +110,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       rules: config.rules.map((rule) => ({
         id: rule.id,
         routingConfigId: rule.routingConfigId,
+        voiceProviderId: rule.voiceProviderId,
         priority: rule.priority,
         conditions: rule.conditions as unknown as RoutingConditionNode,
         action: rule.action as unknown as RoutingAction,
@@ -129,6 +141,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
   async upsertRule(data: {
     id?: string;
     routingConfigId: string;
+    voiceProviderId?: string | null;
     priority: number;
     conditions: RoutingConditionNode;
     action: RoutingAction;
@@ -138,6 +151,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       where: { id: data.id ?? 'new' },
       create: {
         routingConfigId: data.routingConfigId,
+        voiceProviderId: data.voiceProviderId,
         priority: data.priority,
         conditions: data.conditions as any,
         action: data.action as any,
@@ -145,6 +159,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       },
       update: {
         priority: data.priority,
+        voiceProviderId: data.voiceProviderId,
         conditions: data.conditions as any,
         action: data.action as any,
         isActive: data.isActive ?? true,
@@ -162,6 +177,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     return {
       id: rule.id,
       routingConfigId: rule.routingConfigId,
+      voiceProviderId: rule.voiceProviderId,
       priority: rule.priority,
       conditions: rule.conditions as any,
       action: rule.action as any,
@@ -209,11 +225,15 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     }
   }
 
-  async createConfig(data: { tenantId: string; name: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
+  async createConfig(data: { tenantId: string; name: string; entityTypeId: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
     const config = await this.prisma.routingConfig.create({
       data: {
         tenantId: data.tenantId,
         name: data.name,
+        entityTypeId: data.entityTypeId,
+        description: data.description,
+        type: (data.type as any) || 'AUTOMATIC',
+        status: (data.status as any) || 'ACTIVE',
       },
     });
     return {
@@ -233,6 +253,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     return {
       id: rule.id,
       routingConfigId: rule.routingConfigId,
+      voiceProviderId: rule.voiceProviderId,
       priority: rule.priority,
       conditions: rule.conditions as any,
       action: rule.action as any,
@@ -256,8 +277,25 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         },
       });
     } catch (err) {
-      // Don't fail the orchestration if logging fails
       logger.error({ err, traceId: data.traceId }, 'Failed to record orchestration event');
+    }
+  }
+
+  async recordOrchestrationLog(data: any): Promise<void> {
+    try {
+      await this.prisma.orchestrationLog.create({
+        data: {
+          tenantId: data.tenantId,
+          entityId: data.entityId,
+          routingRuleId: data.routingRuleId,
+          voiceProviderId: data.voiceProviderId,
+          status: data.status,
+          providerResponse: data.providerResponse,
+          executionTime: data.executionTime,
+        },
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to record orchestration log');
     }
   }
 }
