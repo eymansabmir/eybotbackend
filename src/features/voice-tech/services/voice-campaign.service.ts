@@ -24,12 +24,18 @@ export class VoiceCampaignService {
     logger.info({ tenantId, entityType, ruleId: rule.id }, 'VoiceCampaign: Executing for rule');
 
     // 1. Fetch matching entities
-    const entities = await this.entityQueryService.fetchEntitiesByRule({
+    const result = await this.entityQueryService.fetchEntitiesByRule({
       tenantId,
       entityType,
       conditions: rule.conditions as RoutingConditionNode,
       limit: 1000 // Limit to prevent runaway calls in first version
     });
+
+    if (typeof result === 'number') {
+      return { total: result, initiated: 0, failed: 0, details: [] };
+    }
+
+    const entities = result;
 
     logger.info({ count: entities.length }, 'VoiceCampaign: Found matching entities');
 
@@ -104,6 +110,12 @@ export class VoiceCampaignService {
   }> {
     logger.info({ tenantId, routingConfigId, entityTypes }, 'VoiceCampaign: Executing for config');
 
+    const config = await this.voiceRoutingService['routingRepo'].getRoutingConfig(routingConfigId, tenantId);
+    if (!config) throw new Error('Routing configuration not found');
+
+    const sortedRules = [...config.rules].sort((a, b) => a.priority - b.priority);
+    const processedEntityIds = new Set<string>();
+
     let totalProcessed = 0;
     let initiated = 0;
     let failed = 0;
@@ -112,57 +124,62 @@ export class VoiceCampaignService {
     const details: any[] = [];
 
     for (const type of entityTypes) {
-      // Fetch all entities for this type (with a reasonable limit for now)
-      const entities = await this.entityQueryService.queryRaw<{ id: string; attributes: Record<string, unknown> }>(
-        `SELECT id, attributes FROM "Entity" WHERE "tenantId" = $1 AND "entityTypeId" = (SELECT id FROM "EntityType" WHERE "tenantId" = $1 AND "name" = $2) LIMIT 1000`,
-        tenantId,
-        type
-      );
+      for (const rule of sortedRules) {
+        // Fetch matching entities for THIS rule
+        const result = await this.entityQueryService.fetchEntitiesByRule({
+          tenantId,
+          entityType: type,
+          conditions: rule.conditions as any,
+          limit: 2000 // Higher limit for bulk
+        });
 
-      for (const entity of entities) {
-        totalProcessed++;
-        const phone = PhoneDiscoveryService.getE164Phone(entity.attributes);
+        if (typeof result === 'number' || !Array.isArray(result)) continue;
 
-        if (!phone) {
-          skipped++;
-          continue;
-        }
+        for (const entity of result) {
+          const entityId = entity.id || `temp-id-${Math.random()}`;
+          if (processedEntityIds.has(entityId)) continue;
+          processedEntityIds.add(entityId);
+          
+          totalProcessed++;
+          const phone = PhoneDiscoveryService.getE164Phone(entity.attributes);
 
-        try {
-          // Use routing service to find match
-          const routeResult = await this.voiceRoutingService.route({
-            tenantId,
-            routingConfigId,
-            attributes: entity.attributes,
-            entityType: type, // Pass context for multi-entity rules
-            phone,
-            executeProvider: true,
-            userId: entity.id
-          });
-
-          if (routeResult.matchedRuleId) {
-            if (routeResult.providerResult?.accepted) {
-              initiated++;
-            } else {
-              // Rule matched but provider rejected (technical failure)
-              failed++;
-            }
-          } else {
-            // No rule matched this specific entity (excluded by logic)
-            excluded++;
+          if (!phone) {
+            skipped++;
+            details.push({ entityId: entity.id, success: false, error: 'No phone number discovered' });
+            continue;
           }
 
-          details.push({
-            entityId: entity.id,
-            entityType: type,
-            phone,
-            matchedRuleId: routeResult.matchedRuleId,
-            success: routeResult.providerResult?.accepted ?? false,
-            excluded: !routeResult.matchedRuleId
-          });
-        } catch (err) {
-          failed++;
-          logger.error({ entityId: entity.id, err }, 'VoiceCampaign: Bulk execution failed for entity');
+          try {
+            const routeResult = await this.voiceRoutingService.route({
+              tenantId,
+              routingConfigId,
+              attributes: entity.attributes,
+              entityType: type,
+              phone,
+              executeProvider: true,
+              userId: entity.id
+            });
+
+            if (routeResult.matchedRuleId) {
+              if (routeResult.providerResult?.accepted) {
+                initiated++;
+              } else {
+                failed++;
+              }
+            } else {
+              excluded++;
+            }
+
+            details.push({
+              entityId: entity.id,
+              phone,
+              success: routeResult.providerResult?.accepted ?? false,
+              ref: routeResult.providerResult?.providerReference,
+            });
+          } catch (err) {
+            failed++;
+            logger.error({ entityId: entity.id, err }, 'VoiceCampaign: Bulk execution failed for entity');
+          }
         }
       }
     }

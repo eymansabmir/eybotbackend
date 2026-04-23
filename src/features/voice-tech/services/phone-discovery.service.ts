@@ -5,7 +5,8 @@
 export class PhoneDiscoveryService {
   private static readonly PHONE_KEYWORDS = [
     'waid', 'phonenumber', 'phone', 'phoneno', 'contact', 'mobile',
-    'telephone', 'mobileno', 'phonenumbertextformat', 'phonecolumn'
+    'telephone', 'mobileno', 'phonenumbertextformat', 'phonecolumn',
+    'destination', 'recipient', 'callto', 'receiver'
   ];
 
   /**
@@ -17,7 +18,7 @@ export class PhoneDiscoveryService {
     
     const phoneKey = keys.find(k => {
       const normalized = k.toLowerCase().trim().replace(/[\s_-]/g, '');
-      return this.PHONE_KEYWORDS.includes(normalized);
+      return this.PHONE_KEYWORDS.some(kw => normalized.includes(kw));
     });
 
     if (!phoneKey) {

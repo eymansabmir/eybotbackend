@@ -22,6 +22,7 @@ export interface RoutingRuleView {
 export interface RoutingConfigView {
   id: string;
   tenantId: string;
+  entityTypeId: string | null;
   name: string;
   rules: RoutingRuleView[];
 }
@@ -42,28 +43,22 @@ export interface IVoiceRoutingRepository {
   deleteConfig(id: string, tenantId: string): Promise<void>;
   findConfigByName(name: string, tenantId: string): Promise<string | null>;
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
-  createConfig(data: { tenantId: string; name: string; entityTypeId: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
+  createConfig(data: { tenantId: string; name: string; entityTypeId?: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
   getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
   recordEvent(data: {
     tenantId: string;
     traceId: string;
     step: string;
-    provider?: string;
-    matchedRuleId?: string;
+    entityId?: string | null;
+    entityTypeId?: string | null;
+    routingConfigId?: string | null;
+    voiceProviderId?: string | null;
+    matchedRuleId?: string | null;
     status?: number;
     accepted?: boolean;
     message?: string;
     durationMs?: number;
     metadata?: any;
-  }): Promise<void>;
-  recordOrchestrationLog(data: {
-    tenantId: string;
-    entityId?: string;
-    routingRuleId?: string;
-    voiceProviderId?: string;
-    status: string;
-    providerResponse?: any;
-    executionTime?: number;
   }): Promise<void>;
 }
 
@@ -90,6 +85,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         tenantId,
       },
       include: {
+        entityType: true,
         rules: {
           orderBy: { priority: 'asc' },
         },
@@ -106,6 +102,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     const response = {
       id: config.id,
       tenantId: config.tenantId,
+      entityTypeId: config.entityTypeId,
       name: config.name,
       rules: config.rules.map((rule) => ({
         id: rule.id,
@@ -132,10 +129,11 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         id: true,
         tenantId: true,
         name: true,
+        entityTypeId: true,
       },
     });
 
-    return configs;
+    return configs as any;
   }
 
   async upsertRule(data: {
@@ -148,7 +146,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     isActive?: boolean;
   }): Promise<RoutingRuleView> {
     const rule = await this.prisma.routingRule.upsert({
-      where: { id: data.id ?? 'new' },
+      where: { id: data.id || '00000000-0000-0000-0000-000000000000' },
       create: {
         routingConfigId: data.routingConfigId,
         voiceProviderId: data.voiceProviderId,
@@ -225,20 +223,21 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     }
   }
 
-  async createConfig(data: { tenantId: string; name: string; entityTypeId: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
+  async createConfig(data: { tenantId: string; name: string; entityTypeId?: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
     const config = await this.prisma.routingConfig.create({
       data: {
         tenantId: data.tenantId,
         name: data.name,
-        entityTypeId: data.entityTypeId,
         description: data.description,
         type: (data.type as any) || 'AUTOMATIC',
         status: (data.status as any) || 'ACTIVE',
+        entityTypeId: data.entityTypeId,
       },
     });
     return {
       id: config.id,
       tenantId: config.tenantId,
+      entityTypeId: config.entityTypeId,
       name: config.name,
     };
   }
@@ -260,14 +259,17 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     };
   }
 
-  async recordEvent(data: any): Promise<void> {
+  async recordEvent(data: Parameters<IVoiceRoutingRepository['recordEvent']>[0]): Promise<void> {
     try {
       await this.prisma.voiceOrchestrationEvent.create({
         data: {
           tenantId: data.tenantId,
           traceId: data.traceId,
           step: data.step,
-          provider: data.provider,
+          entityId: data.entityId,
+          entityTypeId: data.entityTypeId,
+          routingConfigId: data.routingConfigId,
+          voiceProviderId: data.voiceProviderId,
           matchedRuleId: data.matchedRuleId,
           status: data.status,
           accepted: data.accepted,
@@ -281,21 +283,4 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     }
   }
 
-  async recordOrchestrationLog(data: any): Promise<void> {
-    try {
-      await this.prisma.orchestrationLog.create({
-        data: {
-          tenantId: data.tenantId,
-          entityId: data.entityId,
-          routingRuleId: data.routingRuleId,
-          voiceProviderId: data.voiceProviderId,
-          status: data.status,
-          providerResponse: data.providerResponse,
-          executionTime: data.executionTime,
-        },
-      });
-    } catch (err) {
-      logger.error({ err }, 'Failed to record orchestration log');
-    }
-  }
 }

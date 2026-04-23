@@ -225,26 +225,35 @@ export class VoiceRoutingController {
     const traceId = this.resolveTraceId(req);
     try {
       const payload = QueryByRuleSchema.parse(req.body);
+      const { tenantId, entityType, conditions, limit, countOnly } = payload;
 
       logger.info(
         {
           flow: 'voice_orchestration',
           step: 'STEP_3_ENTITY_QUERY_REQUESTED',
           traceId,
-          tenantId: payload.tenantId,
-          entityType: payload.entityType,
-          limit: payload.limit ?? 1000,
+          tenantId,
+          entityType,
+          limit: limit ?? 1000,
         },
         'Voice orchestration step',
       );
 
-      const entities = await this.entityQueryService.fetchEntitiesByRule({
-        tenantId: payload.tenantId,
-        entityType: payload.entityType,
-        conditions: payload.conditions as RoutingConditionNode,
-        limit: payload.limit,
+      const result = await this.entityQueryService.fetchEntitiesByRule({
+        tenantId,
+        entityType,
+        conditions: conditions as RoutingConditionNode,
+        limit,
         traceId,
+        countOnly
       });
+
+      if (typeof result === 'number') {
+        res.json({ success: true, count: result });
+        return;
+      }
+
+      const entities = result;
 
       logger.info(
         {
@@ -266,6 +275,7 @@ export class VoiceRoutingController {
           tenantId: payload.tenantId
         }
       });
+      return;
     } catch (err) {
       logger.error(
         {
@@ -284,7 +294,7 @@ export class VoiceRoutingController {
     const traceId = this.resolveTraceId(req);
     try {
       const { tenantId, phone, attributes, routingConfigId, entityType } = req.body;
-      
+
       // Record initial event
       await this.routingRepo.recordEvent({
         tenantId,
@@ -370,12 +380,12 @@ export class VoiceRoutingController {
   getOrchestrationStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { tenantId, configId } = req.query;
-      
+
       if (!tenantId || typeof tenantId !== 'string') {
         res.status(400).json({ success: false, message: 'Missing tenantId' });
         return;
       }
-      
+
       if (!configId || typeof configId !== 'string') {
         res.status(400).json({ success: false, message: 'Missing configId' });
         return;
@@ -394,24 +404,24 @@ export class VoiceRoutingController {
 
       const ruleIds = config.rules.map((r: any) => r.id);
 
-      // 2. Fetch Orchestration Logs for these rules
-      const logs = await (this.routingRepo as any).prisma.orchestrationLog.findMany({
+      // 2. Fetch Orchestration Events for these rules
+      const events = await (this.routingRepo as any).prisma.voiceOrchestrationEvent.findMany({
         where: {
           tenantId,
-          routingRuleId: { in: ruleIds }
+          matchedRuleId: { in: ruleIds }
         }
       });
-      
+
       // Also fetch providers to map names
       const providers = await (this.routingRepo as any).prisma.voiceProvider.findMany({
         where: { tenantId }
       });
-      
+
       const providerMap = new Map(providers.map((p: any) => [p.id, p.providerName]));
 
       // 3. Aggregate Rule Stats
       const ruleStatsMap = new Map();
-      
+
       for (const rule of config.rules) {
         // Build condition summary (e.g. "brand = Asus")
         let conditionsSummary = 'All';
@@ -422,25 +432,25 @@ export class VoiceRoutingController {
           } else if (c?.operator === 'AND' && c?.children?.length > 0) {
             conditionsSummary = `${c.children[0].field} ${c.children[0].operator} ${c.children[0].value} ...`;
           }
-        } catch(e) {}
-        
+        } catch (e) { }
+
         ruleStatsMap.set(rule.id, {
           ruleId: rule.id,
           conditionsSummary,
-          provider: providerMap.get(rule.voiceProviderId) || rule.voiceProviderId || 'Unknown Provider',
+          provider: providerMap.get(rule.voiceProviderId) || 'ElevenLabs',
           count: 0
         });
       }
-      
-      for (const log of logs) {
-        if (log.routingRuleId && ruleStatsMap.has(log.routingRuleId)) {
-          ruleStatsMap.get(log.routingRuleId).count += 1;
+
+      for (const event of events) {
+        if (event.matchedRuleId && ruleStatsMap.has(event.matchedRuleId)) {
+          ruleStatsMap.get(event.matchedRuleId).count += 1;
         }
       }
-      
+
       // Calculate Total Records (All invocations on this config's rules)
-      const totalRecords = logs.length;
-      
+      const totalRecords = events.length;
+
       const responseStats = {
         routingName: config.name,
         totalRecords,
@@ -457,4 +467,10 @@ export class VoiceRoutingController {
       next(err);
     }
   };
+
+  private maskPhone(phone: string): string {
+    if (!phone) return '';
+    if (phone.length <= 4) return '****';
+    return phone.slice(0, 3) + '****' + phone.slice(-4);
+  }
 }

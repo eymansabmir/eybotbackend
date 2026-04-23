@@ -8,15 +8,17 @@ export class QueryBuilder {
       throw new Error(`Unsupported field '${field}' in query condition`);
     }
 
-    const normalizedField = field.toLowerCase();
+    const normalizedField = field;
     
     // If we have an active entity type, check if this field belongs to it
     if (activeEntityType) {
-      const prefix = `${activeEntityType.toLowerCase()}.`;
-      if (normalizedField.startsWith(prefix)) {
-        // Strip prefix (e.g. "user.age" -> "age")
-        const stripped = normalizedField.slice(prefix.length);
-        return `attributes->>'${stripped}'`;
+      const lowerField = normalizedField.toLowerCase();
+      const lowerPrefix = `${activeEntityType.toLowerCase()}.`;
+      
+      if (lowerField.startsWith(lowerPrefix)) {
+        // Strip prefix (e.g. "Users.age" -> "age")
+        const stripped = normalizedField.slice(lowerPrefix.length);
+        return `val->>'${stripped}'`;
       }
       
       // If it has a dot but doesn't match our active entity, it's for another entity
@@ -26,7 +28,7 @@ export class QueryBuilder {
     }
 
     // Default behavior for flat keys or no active entity context
-    return `attributes->>'${normalizedField}'`;
+    return `val->>'${normalizedField}'`;
   }
 
   static build(node: RoutingConditionNode, params: unknown[] = [], index = { i: 3 }, activeEntityType?: string): string {
@@ -37,9 +39,9 @@ export class QueryBuilder {
 
     const fieldAccess = this.formatField(node.field, activeEntityType);
     
-    // If field doesn't belong to this entity, return a truthy condition to avoid filtering out records
+    // If field doesn't belong to this entity, return a falsy condition to avoid matching records from other datasets
     if (fieldAccess === null) {
-      return "(1=1)";
+      return "(1=0)";
     }
 
     const fieldExpression = `LOWER(TRIM(${fieldAccess}))`;
@@ -52,27 +54,40 @@ export class QueryBuilder {
       params.push(String(node.value).toLowerCase().trim());
     }
 
+    let result: string;
     switch (node.operator) {
       case 'equals':
-        return `${fieldExpression} = ${paramKey}`;
+        result = `${fieldExpression} = ${paramKey}`;
+        break;
       case 'not_equals':
-        return `${fieldExpression} <> ${paramKey}`;
+        result = `${fieldExpression} <> ${paramKey}`;
+        break;
       case '<':
-        return `(${fieldExpression})::numeric < ${paramKey}::numeric`;
+        result = `(${fieldExpression})::numeric < ${paramKey}::numeric`;
+        break;
       case '>':
-        return `(${fieldExpression})::numeric > ${paramKey}::numeric`;
+        result = `(${fieldExpression})::numeric > ${paramKey}::numeric`;
+        break;
       case '<=':
-        return `(${fieldExpression})::numeric <= ${paramKey}::numeric`;
+        result = `(${fieldExpression})::numeric <= ${paramKey}::numeric`;
+        break;
       case '>=':
-        return `(${fieldExpression})::numeric >= ${paramKey}::numeric`;
+        result = `(${fieldExpression})::numeric >= ${paramKey}::numeric`;
+        break;
       case 'in':
-        return `${fieldExpression} = ANY(${paramKey}::text[])`;
+        result = `${fieldExpression} = ANY(${paramKey}::text[])`;
+        break;
       case 'not_in':
-        return `NOT (${fieldExpression} = ANY(${paramKey}::text[]))`;
+        result = `NOT (${fieldExpression} = ANY(${paramKey}::text[]))`;
+        break;
       case 'contains':
-        return `${fieldExpression} ILIKE '%' || ${paramKey} || '%'`;
+        result = `${fieldExpression} ILIKE '%' || ${paramKey} || '%'`;
+        break;
       default:
         throw new Error('Unsupported operator in query builder');
     }
+    
+    console.log(`QueryBuilder Build: ${node.field} ${node.operator} ${node.value} (Entity: ${activeEntityType}) => ${result}`);
+    return result;
   }
 }

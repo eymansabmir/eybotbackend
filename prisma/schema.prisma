@@ -315,19 +315,18 @@ model EntityType {
   id             String          @id @default(uuid())
   tenantId       String
   name           String
+  fileId         String?         // From diagram: File ID / URI
+  type           String          @default("AUTOMATIC") // From diagram: Manual / Automatic
+  data           Json?           // From diagram: Data (JSON)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
   routingConfigs RoutingConfig[]
+  attributes     EntityAttribute[]
+  events         VoiceOrchestrationEvent[]
 
   @@unique([tenantId, name])
-}
-
-model Entity {
-  id           String   @id @default(uuid())
-  tenantId     String
-  entityTypeId String
-  attributes   Json
-  createdAt    DateTime @default(now())
-
-  @@index([tenantId, entityTypeId])
+  @@map("datasets")
 }
 
 model EntityAttribute {
@@ -339,7 +338,10 @@ model EntityAttribute {
   operators    Json
   values       Json?
 
+  entityType   EntityType @relation(fields: [entityTypeId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, entityTypeId, key])
+  @@map("dataset_attributes")
 }
 
 model VoiceProvider {
@@ -349,7 +351,10 @@ model VoiceProvider {
   config       Json
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
   routingRules RoutingRule[]
+  events       VoiceOrchestrationEvent[]
 
   @@index([tenantId])
   @@map("voice_providers")
@@ -376,9 +381,10 @@ model RoutingConfig {
   status       ConfigStatus  @default(ACTIVE)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  
   rules        RoutingRule[]
-
-  entityType EntityType? @relation(fields: [entityTypeId], references: [id])
+  entityType   EntityType? @relation(fields: [entityTypeId], references: [id])
+  events       VoiceOrchestrationEvent[]
 
   @@index([tenantId])
   @@map("routing_configs")
@@ -397,6 +403,7 @@ model RoutingRule {
 
   routingConfig RoutingConfig  @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
   voiceProvider VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
+  events        VoiceOrchestrationEvent[]
 
   @@index([routingConfigId])
   @@map("routing_rules")
@@ -406,10 +413,13 @@ model VoiceOrchestrationEvent {
   id            String   @id @default(uuid())
   tenantId      String
   traceId       String
+  entityId      String?
+  entityTypeId  String?
+  routingConfigId String?
+  voiceProviderId String?
+  matchedRuleId String?
   flow          String   @default("voice_orchestration")
   step          String
-  provider      String?
-  matchedRuleId String?
   status        Int? // HTTP status or custom code
   accepted      Boolean?
   message       String?
@@ -417,23 +427,14 @@ model VoiceOrchestrationEvent {
   metadata      Json?
   createdAt     DateTime @default(now())
 
+  entityType    EntityType?    @relation(fields: [entityTypeId], references: [id])
+  routingConfig RoutingConfig? @relation(fields: [routingConfigId], references: [id])
+  voiceProvider VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
+  matchedRule   RoutingRule?   @relation(fields: [matchedRuleId], references: [id])
+
   @@index([tenantId, traceId])
   @@index([createdAt])
   @@map("voice_orchestration_events")
 }
 
-model OrchestrationLog {
-  id               String   @id @default(uuid())
-  tenantId         String
-  entityId         String?
-  routingRuleId    String?
-  voiceProviderId  String?
-  status           String // e.g., "SUCCESS", "FAILED"
-  providerResponse Json?
-  executionTime    Int? // in ms
-  createdAt        DateTime @default(now())
 
-  @@index([tenantId])
-  @@index([routingRuleId])
-  @@map("orchestration_logs")
-}

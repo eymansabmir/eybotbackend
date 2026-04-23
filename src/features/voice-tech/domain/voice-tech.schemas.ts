@@ -74,6 +74,7 @@ export const ExecuteRoutingSchema = z.object({
 export const UpsertRoutingRuleSchema = z.object({
   id: z.string().uuid().optional(),
   routingConfigId: z.string().uuid(),
+  voiceProviderId: z.string().uuid().optional().nullable(),
   priority: z.number().int().min(1),
   conditions: ConditionNodeSchema,
   action: ProviderActionSchema,
@@ -87,7 +88,7 @@ export const DeleteRoutingRuleSchema = z.object({
 export const CreateRoutingConfigSchema = z.object({
   tenantId: z.string().min(1),
   name: z.string().min(1),
-  entityTypeId: z.string().min(1),
+  entityTypeId: z.string().optional(),
   description: z.string().optional(),
   type: z.enum(['MANUAL', 'AUTOMATIC']).optional(),
 });
@@ -97,6 +98,7 @@ export const QueryByRuleSchema = z.object({
   entityType: z.string().min(1),
   conditions: ConditionNodeSchema,
   limit: z.number().int().positive().max(5000).optional(),
+  countOnly: z.boolean().optional(),
 });
 
 export const ListRoutingConfigsSchema = z.object({

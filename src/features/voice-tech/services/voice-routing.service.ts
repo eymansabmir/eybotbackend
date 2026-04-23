@@ -57,11 +57,17 @@ export class VoiceRoutingService {
       throw new NotFoundError('RoutingConfig', input.routingConfigId);
     }
 
-    await this.routingRepo.recordEvent({
+    const orchestrationContext = {
       ...baseEvent,
+      entityId: input.entityId,
+      routingConfigId: config.id,
+      entityTypeId: config.entityTypeId,
+    };
+
+    await this.routingRepo.recordEvent({
+      ...orchestrationContext,
       step: 'STEP_4_ROUTING_CONFIG_LOADED',
       metadata: {
-        routingConfigId: config.id,
         ruleCount: config.rules.length,
       }
     });
@@ -94,9 +100,10 @@ export class VoiceRoutingService {
       const matched = ConditionEvaluator.evaluate(rule.conditions, evalContext);
       
       this.routingRepo.recordEvent({
-        ...baseEvent,
+        ...orchestrationContext,
         step: 'STEP_5_RULE_EVALUATED',
         matchedRuleId: rule.id,
+        voiceProviderId: rule.voiceProviderId ?? undefined,
         metadata: {
           matched,
           priority: rule.priority,
@@ -119,7 +126,7 @@ export class VoiceRoutingService {
 
     if (!matchedRule) {
       await this.routingRepo.recordEvent({
-        ...baseEvent,
+        ...orchestrationContext,
         step: 'STEP_6_NO_RULE_MATCH',
       });
 
@@ -139,9 +146,10 @@ export class VoiceRoutingService {
     }
 
     await this.routingRepo.recordEvent({
-      ...baseEvent,
+      ...orchestrationContext,
       step: 'STEP_6_RULE_MATCHED',
       matchedRuleId: matchedRule.id,
+      voiceProviderId: matchedRule.voiceProviderId ?? undefined,
     });
 
     logger.info(
@@ -157,9 +165,10 @@ export class VoiceRoutingService {
 
     if (!input.executeProvider) {
       await this.routingRepo.recordEvent({
-        ...baseEvent,
+        ...orchestrationContext,
         step: 'STEP_7_PROVIDER_EXECUTION_SKIPPED',
         matchedRuleId: matchedRule.id,
+        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
       });
 
       logger.info(
@@ -183,12 +192,13 @@ export class VoiceRoutingService {
     const selectedExecutionProvider = this.getExecutionProviderName(matchedRule.action, request.transport);
 
     await this.routingRepo.recordEvent({
-      ...baseEvent,
+      ...orchestrationContext,
       step: 'STEP_7_ROUTING_REDIRECTION_DECIDED',
       matchedRuleId: matchedRule.id,
-      provider: selectedExecutionProvider,
+      voiceProviderId: matchedRule.voiceProviderId ?? undefined,
       metadata: {
         voiceProvider: selectedVoiceProvider,
+        executionProvider: selectedExecutionProvider,
         transport: request.transport,
         mode: request.mode,
       }
@@ -212,10 +222,13 @@ export class VoiceRoutingService {
     const providerConfig = await this.resolveProviderConfig(input.tenantId, matchedRule.action);
 
     await this.routingRepo.recordEvent({
-      ...baseEvent,
+      ...orchestrationContext,
       step: 'STEP_8_PROVIDER_INVOCATION_START',
       matchedRuleId: matchedRule.id,
-      provider: provider.name,
+      voiceProviderId: matchedRule.voiceProviderId ?? undefined,
+      metadata: {
+        provider: provider.name,
+      }
     });
 
     logger.info(
@@ -250,26 +263,18 @@ export class VoiceRoutingService {
       const durationMs = Date.now() - startTime;
 
       await this.routingRepo.recordEvent({
-        ...baseEvent,
+        ...orchestrationContext,
         step: 'STEP_9_PROVIDER_RESULT',
         matchedRuleId: matchedRule.id,
-        provider: provider.name,
+        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
         accepted: providerResult.accepted,
         message: providerResult.message,
         durationMs,
         metadata: {
+          provider: provider.name,
           providerReference: providerResult.providerReference,
+          providerResponse: providerResult,
         }
-      });
-
-      await this.routingRepo.recordOrchestrationLog({
-        tenantId: input.tenantId,
-        entityId: input.entityId,
-        routingRuleId: matchedRule.id,
-        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
-        status: providerResult.accepted ? 'SUCCESS' : 'FAILED',
-        providerResponse: providerResult as any,
-        executionTime: durationMs,
       });
 
       logger.info(
@@ -294,23 +299,17 @@ export class VoiceRoutingService {
       const durationMs = Date.now() - startTime;
 
       await this.routingRepo.recordEvent({
-        ...baseEvent,
+        ...orchestrationContext,
         step: 'STEP_ERROR_PROVIDER_INVOCATION',
         matchedRuleId: matchedRule.id,
-        provider: provider.name,
+        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
         accepted: false,
         message: (err as Error).message,
         durationMs,
-      });
-
-      await this.routingRepo.recordOrchestrationLog({
-        tenantId: input.tenantId,
-        entityId: input.entityId,
-        routingRuleId: matchedRule.id,
-        voiceProviderId: matchedRule.voiceProviderId ?? undefined,
-        status: 'ERROR',
-        providerResponse: { message: (err as Error).message },
-        executionTime: durationMs,
+        metadata: {
+          provider: provider.name,
+          error: (err as Error).message,
+        }
       });
 
       logger.error(

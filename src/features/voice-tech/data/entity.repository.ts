@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type Redis from 'ioredis';
+import crypto from 'crypto';
 import { logger } from '../../../utils/logger';
 
 const ATTRIBUTE_CACHE_TTL_SECONDS = 60;
@@ -68,6 +69,7 @@ export class PrismaEntityRepository implements IEntityRepository {
       data: {
         tenantId,
         name: entityType,
+        data: [] as any,
       },
     });
 
@@ -115,12 +117,24 @@ export class PrismaEntityRepository implements IEntityRepository {
       return;
     }
 
-    await this.prisma.entity.createMany({
-      data: args.records.map((record) => ({
-        tenantId: args.tenantId,
-        entityTypeId: args.entityTypeId,
-        attributes: record as any,
-      })),
+    // Since we store all entities in a single JSON array, we need to append them.
+    const dataset = await this.prisma.entityType.findUnique({
+      where: { id: args.entityTypeId },
+      select: { data: true },
+    });
+
+    const existingData = Array.isArray(dataset?.data) ? (dataset.data as any[]) : [];
+    const recordsWithIds = args.records.map(r => ({
+      id: r.id || crypto.randomUUID(),
+      ...r
+    }));
+    const newData = [...existingData, ...recordsWithIds];
+
+    await this.prisma.entityType.update({
+      where: { id: args.entityTypeId },
+      data: {
+        data: newData as any,
+      },
     });
   }
 
@@ -241,15 +255,7 @@ export class PrismaEntityRepository implements IEntityRepository {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // 1. Delete Entities
-      await tx.entity.deleteMany({
-        where: {
-          tenantId,
-          entityTypeId: entityTypeRecord.id,
-        },
-      });
-
-      // 2. Delete Attributes
+      // 1. Delete Attributes
       await tx.entityAttribute.deleteMany({
         where: {
           tenantId,
@@ -257,7 +263,7 @@ export class PrismaEntityRepository implements IEntityRepository {
         },
       });
 
-      // 3. Delete EntityType itself
+      // 2. Delete EntityType itself
       await tx.entityType.delete({
         where: {
           id: entityTypeRecord.id,
