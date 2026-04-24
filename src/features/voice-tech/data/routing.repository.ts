@@ -25,6 +25,8 @@ export interface RoutingConfigView {
   entityTypeId: string | null;
   name: string;
   rules: RoutingRuleView[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IVoiceRoutingRepository {
@@ -74,7 +76,10 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       const cached = await this.redis.get(cacheKey);
       if (cached) {
         logger.debug({ configId, tenantId }, 'Voice routing config cache hit');
-        return JSON.parse(cached) as RoutingConfigView;
+        const parsed = JSON.parse(cached);
+        parsed.createdAt = new Date(parsed.createdAt);
+        parsed.updatedAt = new Date(parsed.updatedAt);
+        return parsed as RoutingConfigView;
       }
     }
 
@@ -104,6 +109,8 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       tenantId: config.tenantId,
       entityTypeId: config.entityTypeId,
       name: config.name,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
       rules: config.rules.map((rule) => ({
         id: rule.id,
         routingConfigId: rule.routingConfigId,
@@ -130,6 +137,8 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         tenantId: true,
         name: true,
         entityTypeId: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -239,6 +248,8 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       tenantId: config.tenantId,
       entityTypeId: config.entityTypeId,
       name: config.name,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
     };
   }
   
@@ -282,5 +293,4 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       logger.error({ err, traceId: data.traceId }, 'Failed to record orchestration event');
     }
   }
-
 }

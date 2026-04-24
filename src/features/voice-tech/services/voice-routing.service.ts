@@ -28,13 +28,13 @@ export class VoiceRoutingService {
     const baseEvent = {
       tenantId: input.tenantId,
       traceId,
+      routingConfigId: input.routingConfigId,
     };
 
     await this.routingRepo.recordEvent({
       ...baseEvent,
       step: 'STEP_3_SERVICE_PROCESSING',
       metadata: {
-        routingConfigId: input.routingConfigId,
         attributeKeyCount: attributeKeys.length,
       }
     });
@@ -60,7 +60,6 @@ export class VoiceRoutingService {
     const orchestrationContext = {
       ...baseEvent,
       entityId: input.entityId,
-      routingConfigId: config.id,
       entityTypeId: config.entityTypeId,
     };
 

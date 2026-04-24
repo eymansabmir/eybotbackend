@@ -391,10 +391,15 @@ export class VoiceRoutingController {
         return;
       }
 
-      // 1. Fetch Routing Config & Rules
-      const config = await (this.routingRepo as any).prisma.routingConfig.findUnique({
+      const prisma = (this.routingRepo as any).prisma;
+
+      // 1. Fetch Routing Config with Rules & EntityType
+      const config = await prisma.routingConfig.findUnique({
         where: { id: configId, tenantId },
-        include: { rules: { orderBy: { priority: 'asc' } }, entityType: true }
+        include: {
+          rules: { orderBy: { priority: 'asc' } },
+          entityType: true,
+        },
       });
 
       if (!config) {
@@ -402,67 +407,139 @@ export class VoiceRoutingController {
         return;
       }
 
-      const ruleIds = config.rules.map((r: any) => r.id);
-
-      // 2. Fetch Orchestration Events for these rules
-      const events = await (this.routingRepo as any).prisma.voiceOrchestrationEvent.findMany({
-        where: {
-          tenantId,
-          matchedRuleId: { in: ruleIds }
-        }
+      // 2. Fetch ALL events for this config (not just STEP_9)
+      const allEvents = await prisma.voiceOrchestrationEvent.findMany({
+        where: { tenantId, routingConfigId: configId },
+        select: {
+          id: true,
+          step: true,
+          matchedRuleId: true,
+          voiceProviderId: true,
+          accepted: true,
+          durationMs: true,
+          status: true,
+          metadata: true,
+        },
       });
 
-      // Also fetch providers to map names
-      const providers = await (this.routingRepo as any).prisma.voiceProvider.findMany({
-        where: { tenantId }
-      });
+      // 3. Fetch providers to map IDs → names
+      const providers = await prisma.voiceProvider.findMany({ where: { tenantId } });
+      const providerMap = new Map<string, string>(providers.map((p: any) => [p.id, p.providerName]));
 
-      const providerMap = new Map(providers.map((p: any) => [p.id, p.providerName]));
+      // 4. Categorize events by step
+      const providerResultEvents = allEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT');
+      const ruleMatchedEvents = allEvents.filter((e: any) => 
+        e.step === 'STEP_6_RULE_MATCHED' || e.step === 'STEP_ERROR_PHONE_NOT_DISCOVERED'
+      );
+      const noMatchEvents = allEvents.filter((e: any) => e.step === 'STEP_6_NO_RULE_MATCH');
+      const errorEvents = allEvents.filter((e: any) => e.step.startsWith('STEP_ERROR'));
 
-      // 3. Aggregate Rule Stats
-      const ruleStatsMap = new Map();
+      // 5. Compute aggregate KPIs
+      const totalCallsProcessed = providerResultEvents.length;
+      const totalRulesMatched = ruleMatchedEvents.length;
+      const totalNoMatch = noMatchEvents.length;
+      const totalErrors = errorEvents.length;
 
-      for (const rule of config.rules) {
-        // Build condition summary (e.g. "brand = Asus")
-        let conditionsSummary = 'All';
+      const durationsMs = providerResultEvents
+        .map((e: any) => e.durationMs)
+        .filter((d: any): d is number => typeof d === 'number' && d > 0);
+      const avgResponseTimeMs = durationsMs.length > 0
+        ? Math.round(durationsMs.reduce((a: number, b: number) => a + b, 0) / durationsMs.length)
+        : 0;
+
+      // 6. Provider Breakdown
+      const providerAgg: Record<string, { callCount: number; successCount: number; errorCount: number; totalDurationMs: number }> = {};
+      for (const ev of providerResultEvents) {
+        const pid = ev.voiceProviderId || 'unknown';
+        if (!providerAgg[pid]) providerAgg[pid] = { callCount: 0, successCount: 0, errorCount: 0, totalDurationMs: 0 };
+        providerAgg[pid].callCount += 1;
+        if (ev.accepted === true) providerAgg[pid].successCount += 1;
+        else providerAgg[pid].errorCount += 1;
+        if (typeof ev.durationMs === 'number') providerAgg[pid].totalDurationMs += ev.durationMs;
+      }
+
+      const providerBreakdown = Object.entries(providerAgg).map(([pid, agg]) => ({
+        providerId: pid,
+        providerName: providerMap.get(pid) || pid || 'Unknown',
+        callCount: agg.callCount,
+        successCount: agg.successCount,
+        errorCount: agg.errorCount,
+        avgDurationMs: agg.callCount > 0 ? Math.round(agg.totalDurationMs / agg.callCount) : 0,
+      }));
+
+      // 7. Per-rule Stats (enriched)
+      const ruleStats = config.rules.map((rule: any) => {
+        // Dynamic condition summary
+        let conditionsSummary = 'All Traffic';
         try {
           const c = rule.conditions as any;
-          if (c?.field && c?.operator && c?.value) {
+          if (c?.field && c?.operator && c?.value !== undefined) {
             conditionsSummary = `${c.field} ${c.operator} ${c.value}`;
           } else if (c?.operator === 'AND' && c?.children?.length > 0) {
-            conditionsSummary = `${c.children[0].field} ${c.children[0].operator} ${c.children[0].value} ...`;
+            conditionsSummary = c.children
+              .map((child: any) => `${child.field} ${child.operator} ${child.value}`)
+              .join(' & ');
+          } else if (c?.operator === 'OR' && c?.children?.length > 0) {
+            conditionsSummary = c.children
+              .map((child: any) => `${child.field} ${child.operator} ${child.value}`)
+              .join(' | ');
           }
-        } catch (e) { }
+        } catch (_) { /* ignore malformed conditions */ }
 
-        ruleStatsMap.set(rule.id, {
-          ruleId: rule.id,
-          conditionsSummary,
-          provider: providerMap.get(rule.voiceProviderId) || 'ElevenLabs',
-          count: 0
-        });
-      }
+        // Count events for this rule
+        const ruleProviderResults = providerResultEvents.filter((e: any) => e.matchedRuleId === rule.id);
+        const ruleMatchCount = ruleMatchedEvents.filter((e: any) => e.matchedRuleId === rule.id).length;
+        const callCount = ruleProviderResults.length;
+        const successCount = ruleProviderResults.filter((e: any) => e.accepted === true).length;
 
-      for (const event of events) {
-        if (event.matchedRuleId && ruleStatsMap.has(event.matchedRuleId)) {
-          ruleStatsMap.get(event.matchedRuleId).count += 1;
+        // Resolve provider name from rule action or voiceProviderId
+        let providerName = 'Unknown';
+        if (rule.voiceProviderId && providerMap.has(rule.voiceProviderId)) {
+          providerName = providerMap.get(rule.voiceProviderId)!;
+        } else {
+          try {
+            const action = rule.action as any;
+            providerName = action?.voiceProvider || action?.telephonyProvider || 'Unknown';
+          } catch (_) {}
         }
-      }
 
-      // Calculate Total Records (All invocations on this config's rules)
-      const totalRecords = events.length;
+        return {
+          ruleId: rule.id,
+          priority: rule.priority,
+          conditionsSummary,
+          provider: providerName,
+          providerId: rule.voiceProviderId || '',
+          callCount,
+          matchCount: ruleMatchCount,
+          successRate: callCount > 0 ? Math.round((successCount / callCount) * 100) : 0,
+          isActive: rule.isActive,
+        };
+      });
+
+      // 8. Build final response
+      let totalDatasetRecords = 0;
+      if (config.entityType && Array.isArray(config.entityType.data)) {
+        totalDatasetRecords = config.entityType.data.length;
+      }
 
       const responseStats = {
         routingName: config.name,
-        totalRecords,
+        configStatus: config.status || 'ACTIVE',
+        routingType: config.type || 'AUTOMATIC',
+        totalEvents: allEvents.length,
+        totalCallsProcessed,
+        totalRulesMatched,
+        totalNoMatch,
+        totalErrors,
+        avgResponseTimeMs,
         datasets: config.entityType ? [config.entityType.name] : [],
+        totalDatasetRecords,
         rulesCount: config.rules.length,
-        ruleStats: Array.from(ruleStatsMap.values())
+        providerBreakdown,
+        ruleStats,
       };
 
-      res.json({
-        success: true,
-        stats: responseStats
-      });
+      res.json({ success: true, stats: responseStats });
     } catch (err) {
       next(err);
     }

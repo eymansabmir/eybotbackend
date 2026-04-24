@@ -49,6 +49,15 @@ export class VoiceCampaignService {
 
       if (!phone) {
         logger.warn({ entityId: entity.id }, 'VoiceCampaign: Skipping entity - no phone number discovered');
+        this.voiceRoutingService['routingRepo'].recordEvent({
+          tenantId,
+          traceId: `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+          step: 'STEP_ERROR_PHONE_NOT_DISCOVERED',
+          entityId: entity.id,
+          routingConfigId: rule.routingConfigId,
+          matchedRuleId: rule.id,
+          message: 'No phone number discovered'
+        }).catch(() => {});
         failed++;
         continue;
       }
@@ -146,6 +155,16 @@ export class VoiceCampaignService {
           if (!phone) {
             skipped++;
             details.push({ entityId: entity.id, success: false, error: 'No phone number discovered' });
+            this.voiceRoutingService['routingRepo'].recordEvent({
+              tenantId,
+              traceId: `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+              step: 'STEP_ERROR_PHONE_NOT_DISCOVERED',
+              entityId: entity.id,
+              entityTypeId: config.entityTypeId,
+              routingConfigId,
+              matchedRuleId: rule.id,
+              message: 'No phone number discovered'
+            }).catch(() => {});
             continue;
           }
 
