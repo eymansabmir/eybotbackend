@@ -12,6 +12,9 @@ export const EXCHANGES = {
   VOICE_INGEST: 'voice.ingest',
   VOICE_INGEST_RETRY: 'voice.ingest.retry',
   VOICE_INGEST_DLQ: 'voice.ingest.dlq',
+  VOICE_CAMPAIGN: 'voice.campaign',
+  VOICE_CAMPAIGN_RETRY: 'voice.campaign.retry',
+  VOICE_CAMPAIGN_DLQ: 'voice.campaign.dlq',
 } as const;
 
 export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];

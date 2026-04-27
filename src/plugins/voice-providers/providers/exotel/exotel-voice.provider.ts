@@ -161,17 +161,18 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
         }
 
         const form = new URLSearchParams();
-        form.set('From', from);
-        form.set('To', to);
+        form.set('From', to);
+        form.set('CallerId', from);
 
         const callType = this.readSecretField(input.providerConfig, 'callType');
         if (callType) {
           form.set('CallType', callType);
         }
 
-        const webhookUrl = this.resolveWebhookUrl(input);
-        if (webhookUrl) {
-          form.set('Url', webhookUrl);
+        const streamUrl = this.resolveWebhookUrl(input);
+        if (streamUrl) {
+          form.set('StreamUrl', streamUrl);
+          form.set('StreamType', 'bidirectional');
         }
 
         const customField = this.resolveCustomField(input);
@@ -250,17 +251,18 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
 
         try {
           const form = new URLSearchParams();
-          form.set('From', from);
-          form.set('To', to);
+          form.set('From', to);
+          form.set('CallerId', from);
 
           const callType = this.readSecretField(input.providerConfig, 'callType');
           if (callType) {
             form.set('CallType', callType);
           }
 
-          const webhookUrl = this.resolveWebhookUrl(input);
-          if (webhookUrl) {
-            form.set('Url', webhookUrl);
+          const streamUrl = this.resolveWebhookUrl(input);
+          if (streamUrl) {
+            form.set('StreamUrl', streamUrl);
+            form.set('StreamType', 'bidirectional');
           }
 
           const customField = this.resolveCustomField({

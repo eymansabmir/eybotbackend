@@ -7,13 +7,14 @@ export function createVoiceRoutingRouter(controller: VoiceRoutingController): Ro
   router.get('/analytics/orchestration', controller.getOrchestrationStats);
   router.get('/', controller.listConfigs);
   router.post('/', controller.createConfig);
-  router.get('/:id', controller.getConfig);
   router.post('/execute', controller.executeRouting);
   router.post('/bulk-execute', controller.bulkExecute);
+  router.get('/bulk-execute/jobs/:jobId', controller.getBulkExecuteStatus);
   router.post('/query-entities', controller.queryEntitiesByRule);
   router.post('/rules', controller.upsertRule);
   router.post('/rules/toggle-active', controller.toggleRuleActive);
   router.delete('/rules/:id', controller.deleteRule);
+  router.get('/:id', controller.getConfig);
   router.delete('/:id', controller.deleteConfig);
 
   return router;

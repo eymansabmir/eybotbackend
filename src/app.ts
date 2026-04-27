@@ -201,7 +201,9 @@ export function createApp(registry: IPluginRegistry): Application {
     voiceRoutingService,
     entityQueryService,
     voiceCampaignService,
-    voiceRoutingRepo
+    voiceRoutingRepo,
+    workerPlugin,
+    redisPlugin,
   );
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
 

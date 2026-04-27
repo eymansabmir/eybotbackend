@@ -69,3 +69,12 @@ export interface VoiceIngestJob {
   retryCount?: number;
   maxRetries?: number;
 }
+
+export interface VoiceCampaignJob {
+  jobId: string;
+  tenantId: string;
+  routingConfigId: string;
+  entityTypes: string[];
+  retryCount?: number;
+  maxRetries?: number;
+}

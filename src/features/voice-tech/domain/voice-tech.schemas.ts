@@ -71,6 +71,16 @@ export const ExecuteRoutingSchema = z.object({
   executeProvider: z.boolean().optional(),
 });
 
+export const BulkExecuteSchema = z.object({
+  tenantId: z.string().min(1),
+  routingConfigId: z.string().min(1),
+  entityTypes: z.array(z.string().min(1)).min(1),
+});
+
+export const VoiceCampaignStatusSchema = z.object({
+  jobId: z.string().min(1),
+});
+
 export const UpsertRoutingRuleSchema = z.object({
   id: z.string().uuid().optional(),
   routingConfigId: z.string().uuid(),
