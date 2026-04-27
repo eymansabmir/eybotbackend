@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { NotFoundError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import type { RoutingConditionNode } from './domain/condition.types';
@@ -6,7 +7,11 @@ import type { EntityQueryService } from './services/entity-query.service';
 import type { VoiceCampaignService } from './services/voice-campaign.service';
 import type { IVoiceRoutingRepository } from './data/routing.repository';
 import type { VoiceRoutingService } from './services/voice-routing.service';
+import { EXCHANGES, type IWorkerPlugin } from '../../plugins/worker';
+import { type IRedisPlugin } from '../../plugins/redis';
+import type { VoiceCampaignJob } from '../../plugins/worker/jobs';
 import {
+  BulkExecuteSchema,
   CreateRoutingConfigSchema,
   DeleteRoutingRuleSchema,
   ExecuteRoutingSchema,
@@ -15,7 +20,11 @@ import {
   QueryByRuleSchema,
   ToggleRuleActiveSchema,
   UpsertRoutingRuleSchema,
+  VoiceCampaignStatusSchema,
 } from './domain/voice-tech.schemas';
+
+const VOICE_CAMPAIGN_STATUS_PREFIX = 'voice:campaign:job:';
+const VOICE_CAMPAIGN_STATUS_TTL_SECONDS = 60 * 60 * 24;
 
 export class VoiceRoutingController {
   constructor(
@@ -23,6 +32,8 @@ export class VoiceRoutingController {
     private readonly entityQueryService: EntityQueryService,
     private readonly voiceCampaignService: VoiceCampaignService,
     private readonly routingRepo: IVoiceRoutingRepository,
+    private readonly workerPlugin: IWorkerPlugin,
+    private readonly redisPlugin: IRedisPlugin,
   ) { }
 
   private stripPrefixes(node: any): any {
@@ -347,34 +358,52 @@ export class VoiceRoutingController {
   bulkExecute = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const traceId = this.resolveTraceId(req);
     try {
-      const { tenantId, routingConfigId, entityTypes } = req.body;
-      if (!tenantId || !routingConfigId || !Array.isArray(entityTypes)) {
-        res.status(400).json({ success: false, message: 'Missing tenantId, routingConfigId, or entityTypes' });
-        return;
-      }
+      const payload = BulkExecuteSchema.parse(req.body);
+      const jobId = randomUUID();
 
-      // Record initial bulk event
-      await this.routingRepo.recordEvent({
-        tenantId,
-        traceId,
-        step: 'STEP_1_BULK_API_RECEIVED',
-        metadata: { routingConfigId, entityTypes }
-      });
+      const job: VoiceCampaignJob = {
+        jobId,
+        tenantId: payload.tenantId,
+        routingConfigId: payload.routingConfigId,
+        entityTypes: payload.entityTypes,
+        retryCount: 0,
+      };
 
       logger.info(
         {
           flow: 'voice_orchestration',
           step: 'STEP_1_BULK_API_RECEIVED',
           traceId,
-          tenantId,
-          routingConfigId,
-          entityTypes,
+          tenantId: payload.tenantId,
+          routingConfigId: payload.routingConfigId,
+          entityTypes: payload.entityTypes,
+          jobId,
         },
         'Voice orchestration bulk step',
       );
 
-      const result = await this.voiceCampaignService.executeForConfig(tenantId, routingConfigId, entityTypes);
-      res.json({ success: true, traceId, result });
+      await this.redisPlugin.client.set(
+        `${VOICE_CAMPAIGN_STATUS_PREFIX}${jobId}`,
+        JSON.stringify({
+          status: 'queued',
+          tenantId: payload.tenantId,
+          routingConfigId: payload.routingConfigId,
+          entityTypes: payload.entityTypes,
+          totalProcessed: 0,
+          initiated: 0,
+          failed: 0,
+          skipped: 0,
+          excluded: 0,
+          retryCount: 0,
+          updatedAt: new Date().toISOString(),
+        }),
+        'EX',
+        VOICE_CAMPAIGN_STATUS_TTL_SECONDS,
+      );
+
+      await this.workerPlugin.publish(EXCHANGES.VOICE_CAMPAIGN, job);
+
+      res.status(202).json({ success: true, traceId, jobId, status: 'queued' });
     } catch (err) {
       logger.error(
         {
@@ -385,6 +414,21 @@ export class VoiceRoutingController {
         },
         'Voice orchestration bulk execution failed',
       );
+      next(err);
+    }
+  };
+
+  getBulkExecuteStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { jobId } = VoiceCampaignStatusSchema.parse(req.params);
+      const value = await this.redisPlugin.client.get(`${VOICE_CAMPAIGN_STATUS_PREFIX}${jobId}`);
+      if (!value) {
+        res.status(404).json({ success: false, message: 'Voice campaign job not found' });
+        return;
+      }
+
+      res.json({ success: true, jobId, ...(JSON.parse(value) as Record<string, unknown>) });
+    } catch (err) {
       next(err);
     }
   };
