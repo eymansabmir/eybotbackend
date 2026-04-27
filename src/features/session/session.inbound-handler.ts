@@ -253,6 +253,18 @@ export class SessionInboundHandler implements IInboundHandler {
           sessionId = activeSession.id;
         }
       } else {
+        // Strict zombie check: prevent interactions with old messages from starting new flows.
+        if (message.contextMessageId) {
+          logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
+          return [{
+            waId,
+            waBusinessNumber,
+            messageType: NodeType.SEND_TEXT,
+            payload: { message: 'You already finished this flow. To start the flow again, please type the trigger keyword.' },
+            orgId,
+          }];
+        }
+
         // Match flow by advanced trigger config or legacy keywords
         logger.debug({ waId, waBusinessNumber }, 'SessionInboundHandler: matching flow for new session');
 

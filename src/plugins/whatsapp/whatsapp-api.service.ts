@@ -10,7 +10,7 @@ export class WhatsAppAPIService {
   constructor(private readonly config: WhatsAppConfig) { }
 
   async sendText(to: string, text: string): Promise<string> {
-    return this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text } });
+    return this.call({ messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'text', text: { body: text || '...' } });
   }
 
   async sendImage(to: string, url: string, caption?: string): Promise<string> {
@@ -51,7 +51,7 @@ export class WhatsAppAPIService {
       type: 'interactive',
       interactive: {
         type: 'location_request_message',
-        body: { text: body },
+        body: { text: body || 'Please share your location' },
         action: { name: 'send_location' },
       },
     });
@@ -62,7 +62,7 @@ export class WhatsAppAPIService {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text: body },
+        body: { text: body || 'Please choose an option:' },
         action: { buttons: buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: this.sliceGraphemes(b.title, 20) } })) }
       },
     };
@@ -81,7 +81,7 @@ export class WhatsAppAPIService {
     const payload: any = {
       messaging_product: 'whatsapp', recipient_type: 'individual', to, type: 'interactive',
       interactive: {
-        type: 'list', body: { text: body },
+        type: 'list', body: { text: body || 'Please select an option:' },
         action: { button: this.sliceGraphemes(buttonTitle || 'Options', 20), sections: normalizedSections },
       },
     };
