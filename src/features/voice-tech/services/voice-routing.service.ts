@@ -271,6 +271,7 @@ export class VoiceRoutingService {
         durationMs,
         metadata: {
           provider: provider.name,
+          voiceProvider: selectedVoiceProvider,
           providerReference: providerResult.providerReference,
           providerResponse: providerResult,
         }
@@ -307,6 +308,7 @@ export class VoiceRoutingService {
         durationMs,
         metadata: {
           provider: provider.name,
+          voiceProvider: selectedVoiceProvider,
           error: (err as Error).message,
         }
       });
