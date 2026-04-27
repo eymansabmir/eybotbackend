@@ -39,6 +39,7 @@ export enum NodeType {
   ANTHROPIC = 'anthropic',
   DEEPSEEK = 'deepseek',
   VARIABLE_MANAGER = 'variable_manager',
+  MEDIA_CONDITIONAL = 'media_conditional',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -59,6 +60,7 @@ export const MESSAGING_NODE_TYPES = [
   NodeType.NPS,
   NodeType.SEND_CARDS,
   NodeType.SEND_REACTION,
+  NodeType.MEDIA_CONDITIONAL,
 ];
 
 export const LOGIC_NODE_TYPES = [

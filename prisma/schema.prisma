@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 model Flow {
@@ -437,4 +438,15 @@ model VoiceOrchestrationEvent {
   @@map("voice_orchestration_events")
 }
 
+model UserLanguagePreference {
+  id                String   @id @default(uuid())
+  botId             String
+  waId              String
+  preferredLanguage String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
+  @@unique([botId, waId])
+  @@index([botId, waId])
+  @@map("user_language_preferences")
+}

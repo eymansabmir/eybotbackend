@@ -104,32 +104,8 @@ export class SessionInboundHandler implements IInboundHandler {
           }
 
           if (hasMediaInput) {
-            try {
-              const mediaUrl = message.mediaUrl ?? await this.whatsappPlugin.getMediaUrl(message.mediaId!);
-              const buffer = await this.whatsappPlugin.downloadMedia(mediaUrl);
-              const mimeType = message.mediaMimeType ?? 'application/octet-stream';
-              const originalName = message.mediaFilename ?? `${message.type}-${message.mediaId ?? Date.now()}`;
-
-              const upload = await this.storagePlugin.uploadFile(
-                {
-                  fieldname: 'file',
-                  originalname: originalName,
-                  encoding: '7bit',
-                  mimetype: mimeType,
-                  size: buffer.length,
-                  destination: '',
-                  filename: '',
-                  path: '',
-                  buffer,
-                  stream: Readable.from(buffer),
-                },
-                'uploads',
-              );
-
-              userInput = upload.url;
-              logger.info({ waId, sessionId: activeSession.id, url: upload.url }, 'SessionInboundHandler: uploaded inbound file and mapped to userInput');
-            } catch (err) {
-              logger.error({ err, waId, mediaId: message.mediaId, mediaUrl: message.mediaUrl }, 'SessionInboundHandler: failed to process inbound file');
+            const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
+            if (!uploadUrl) {
               return [{
                 waId,
                 waBusinessNumber,
@@ -139,13 +115,14 @@ export class SessionInboundHandler implements IInboundHandler {
                 sessionId: activeSession.id,
               }];
             }
+            userInput = uploadUrl;
           }
         }
 
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
         const languageVariableKey = this.resolveLanguageVariableKey(flow);
-        const currentNode = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
-        const isAtLanguageNode = currentNode?.type === NodeType.LANGUAGE;
+        const currentNodeRaw = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
+        const isAtLanguageNode = currentNodeRaw?.type === NodeType.LANGUAGE;
 
         let flowToExecute = flow;
         const language = (activeSession.variables?.[languageVariableKey] as string | undefined)
@@ -154,7 +131,11 @@ export class SessionInboundHandler implements IInboundHandler {
           const translatedNodes = await this.getTranslationWithLazySync(flow.id!, language);
           if (translatedNodes) {
             flowToExecute = flow.clone();
-            flowToExecute.nodes = translatedNodes as unknown as FlowEntity['nodes'];
+            // MERGE: Keep technical data from original nodes (skipIfAlreadySelected, etc.)
+            flowToExecute.nodes = flow.nodes.map(orig => {
+              const trans = (translatedNodes as any[]).find(t => t.id === orig.id);
+              return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
+            }) as any;
           }
         } else if (language && isAtLanguageNode) {
           logger.info(
@@ -162,6 +143,78 @@ export class SessionInboundHandler implements IInboundHandler {
             'SessionInboundHandler: skipping preloaded translation at language node to avoid stale language prompts'
           );
         }
+
+        if (activeSession.waitingFor?.type === 'media_conditional') {
+          const currentNode = flowToExecute.nodes.find((n) => n.id === activeSession.currentNodeId);
+          const config = currentNode?.data?.['config'] as Array<{ type: string; subTypes: string[] }> | undefined;
+          const invalidMessage = (currentNode?.data?.['invalidMessage'] as string) || 'Invalid media type. Please send a supported format.';
+          
+          let retries = (activeSession.variables['_media_retries'] as number) || 0;
+          const maxRetries = (currentNode?.data?.['maxRetries'] as number) || 3;
+          const maxRetriesMessage = (currentNode?.data?.['maxRetriesMessage'] as string) || 'Too many invalid attempts. Please start the bot again.';
+
+          const handleInvalidAttempt = async (msg: string) => {
+            retries += 1;
+            if (retries >= maxRetries) {
+              await this.sessionRepo.updateStatus(activeSession.id!, 'error');
+              return [{
+                waId, waBusinessNumber, messageType: NodeType.SEND_TEXT, payload: { message: maxRetriesMessage }, orgId, sessionId: activeSession.id,
+              }];
+            } else {
+              activeSession.setVariable('_media_retries', retries);
+              await this.sessionRepo.update(activeSession.id!, { variables: activeSession.variables });
+              return [{
+                waId, waBusinessNumber, messageType: NodeType.SEND_TEXT, payload: { message: msg }, orgId, sessionId: activeSession.id,
+              }];
+            }
+          };
+
+          const matchedConfig = config?.find((c) => c.type === message.type);
+
+          if (!matchedConfig) {
+            logger.info({ waId, sessionId: activeSession.id, type: message.type, retries }, 'SessionInboundHandler: media_conditional rejected unexpected type');
+            return handleInvalidAttempt(invalidMessage);
+          }
+
+          // Subtype validation for media
+          if (['image', 'video', 'audio', 'document'].includes(message.type)) {
+            const allowedSubTypes = matchedConfig.subTypes || [];
+            if (allowedSubTypes.length > 0) {
+              const ext = message.mediaFilename?.split('.').pop()?.toLowerCase() || '';
+              const mime = message.mediaMimeType?.toLowerCase() || '';
+              const isAllowed = allowedSubTypes.some((s) => {
+                const normalizedS = s.toLowerCase().trim().replace('.', '');
+                return (
+                  normalizedS === ext || 
+                  mime.includes(normalizedS) ||
+                  (normalizedS === 'jpg' && mime.includes('jpeg')) ||
+                  (normalizedS === 'jpeg' && mime.includes('jpg'))
+                );
+              });
+
+              if (!isAllowed) {
+                logger.info({ waId, sessionId: activeSession.id, ext, mime, retries }, 'SessionInboundHandler: media_conditional rejected unsupported subtype');
+                return handleInvalidAttempt(invalidMessage);
+              }
+            }
+
+            const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
+            if (!uploadUrl) {
+              return handleInvalidAttempt('I could not process that file. Please try again.');
+            }
+            userInput = JSON.stringify({ type: message.type, value: uploadUrl });
+          } else {
+            // text or location
+            userInput = JSON.stringify({ type: message.type, value: text });
+          }
+          
+          // Clear retry counter on success
+          if (activeSession.variables['_media_retries'] !== undefined) {
+            delete activeSession.variables['_media_retries'];
+            await this.sessionRepo.update(activeSession.id!, { variables: activeSession.variables });
+          }
+        }
+
 
         try {
           const result = await this.enginePlugin.resumeFlow(
@@ -287,7 +340,11 @@ export class SessionInboundHandler implements IInboundHandler {
       const translatedNodes = await this.getTranslationWithLazySync(matchedFlow.id!, language);
       if (translatedNodes) {
         flowToExecute = matchedFlow.clone();
-        flowToExecute.nodes = translatedNodes as unknown as FlowEntity['nodes'];
+        // MERGE: Keep technical data from original nodes (skipIfAlreadySelected, etc.)
+        flowToExecute.nodes = matchedFlow.nodes.map(orig => {
+          const trans = (translatedNodes as any[]).find(t => t.id === orig.id);
+          return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
+        }) as any;
       }
     } else if (language && hasLanguageNode) {
       logger.info(
@@ -333,7 +390,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
   private resolveLanguageVariableKey(flow: FlowEntity): string {
     const languageNode = flow.nodes.find((node) => node.type === NodeType.LANGUAGE);
-    const configured = languageNode?.data?.['variable'];
+    const configured = languageNode?.data?.['variableName'] || languageNode?.data?.['variable'];
     return typeof configured === 'string' && configured.trim().length > 0
       ? configured.trim()
       : 'selected_language';
@@ -354,6 +411,78 @@ export class SessionInboundHandler implements IInboundHandler {
       return (synced?.translatedData as FlowEntity['nodes']) || null;
     } catch (err) {
       logger.warn({ err, flowId, language: normalized }, 'SessionInboundHandler: fallback translation sync failed');
+      return null;
+    }
+  }
+
+  /**
+   * Strips protected technical fields from translation data for language nodes.
+   * Translation records may contain stale snapshots of settings like
+   * skipIfAlreadySelected that would silently override the master flow's
+   * current values.
+   */
+  private safeTranslationData(originalNode: any, translatedNode: any): Record<string, unknown> {
+    const LANGUAGE_PROTECTED_KEYS = new Set([
+      'skipIfAlreadySelected',
+      'variableName',
+      'variable',
+      'variableScope',
+      'localizationEnabled',
+      'languages',
+      'defaultLanguage',
+      'timeoutSeconds',
+    ]);
+
+    const MEDIA_CONDITIONAL_PROTECTED_KEYS = new Set([
+      'maxRetries',
+      'timeoutSeconds',
+      'variable',
+      'variableScope',
+      'config',
+    ]);
+
+    const transData: Record<string, unknown> = { ...(translatedNode.data || {}) };
+    
+    if (originalNode.type === 'language') {
+      for (const key of LANGUAGE_PROTECTED_KEYS) {
+        delete transData[key];
+      }
+    } else if (originalNode.type === 'media_conditional') {
+      for (const key of MEDIA_CONDITIONAL_PROTECTED_KEYS) {
+        delete transData[key];
+      }
+    }
+    
+    return transData;
+  }
+
+  private async processMediaUpload(message: any, waId: string, sessionId: string): Promise<string | null> {
+    try {
+      const mediaUrl = message.mediaUrl ?? await this.whatsappPlugin.getMediaUrl(message.mediaId!);
+      const buffer = await this.whatsappPlugin.downloadMedia(mediaUrl);
+      const mimeType = message.mediaMimeType ?? 'application/octet-stream';
+      const originalName = message.mediaFilename ?? `${message.type}-${message.mediaId ?? Date.now()}`;
+
+      const upload = await this.storagePlugin.uploadFile(
+        {
+          fieldname: 'file',
+          originalname: originalName,
+          encoding: '7bit',
+          mimetype: mimeType,
+          size: buffer.length,
+          destination: '',
+          filename: '',
+          path: '',
+          buffer,
+          stream: Readable.from(buffer),
+        },
+        'uploads',
+      );
+
+      logger.info({ waId, sessionId, url: upload.url }, 'SessionInboundHandler: media uploaded successfully');
+      return upload.url;
+    } catch (err) {
+      logger.error({ err, waId, mediaId: message.mediaId, mediaUrl: message.mediaUrl }, 'SessionInboundHandler: failed to process inbound media');
       return null;
     }
   }
