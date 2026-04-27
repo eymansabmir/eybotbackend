@@ -54,8 +54,10 @@ export class VoiceCampaignService {
           traceId: `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
           step: 'STEP_ERROR_PHONE_NOT_DISCOVERED',
           entityId: entity.id,
+          entityTypeId: rule.entityTypeId || undefined,
           routingConfigId: rule.routingConfigId,
           matchedRuleId: rule.id,
+          voiceProviderId: rule.voiceProviderId || undefined,
           message: 'No phone number discovered'
         }).catch(() => {});
         failed++;
@@ -163,6 +165,7 @@ export class VoiceCampaignService {
               entityTypeId: config.entityTypeId,
               routingConfigId,
               matchedRuleId: rule.id,
+              voiceProviderId: rule.voiceProviderId || undefined,
               message: 'No phone number discovered'
             }).catch(() => {});
             continue;

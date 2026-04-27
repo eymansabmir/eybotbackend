@@ -25,6 +25,18 @@ export class VoiceRoutingController {
     private readonly routingRepo: IVoiceRoutingRepository,
   ) { }
 
+  private stripPrefixes(node: any): any {
+    if (!node) return node;
+    const newNode = { ...node };
+    if (newNode.field && typeof newNode.field === 'string' && newNode.field.includes('.')) {
+      newNode.field = newNode.field.split('.').pop();
+    }
+    if (Array.isArray(newNode.children)) {
+      newNode.children = newNode.children.map((child: any) => this.stripPrefixes(child));
+    }
+    return newNode;
+  }
+
   private resolveTraceId(req: Request): string {
     const requestId = req.id;
     if (typeof requestId === 'string' && requestId.trim().length > 0) {
@@ -407,7 +419,11 @@ export class VoiceRoutingController {
         return;
       }
 
-      // 2. Fetch ALL events for this config (not just STEP_9)
+      // 3. Load all Voice Providers to map IDs to human-readable names
+      const providers = await prisma.voiceProvider.findMany({ where: { tenantId } });
+      const providerMap = new Map<string, string>(providers.map((p: any) => [p.id, p.providerName]));
+
+      // 4. Fetch ALL events for this config (not just STEP_9)
       const allEvents = await prisma.voiceOrchestrationEvent.findMany({
         where: { tenantId, routingConfigId: configId },
         select: {
@@ -422,23 +438,24 @@ export class VoiceRoutingController {
         },
       });
 
-      // 3. Fetch providers to map IDs → names
-      const providers = await prisma.voiceProvider.findMany({ where: { tenantId } });
-      const providerMap = new Map<string, string>(providers.map((p: any) => [p.id, p.providerName]));
-
       // 4. Categorize events by step
       const providerResultEvents = allEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT');
+      const providerErrorEvents = allEvents.filter((e: any) => e.step === 'STEP_ERROR_PROVIDER_INVOCATION');
       const ruleMatchedEvents = allEvents.filter((e: any) => 
         e.step === 'STEP_6_RULE_MATCHED' || e.step === 'STEP_ERROR_PHONE_NOT_DISCOVERED'
       );
       const noMatchEvents = allEvents.filter((e: any) => e.step === 'STEP_6_NO_RULE_MATCH');
-      const errorEvents = allEvents.filter((e: any) => e.step.startsWith('STEP_ERROR'));
+      // "System Errors" should ideally reflect technical failures, not data issues like missing phones
+      const systemErrorEvents = allEvents.filter((e: any) => 
+        e.step === 'STEP_ERROR_PROVIDER_INVOCATION' || 
+        e.step === 'STEP_ERROR_EXECUTION_FAILED'
+      );
 
       // 5. Compute aggregate KPIs
-      const totalCallsProcessed = providerResultEvents.length;
+      const totalCallsProcessed = providerResultEvents.length + providerErrorEvents.length;
       const totalRulesMatched = ruleMatchedEvents.length;
       const totalNoMatch = noMatchEvents.length;
-      const totalErrors = errorEvents.length;
+      const totalErrors = systemErrorEvents.length;
 
       const durationsMs = providerResultEvents
         .map((e: any) => e.durationMs)
@@ -447,28 +464,63 @@ export class VoiceRoutingController {
         ? Math.round(durationsMs.reduce((a: number, b: number) => a + b, 0) / durationsMs.length)
         : 0;
 
-      // 6. Provider Breakdown
-      const providerAgg: Record<string, { callCount: number; successCount: number; errorCount: number; totalDurationMs: number }> = {};
-      for (const ev of providerResultEvents) {
-        const pid = ev.voiceProviderId || 'unknown';
-        if (!providerAgg[pid]) providerAgg[pid] = { callCount: 0, successCount: 0, errorCount: 0, totalDurationMs: 0 };
-        providerAgg[pid].callCount += 1;
-        if (ev.accepted === true) providerAgg[pid].successCount += 1;
-        else providerAgg[pid].errorCount += 1;
-        if (typeof ev.durationMs === 'number') providerAgg[pid].totalDurationMs += ev.durationMs;
-      }
+      // 5. Create a Rule-to-Provider Map (The Source of Truth)
+      const ruleToProviderMap = new Map<string, string>();
+      config.rules.forEach((rule: any) => {
+        let name = 'unknown';
+        if (rule.voiceProviderId && providerMap.has(rule.voiceProviderId)) {
+          name = providerMap.get(rule.voiceProviderId)!;
+        } else if (rule.action?.voiceProvider) {
+          name = rule.action.voiceProvider;
+        }
+        ruleToProviderMap.set(rule.id, name.toLowerCase());
+      });
 
-      const providerBreakdown = Object.entries(providerAgg).map(([pid, agg]) => ({
-        providerId: pid,
-        providerName: providerMap.get(pid) || pid || 'Unknown',
-        callCount: agg.callCount,
-        successCount: agg.successCount,
-        errorCount: agg.errorCount,
-        avgDurationMs: agg.callCount > 0 ? Math.round(agg.totalDurationMs / agg.callCount) : 0,
-      }));
+      // 6. Provider Breakdown (Rule-First Attribution)
+      const providerEvents = [...providerResultEvents, ...systemErrorEvents];
+      const providerGroups = new Map<string, any[]>();
+      
+      providerEvents.forEach((e: any) => {
+        // 1. Priority: Attribute by Rule ID (Source of Truth)
+        let providerName = e.matchedRuleId ? ruleToProviderMap.get(e.matchedRuleId) : null;
+        
+        // 2. Fallback: Provider ID from event directly
+        if (!providerName && e.voiceProviderId && providerMap.has(e.voiceProviderId)) {
+          providerName = providerMap.get(e.voiceProviderId)!.toLowerCase();
+        }
 
-      // 7. Per-rule Stats (enriched)
-      const ruleStats = config.rules.map((rule: any) => {
+        // 3. Last Resort: Metadata
+        if (!providerName) {
+          const metadata = (e.metadata || {}) as any;
+          providerName = (metadata?.voiceProvider || metadata?.provider || 'unknown').toLowerCase();
+        }
+        
+        if (!providerGroups.has(providerName)) providerGroups.set(providerName, []);
+        providerGroups.get(providerName)!.push(e);
+      });
+
+      const providerBreakdown = Array.from(providerGroups.entries()).map(([providerName, events]) => {
+        const successCount = events.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')).length;
+        const errorCount = events.length - successCount;
+        const durations = events
+          .map((e: any) => e.durationMs)
+          .filter((d: any): d is number => typeof d === 'number' && d > 0);
+        const avgDurationMs = durations.length > 0
+          ? Math.round(durations.reduce((a: number, b: number) => a + b, 0) / durations.length)
+          : 0;
+
+        return {
+          providerId: providerName,
+          providerName: providerName,
+          callCount: events.length,
+          successCount,
+          errorCount,
+          avgDurationMs,
+        };
+      });
+
+      // 7. Per-rule Stats (Awaited for accurate live data)
+      const ruleStats = await Promise.all(config.rules.map(async (rule: any) => {
         // Dynamic condition summary
         let conditionsSummary = 'All Traffic';
         try {
@@ -486,40 +538,75 @@ export class VoiceRoutingController {
           }
         } catch (_) { /* ignore malformed conditions */ }
 
-        // Count events for this rule
-        const ruleProviderResults = providerResultEvents.filter((e: any) => e.matchedRuleId === rule.id);
-        const ruleMatchCount = ruleMatchedEvents.filter((e: any) => e.matchedRuleId === rule.id).length;
-        const callCount = ruleProviderResults.length;
-        const successCount = ruleProviderResults.filter((e: any) => e.accepted === true).length;
-
-        // Resolve provider name from rule action or voiceProviderId
-        let providerName = 'Unknown';
-        if (rule.voiceProviderId && providerMap.has(rule.voiceProviderId)) {
-          providerName = providerMap.get(rule.voiceProviderId)!;
-        } else {
+        // Live matching for this specific rule (Unique Records)
+        let liveMatchCount = 0;
+        if (config.entityType && rule.conditions) {
           try {
-            const action = rule.action as any;
-            providerName = action?.voiceProvider || action?.telephonyProvider || 'Unknown';
-          } catch (_) {}
+            const strippedConditions = this.stripPrefixes(rule.conditions);
+
+            const matchCount = await this.entityQueryService.fetchEntitiesByRule({
+              tenantId,
+              entityType: config.entityType.name,
+              conditions: strippedConditions as any,
+              countOnly: true
+            });
+            liveMatchCount = typeof matchCount === 'number' ? matchCount : 0;
+          } catch (err) {
+            logger.warn({ err, ruleId: rule.id }, 'Failed to calc live match for rule');
+          }
         }
+
+        // Execution metrics (Events)
+        const ruleEvents = providerEvents.filter((e: any) => e.matchedRuleId === rule.id);
+        const callCount = ruleEvents.length;
+        const successCount = ruleEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')).length;
+
+        // Resolve provider name (consistent with distribution chart)
+        const providerName = ruleToProviderMap.get(rule.id) || 'unknown';
 
         return {
           ruleId: rule.id,
           priority: rule.priority,
+          isActive: rule.isActive,
           conditionsSummary,
           provider: providerName,
-          providerId: rule.voiceProviderId || '',
-          callCount,
-          matchCount: ruleMatchCount,
+          matchCount: liveMatchCount, // Use the live dataset count
+          callCount, // Use the actual processed events count
+          successCount,
           successRate: callCount > 0 ? Math.round((successCount / callCount) * 100) : 0,
-          isActive: rule.isActive,
         };
-      });
+      }));
 
-      // 8. Build final response
+      // 8. Live Dataset Analysis (Union of all rules)
       let totalDatasetRecords = 0;
-      if (config.entityType && Array.isArray(config.entityType.data)) {
-        totalDatasetRecords = config.entityType.data.length;
+      let liveMatchedCount = 0;
+      
+      if (config.entityType) {
+        if (Array.isArray(config.entityType.data)) {
+          totalDatasetRecords = config.entityType.data.length;
+        }
+
+        // Combined conditions for Matched Audience
+
+        // Combine all rule conditions with OR to find the total "Matched Audience" coverage
+        // We include all rules (even drafts) for the analysis view
+        if (config.rules.length > 0) {
+          const combinedConditions = config.rules.length === 1 
+            ? this.stripPrefixes(config.rules[0].conditions) 
+            : { operator: 'OR', children: config.rules.map(r => this.stripPrefixes(r.conditions)) };
+          
+          try {
+            const matchCount = await this.entityQueryService.fetchEntitiesByRule({
+              tenantId,
+              entityType: config.entityType.name,
+              conditions: combinedConditions as any,
+              countOnly: true
+            });
+            liveMatchedCount = typeof matchCount === 'number' ? matchCount : 0;
+          } catch (err) {
+            logger.error({ err, configId }, 'Failed to calculate live matched audience');
+          }
+        }
       }
 
       const responseStats = {
@@ -534,6 +621,8 @@ export class VoiceRoutingController {
         avgResponseTimeMs,
         datasets: config.entityType ? [config.entityType.name] : [],
         totalDatasetRecords,
+        liveMatchedCount,
+        liveUnmatchedCount: Math.max(0, totalDatasetRecords - liveMatchedCount),
         rulesCount: config.rules.length,
         providerBreakdown,
         ruleStats,
