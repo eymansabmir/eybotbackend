@@ -25,8 +25,14 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
     switch (msg.type) {
       case NodeType.SEND_TEXT:
       case NodeType.ASK_QUESTION:
-      case NodeType.ASK_FILE:
-        return this.api.sendText(waId, p['message'] as string);
+      case NodeType.ASK_FILE: {
+        let message = p['message'] as string;
+        const footer = p['footer'] as string | undefined;
+        if (footer) {
+          message += `\n\n_${footer}_`; // Using italics for a distinct footer look
+        }
+        return this.api.sendText(waId, message);
+      }
       case NodeType.SEND_IMAGE:
         return this.api.sendImage(waId, p['url'] as string, p['caption'] as string | undefined);
       case NodeType.SEND_VIDEO:
