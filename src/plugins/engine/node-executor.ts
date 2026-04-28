@@ -8,6 +8,7 @@ import { GraphTraverser } from './graph-traverser';
 import type { OutboundMessage } from './engine.interface';
 import type { WaitingFor } from '../../features/session/session.entity';
 import { ISO_TO_NATIVE_NAME } from '../i18n/languages';
+import { MUTATION_STRATEGIES, type MutationStrategy } from './mutation-strategies';
 
 export interface VariableMutation {
   scope: 'session' | 'contact';
@@ -987,12 +988,19 @@ export class NodeExecutor {
     }
 
     if (interaction?.mode === 'input' && userInput !== undefined) {
-      const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, branchKey: b.id })) ?? [];
+      const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, label: b.title, branchKey: b.id })) ?? [];
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
+      
       if (interaction.input?.variableName && interaction.input?.variableScope) {
-        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+        // Save the label/title if available, otherwise fallback to the ID/userInput
+        const valueToSave = selected?.label ?? userInput;
+        mutations.push({ 
+          scope: interaction.input.variableScope as 'session' | 'contact', 
+          key: interaction.input.variableName as string, 
+          value: valueToSave 
+        });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
@@ -1023,12 +1031,19 @@ export class NodeExecutor {
     }
 
     if (interaction?.mode === 'input' && userInput !== undefined) {
-      const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, branchKey: r.id }))) ?? [];
+      const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, label: r.title, branchKey: r.id }))) ?? [];
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
+      
       if (interaction.input?.variableName && interaction.input?.variableScope) {
-        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+        // Save the label/title if available, otherwise fallback to the ID/userInput
+        const valueToSave = selected?.label ?? userInput;
+        mutations.push({ 
+          scope: interaction.input.variableScope as 'session' | 'contact', 
+          key: interaction.input.variableName as string, 
+          value: valueToSave 
+        });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
@@ -1215,15 +1230,22 @@ export class NodeExecutor {
     return this.defaultResult(node, passed ? 'yes' : 'no', enteredAt, traverser);
   }
 
+
+
   private handleSetVariable(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser,
   ): NodeExecutionResult {
-    const assignments = (node.data['assignments'] ?? []) as Array<{ variable: string; value: string; scope: 'session' | 'contact' }>;
-    const mutations: VariableMutation[] = assignments.map(a => ({
-      scope: a.scope,
-      key: a.variable,
-      value: this.text(a.value, ctx),
-    }));
+    const assignments = (node.data['assignments'] ?? []) as any[];
+    const mutations: VariableMutation[] = assignments.map(a => {
+        const strategy = (MUTATION_STRATEGIES[a.type] || MUTATION_STRATEGIES.value) as MutationStrategy;
+        const value = strategy(a.value, a.systemVariable, ctx, this.resolver);
+
+        return {
+            scope: a.scope || 'session',
+            key: a.variable,
+            value: value,
+        };
+    });
     return this.defaultResult(node, 'default', enteredAt, traverser, [], mutations);
   }
 
