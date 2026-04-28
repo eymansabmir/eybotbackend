@@ -3,13 +3,26 @@ import { NodeType } from './node-types.enum';
 import { ConditionExpressionSchema } from './condition.schema';
 import { VariableAssignmentSchema, InputTypeSchema, ValidationRuleSchema } from './variable.schema';
 import { NodeInteractionSchema } from './node-interaction.schema';
+ 
+const UrlOrVariableSchema = z.string().refine(
+  (val) => {
+    if (val.includes('{{') && val.includes('}}')) return true;
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: 'Invalid URL or variable placeholder' }
+);
 
 const SendTextDataSchema = z.object({
   message: z.string(),
 });
 
 const SendMediaDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   caption: z.string().optional(),
   mediaId: z.string().optional(),
 });
@@ -55,7 +68,7 @@ const SendListDataSchema = z.object({
 });
 
 const SendDocumentDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   caption: z.string().optional(),
   filename: z.string().optional(),
 });
@@ -108,12 +121,12 @@ const SendCarouselDataSchema = z.object({
   cards: z.array(
     z.object({
       headerType: z.enum(['image', 'video']),
-      url: z.string().url(),
+      url: UrlOrVariableSchema,
       bodyText: z.string().max(160).optional(),
       buttonType: z.enum(['cta_url', 'quick_reply']).optional(),
       ctaUrlButton: z.object({
         displayText: z.string().max(20),
-        url: z.string().url(),
+        url: UrlOrVariableSchema,
       }).optional(),
       quickReplyButtons: z.array(
         z.object({
@@ -183,7 +196,7 @@ const HumanHandoffDataSchema = z.object({
 });
 
 const WebhookDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   body: z.string().optional(),
@@ -198,7 +211,7 @@ const WebhookDataSchema = z.object({
 });
 
 const HttpRequestDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'CONNECT', 'OPTIONS', 'TRACE']).default('GET'),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),

@@ -4,6 +4,7 @@ import { FlowController } from './flow.controller';
 export function createFlowRouter(controller: FlowController): Router {
   const router = Router();
   router.post('/', controller.createFlow);
+  router.post('/import', controller.importFlow);
   router.get('/', controller.getFlows);
   router.get('/:id', controller.getFlowById);
   router.put('/:id', controller.updateFlow);

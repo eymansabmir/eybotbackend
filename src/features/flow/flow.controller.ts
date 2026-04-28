@@ -126,4 +126,17 @@ export class FlowController {
       res.json({ success: true });
     } catch (err) { next(err); }
   };
+
+  importFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { orgId } = req.query; // Fallback to query if not in body
+      const data = req.body;
+      const targetOrgId = (data.orgId || orgId || '68b08633907a113536238290') as string;
+      
+      logger.info({ orgId: targetOrgId }, 'Importing flow');
+      const flow = await this.flowService.importFlow(data, targetOrgId);
+      logger.info({ flowId: flow.id }, 'Flow imported');
+      res.status(201).json(flow);
+    } catch (err) { next(err); }
+  };
 }
