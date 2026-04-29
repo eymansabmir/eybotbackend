@@ -23,6 +23,7 @@ export interface RoutingConfigView {
   id: string;
   tenantId: string;
   entityTypeId: string | null;
+  entityTypeIds: string[];
   name: string;
   rules: RoutingRuleView[];
   createdAt: Date;
@@ -45,7 +46,8 @@ export interface IVoiceRoutingRepository {
   deleteConfig(id: string, tenantId: string): Promise<void>;
   findConfigByName(name: string, tenantId: string): Promise<string | null>;
   invalidateConfigCache(configId: string, tenantId: string): Promise<void>;
-  createConfig(data: { tenantId: string; name: string; entityTypeId?: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
+  createConfig(data: { tenantId: string; name: string; entityTypeId?: string; entityTypeIds?: string[]; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
+  updateConfig(id: string, data: { name?: string; entityTypeIds?: string[]; description?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>>;
   getRuleById(ruleId: string): Promise<RoutingRuleView | null>;
   recordEvent(data: {
     tenantId: string;
@@ -62,6 +64,10 @@ export interface IVoiceRoutingRepository {
     durationMs?: number;
     metadata?: any;
   }): Promise<void>;
+  getOrchestrationStatsData(tenantId: string, configId: string): Promise<{ config: any; providers: any[]; allEvents: any[] } | null>;
+  listVoiceAgents(tenantId: string, credentialId?: string): Promise<any[]>;
+  upsertVoiceAgent(data: { id?: string; tenantId: string; credentialId: string; providerName: string; config: any; isActive?: boolean }): Promise<any>;
+  deleteVoiceAgent(id: string, tenantId: string): Promise<void>;
 }
 
 export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
@@ -108,6 +114,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       id: config.id,
       tenantId: config.tenantId,
       entityTypeId: config.entityTypeId,
+      entityTypeIds: config.entityTypeIds || [],
       name: config.name,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
@@ -137,12 +144,16 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         tenantId: true,
         name: true,
         entityTypeId: true,
+        entityTypeIds: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    return configs as any;
+    return configs.map(c => ({
+      ...c,
+      entityTypeIds: c.entityTypeIds || []
+    })) as any;
   }
 
   async upsertRule(data: {
@@ -232,7 +243,7 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     }
   }
 
-  async createConfig(data: { tenantId: string; name: string; entityTypeId?: string; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
+  async createConfig(data: { tenantId: string; name: string; entityTypeId?: string; entityTypeIds?: string[]; description?: string; type?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
     const config = await this.prisma.routingConfig.create({
       data: {
         tenantId: data.tenantId,
@@ -241,12 +252,39 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
         type: (data.type as any) || 'AUTOMATIC',
         status: (data.status as any) || 'ACTIVE',
         entityTypeId: data.entityTypeId,
+        entityTypeIds: data.entityTypeIds || (data.entityTypeId ? [data.entityTypeId] : []),
       },
     });
     return {
       id: config.id,
       tenantId: config.tenantId,
       entityTypeId: config.entityTypeId,
+      entityTypeIds: config.entityTypeIds || [],
+      name: config.name,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
+    };
+  }
+
+  async updateConfig(id: string, data: { name?: string; entityTypeIds?: string[]; description?: string; status?: string }): Promise<Omit<RoutingConfigView, 'rules'>> {
+    const config = await this.prisma.routingConfig.update({
+      where: { id },
+      data: {
+        name: data.name,
+        entityTypeIds: data.entityTypeIds,
+        entityTypeId: data.entityTypeIds?.[0],
+        description: data.description,
+        status: (data.status as any),
+      },
+    });
+
+    await this.invalidateConfigCache(config.id, config.tenantId);
+
+    return {
+      id: config.id,
+      tenantId: config.tenantId,
+      entityTypeId: config.entityTypeId,
+      entityTypeIds: config.entityTypeIds || [],
       name: config.name,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
@@ -292,5 +330,83 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
     } catch (err) {
       logger.error({ err, traceId: data.traceId }, 'Failed to record orchestration event');
     }
+  }
+
+  async getOrchestrationStatsData(tenantId: string, configId: string): Promise<{ config: any; providers: any[]; allEvents: any[]; allDatasets: any[] } | null> {
+    const config = await this.prisma.routingConfig.findUnique({
+      where: { id: configId, tenantId },
+      include: {
+        rules: { orderBy: { priority: 'asc' } },
+        entityType: true, // Legacy single link
+      },
+    });
+
+    if (!config) {
+      return null;
+    }
+
+    const providers = await this.prisma.voiceProvider.findMany({ where: { tenantId } });
+
+    // Fetch all datasets linked to this orchestration
+    const datasetIds = config.entityTypeIds || (config.entityTypeId ? [config.entityTypeId] : []);
+    const allDatasets = await this.prisma.entityType.findMany({
+      where: { id: { in: datasetIds } }
+    });
+
+    const allEvents = await this.prisma.voiceOrchestrationEvent.findMany({
+      where: { tenantId, routingConfigId: configId },
+      select: {
+        id: true,
+        step: true,
+        matchedRuleId: true,
+        voiceProviderId: true,
+        accepted: true,
+        durationMs: true,
+        status: true,
+        metadata: true,
+      },
+    });
+
+    return { config, providers, allEvents, allDatasets };
+  }
+
+  async listVoiceAgents(tenantId: string, credentialId?: string): Promise<any[]> {
+    return this.prisma.voiceProvider.findMany({
+      where: {
+        tenantId,
+        ...(credentialId ? { credentialId } : {}),
+      },
+      include: {
+        credential: {
+          select: { name: true, type: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async upsertVoiceAgent(data: { id?: string; tenantId: string; credentialId: string; providerName: string; config: any; isActive?: boolean }): Promise<any> {
+    return this.prisma.voiceProvider.upsert({
+      where: { id: data.id || '00000000-0000-0000-0000-000000000000' },
+      create: {
+        tenantId: data.tenantId,
+        credentialId: data.credentialId,
+        providerName: data.providerName,
+        config: data.config,
+        isActive: data.isActive ?? true,
+      },
+      update: {
+        credentialId: data.credentialId,
+        providerName: data.providerName,
+        config: data.config,
+        isActive: data.isActive ?? true,
+      },
+    });
+  }
+
+  async deleteVoiceAgent(id: string, tenantId: string): Promise<void> {
+    await this.prisma.voiceProvider.delete({
+      where: { id, tenantId },
+    });
   }
 }

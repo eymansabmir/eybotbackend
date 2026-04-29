@@ -39,7 +39,6 @@ export class EntityQueryService {
       `;
       logger.info({ tenantId: input.tenantId, entityType: input.entityType, countQuery, params }, 'Audience count query');
       const result = await this.entityRepo.queryRaw<{ count: string | number | bigint }>(countQuery, ...params);
-      logger.info({ rawResult: result }, 'Audience count raw result');
       const firstRow = result[0] as any;
       if (!firstRow) return 0;
 

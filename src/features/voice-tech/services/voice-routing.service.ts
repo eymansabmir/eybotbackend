@@ -16,6 +16,11 @@ export class VoiceRoutingService {
     private readonly credentialService?: ICredentialService,
   ) { }
 
+  private async safeRecordEvent(input: RoutingExecutionInput, data: any) {
+    if (input.skipIntermediateEvents) return;
+    await this.routingRepo.recordEvent(data).catch(() => {});
+  }
+
   async route(input: RoutingExecutionInput): Promise<{
     matchedRuleId: string | null;
     action: unknown;
@@ -31,7 +36,7 @@ export class VoiceRoutingService {
       routingConfigId: input.routingConfigId,
     };
 
-    await this.routingRepo.recordEvent({
+    await this.safeRecordEvent(input, {
       ...baseEvent,
       step: 'STEP_3_SERVICE_PROCESSING',
       metadata: {
@@ -52,7 +57,7 @@ export class VoiceRoutingService {
       'Voice orchestration step',
     );
 
-    const config = await this.routingRepo.getRoutingConfig(input.routingConfigId, input.tenantId);
+    const config = input.preloadedConfig || await this.routingRepo.getRoutingConfig(input.routingConfigId, input.tenantId);
     if (!config) {
       throw new NotFoundError('RoutingConfig', input.routingConfigId);
     }
@@ -63,7 +68,7 @@ export class VoiceRoutingService {
       entityTypeId: config.entityTypeId,
     };
 
-    await this.routingRepo.recordEvent({
+    await this.safeRecordEvent(input, {
       ...orchestrationContext,
       step: 'STEP_4_ROUTING_CONFIG_LOADED',
       metadata: {
@@ -98,7 +103,7 @@ export class VoiceRoutingService {
     let matchedRule = sortedRules.find((rule) => {
       const matched = ConditionEvaluator.evaluate(rule.conditions, evalContext);
       
-      this.routingRepo.recordEvent({
+      this.safeRecordEvent(input, {
         ...orchestrationContext,
         step: 'STEP_5_RULE_EVALUATED',
         matchedRuleId: rule.id,
@@ -107,7 +112,7 @@ export class VoiceRoutingService {
           matched,
           priority: rule.priority,
         }
-      }).catch(() => {}); // Fire and forget
+      });
 
       logger.info(
         {
@@ -124,7 +129,7 @@ export class VoiceRoutingService {
     });
 
     if (!matchedRule) {
-      await this.routingRepo.recordEvent({
+      await this.safeRecordEvent(input, {
         ...orchestrationContext,
         step: 'STEP_6_NO_RULE_MATCH',
       });
@@ -144,7 +149,7 @@ export class VoiceRoutingService {
       };
     }
 
-    await this.routingRepo.recordEvent({
+    await this.safeRecordEvent(input, {
       ...orchestrationContext,
       step: 'STEP_6_RULE_MATCHED',
       matchedRuleId: matchedRule.id,
@@ -163,7 +168,7 @@ export class VoiceRoutingService {
     );
 
     if (!input.executeProvider) {
-      await this.routingRepo.recordEvent({
+      await this.safeRecordEvent(input, {
         ...orchestrationContext,
         step: 'STEP_7_PROVIDER_EXECUTION_SKIPPED',
         matchedRuleId: matchedRule.id,
@@ -190,7 +195,7 @@ export class VoiceRoutingService {
     const selectedVoiceProvider = this.getVoiceProviderName(matchedRule.action);
     const selectedExecutionProvider = this.getExecutionProviderName(matchedRule.action, request.transport);
 
-    await this.routingRepo.recordEvent({
+    await this.safeRecordEvent(input, {
       ...orchestrationContext,
       step: 'STEP_7_ROUTING_REDIRECTION_DECIDED',
       matchedRuleId: matchedRule.id,
@@ -218,9 +223,9 @@ export class VoiceRoutingService {
     );
 
     const provider = this.voiceProvidersPlugin.get(selectedExecutionProvider);
-    const providerConfig = await this.resolveProviderConfig(input.tenantId, matchedRule.action);
+    const providerConfig = await this.resolveProviderConfig(input, matchedRule.action);
 
-    await this.routingRepo.recordEvent({
+    await this.safeRecordEvent(input, {
       ...orchestrationContext,
       step: 'STEP_8_PROVIDER_INVOCATION_START',
       matchedRuleId: matchedRule.id,
@@ -399,34 +404,50 @@ export class VoiceRoutingService {
     return action.runtimeConfig ?? {};
   }
 
-  private async resolveProviderConfig(orgId: string, action: RoutingAction): Promise<Record<string, unknown>> {
+  private async resolveProviderConfig(input: RoutingExecutionInput, action: RoutingAction): Promise<Record<string, unknown>> {
     const baseConfig = this.getProviderConfig(action);
+    const orgId = input.tenantId;
+
     if (!this.credentialService) {
       return baseConfig;
     }
 
     const mergedConfig: Record<string, unknown> = { ...baseConfig };
 
+    // 1. Voice Credentials
     const expectedVoiceType = this.resolveVoiceCredentialType(action);
     if (!expectedVoiceType) {
       throw new ValidationError(`Unsupported voice provider: ${action.voiceProvider}`);
     }
-    const voiceSecret = await this.credentialService.decryptSecret(orgId, action.voiceCredentialId, expectedVoiceType);
-    Object.assign(mergedConfig, voiceSecret);
+
+    if (input.preloadedCredentials?.[action.voiceCredentialId]) {
+      Object.assign(mergedConfig, input.preloadedCredentials[action.voiceCredentialId]);
+    } else {
+      const voiceSecret = await this.credentialService.decryptSecret(orgId, action.voiceCredentialId, expectedVoiceType);
+      Object.assign(mergedConfig, voiceSecret);
+    }
     mergedConfig['voiceCredentialId'] = action.voiceCredentialId;
 
+    // 2. Telephony Credentials
     const expectedTelephonyType = this.resolveTelephonyCredentialType(action);
     if (!expectedTelephonyType) {
       throw new ValidationError(`Unsupported telephony provider: ${action.telephonyProvider}`);
     }
-    const telephonySecret = await this.credentialService.decryptSecret(orgId, action.telephonyCredentialId, expectedTelephonyType);
-    mergedConfig['telephonySecret'] = telephonySecret;
+
+    if (input.preloadedCredentials?.[action.telephonyCredentialId]) {
+      mergedConfig['telephonySecret'] = input.preloadedCredentials[action.telephonyCredentialId];
+      logger.debug({ traceId: input.traceId, credId: action.telephonyCredentialId }, 'Using pre-loaded telephony credential');
+    } else {
+      const telephonySecret = await this.credentialService.decryptSecret(orgId, action.telephonyCredentialId, expectedTelephonyType);
+      mergedConfig['telephonySecret'] = telephonySecret;
+      logger.debug({ traceId: input.traceId, credId: action.telephonyCredentialId }, 'Decrypted telephony credential (fallback)');
+    }
     mergedConfig['telephonyCredentialId'] = action.telephonyCredentialId;
 
     return mergedConfig;
   }
 
-  private resolveVoiceCredentialType(action: RoutingAction): CredentialType | null {
+  public resolveVoiceCredentialType(action: RoutingAction): CredentialType | null {
     const provider = action.voiceProvider.toLowerCase();
     if (provider === 'elevenlabs') return 'ELEVENLABS';
     if (provider === 'sarvam') return 'SARVAM';
@@ -434,7 +455,7 @@ export class VoiceRoutingService {
     return null;
   }
 
-  private resolveTelephonyCredentialType(action: RoutingAction): CredentialType | null {
+  public resolveTelephonyCredentialType(action: RoutingAction): CredentialType | null {
     const provider = action.telephonyProvider?.toLowerCase();
     if (provider === 'exotel') return 'EXOTEL';
     if (provider === 'sarvam') return 'SARVAM';

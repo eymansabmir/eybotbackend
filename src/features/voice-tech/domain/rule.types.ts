@@ -37,6 +37,9 @@ export interface RoutingExecutionInput {
   phone?: string;
   executeProvider?: boolean;
   traceId?: string;
+  preloadedConfig?: any; // Optimized for bulk execution
+  skipIntermediateEvents?: boolean; // Reduce DB noise in bulk mode
+  preloadedCredentials?: Record<string, any>; // Cache for provider secrets
 }
 
 export interface RoutingActionResult {

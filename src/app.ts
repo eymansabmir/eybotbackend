@@ -67,6 +67,7 @@ import { HttpRequestController } from './features/integrations/http-request/http
 import { CredentialController } from './features/credentials';
 import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
+import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
@@ -88,6 +89,7 @@ import { createCredentialRouter } from './features/credentials';
 import { createWhatsAppIntegrationRouter } from './features/integrations/whatsapp/whatsapp-integration.route';
 import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
+import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
 
 import { errorHandler } from './middleware/error.middleware';
@@ -205,6 +207,7 @@ export function createApp(registry: IPluginRegistry): Application {
     workerPlugin,
     redisPlugin,
   );
+  const voiceProviderController = new VoiceProviderController(voiceRoutingRepo);
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
@@ -225,6 +228,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
+  app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));
   app.use('/api/voice-tech/providers/exotel', createExotelCallbackRouter(exotelCallbackController));
 
   if (WEBHOOK_URL) {

@@ -10,6 +10,7 @@ export function createVoiceEntityRouter(controller: VoiceEntityController): Rout
   router.post('/ingest-file/async', controller.ingestFileAsync);
   router.get('/ingest/jobs/:jobId', controller.getIngestJobStatus);
   router.get('/attributes', controller.listAttributes);
+  router.post('/attributes', controller.upsertAttribute);
   router.get('/entity-types', controller.listEntityTypes);
   router.delete('/entity-types/:name', controller.deleteEntityType);
 

@@ -1,7 +1,7 @@
 import type { RoutingConditionNode } from './condition.types';
 
 export class QueryBuilder {
-  private static readonly SAFE_FIELD_PATTERN = /^[a-zA-Z0-9_\.]+$/;
+  private static readonly SAFE_FIELD_PATTERN = /^[a-zA-Z0-9_\. ]+$/;
 
   private static formatField(field: string, activeEntityType?: string): string | null {
     if (!this.SAFE_FIELD_PATTERN.test(field)) {

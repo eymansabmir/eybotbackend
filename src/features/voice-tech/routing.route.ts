@@ -15,6 +15,7 @@ export function createVoiceRoutingRouter(controller: VoiceRoutingController): Ro
   router.post('/rules/toggle-active', controller.toggleRuleActive);
   router.delete('/rules/:id', controller.deleteRule);
   router.get('/:id', controller.getConfig);
+  router.patch('/:id', controller.updateConfig);
   router.delete('/:id', controller.deleteConfig);
 
   return router;

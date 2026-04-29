@@ -46,7 +46,7 @@ async function main() {
   });
 
   const providerGroups = new Map<string, any[]>();
-  const providerEvents = allEvents.filter(e => e.step === 'STEP_9_PROVIDER_RESULT');
+  const providerEvents = allEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT');
 
   providerEvents.forEach((e: any) => {
     let providerName = e.matchedRuleId ? ruleToProviderMap.get(e.matchedRuleId) : null;

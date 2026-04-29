@@ -19,6 +19,7 @@ import {
   ListRoutingConfigsSchema,
   QueryByRuleSchema,
   ToggleRuleActiveSchema,
+  UpdateRoutingConfigSchema,
   UpsertRoutingRuleSchema,
   VoiceCampaignStatusSchema,
 } from './domain/voice-tech.schemas';
@@ -72,10 +73,18 @@ export class VoiceRoutingController {
   createConfig = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const payload = CreateRoutingConfigSchema.parse(req.body);
-      // Repository doesn't have createConfig yet, so we use prisma directly or add it.
-      // Let's assume we add it to the repository for consistency.
-      const config = await (this.routingRepo as any).createConfig?.(payload);
+      const config = await this.routingRepo.createConfig(payload);
       res.status(201).json({ success: true, config });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateConfig = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const payload = UpdateRoutingConfigSchema.parse({ ...req.params, ...req.body });
+      const config = await this.routingRepo.updateConfig(payload.id, payload);
+      res.json({ success: true, config });
     } catch (err) {
       next(err);
     }
@@ -447,61 +456,41 @@ export class VoiceRoutingController {
         return;
       }
 
-      const prisma = (this.routingRepo as any).prisma;
+      const statsData = await this.routingRepo.getOrchestrationStatsData(tenantId, configId);
 
-      // 1. Fetch Routing Config with Rules & EntityType
-      const config = await prisma.routingConfig.findUnique({
-        where: { id: configId, tenantId },
-        include: {
-          rules: { orderBy: { priority: 'asc' } },
-          entityType: true,
-        },
-      });
-
-      if (!config) {
+      if (!statsData) {
         res.status(404).json({ success: false, message: 'Routing config not found' });
         return;
       }
 
+      const { config, providers, allEvents, allDatasets } = statsData;
+
       // 3. Load all Voice Providers to map IDs to human-readable names
-      const providers = await prisma.voiceProvider.findMany({ where: { tenantId } });
       const providerMap = new Map<string, string>(providers.map((p: any) => [p.id, p.providerName]));
 
-      // 4. Fetch ALL events for this config (not just STEP_9)
-      const allEvents = await prisma.voiceOrchestrationEvent.findMany({
-        where: { tenantId, routingConfigId: configId },
-        select: {
-          id: true,
-          step: true,
-          matchedRuleId: true,
-          voiceProviderId: true,
-          accepted: true,
-          durationMs: true,
-          status: true,
-          metadata: true,
-        },
-      });
+      // 4. Categorize events by outcome
+      const successfulEvents = allEvents.filter((e: any) => 
+        e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')
+      );
+      
+      const failureEvents = allEvents.filter((e: any) => 
+        e.step === 'STEP_ERROR_PROVIDER_INVOCATION' || 
+        e.step === 'STEP_ERROR_EXECUTION_FAILED' ||
+        (e.step === 'STEP_9_PROVIDER_RESULT' && e.accepted === false)
+      );
 
-      // 4. Categorize events by step
-      const providerResultEvents = allEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT');
-      const providerErrorEvents = allEvents.filter((e: any) => e.step === 'STEP_ERROR_PROVIDER_INVOCATION');
       const ruleMatchedEvents = allEvents.filter((e: any) => 
         e.step === 'STEP_6_RULE_MATCHED' || e.step === 'STEP_ERROR_PHONE_NOT_DISCOVERED'
       );
       const noMatchEvents = allEvents.filter((e: any) => e.step === 'STEP_6_NO_RULE_MATCH');
-      // "System Errors" should ideally reflect technical failures, not data issues like missing phones
-      const systemErrorEvents = allEvents.filter((e: any) => 
-        e.step === 'STEP_ERROR_PROVIDER_INVOCATION' || 
-        e.step === 'STEP_ERROR_EXECUTION_FAILED'
-      );
 
       // 5. Compute aggregate KPIs
-      const totalCallsProcessed = providerResultEvents.length + providerErrorEvents.length;
+      const totalCallsProcessed = successfulEvents.length;
       const totalRulesMatched = ruleMatchedEvents.length;
       const totalNoMatch = noMatchEvents.length;
-      const totalErrors = systemErrorEvents.length;
+      const totalErrors = failureEvents.length;
 
-      const durationsMs = providerResultEvents
+      const durationsMs = successfulEvents
         .map((e: any) => e.durationMs)
         .filter((d: any): d is number => typeof d === 'number' && d > 0);
       const avgResponseTimeMs = durationsMs.length > 0
@@ -521,7 +510,7 @@ export class VoiceRoutingController {
       });
 
       // 6. Provider Breakdown (Rule-First Attribution)
-      const providerEvents = [...providerResultEvents, ...systemErrorEvents];
+      const providerEvents = [...successfulEvents, ...failureEvents];
       const providerGroups = new Map<string, any[]>();
       
       providerEvents.forEach((e: any) => {
@@ -533,14 +522,14 @@ export class VoiceRoutingController {
           providerName = providerMap.get(e.voiceProviderId)!.toLowerCase();
         }
 
-        // 3. Last Resort: Metadata
         if (!providerName) {
           const metadata = (e.metadata || {}) as any;
           providerName = (metadata?.voiceProvider || metadata?.provider || 'unknown').toLowerCase();
         }
         
-        if (!providerGroups.has(providerName)) providerGroups.set(providerName, []);
-        providerGroups.get(providerName)!.push(e);
+        const finalProviderName = providerName || 'unknown';
+        if (!providerGroups.has(finalProviderName)) providerGroups.set(finalProviderName, []);
+        providerGroups.get(finalProviderName)!.push(e);
       });
 
       const providerBreakdown = Array.from(providerGroups.entries()).map(([providerName, events]) => {
@@ -582,28 +571,42 @@ export class VoiceRoutingController {
           }
         } catch (_) { /* ignore malformed conditions */ }
 
-        // Live matching for this specific rule (Unique Records)
+        // Live matching for this specific rule (Unique Records across all datasets)
         let liveMatchCount = 0;
-        if (config.entityType && rule.conditions) {
+        if (allDatasets.length > 0 && rule.conditions) {
           try {
             const strippedConditions = this.stripPrefixes(rule.conditions);
+            
+            const matchResults = await Promise.all(allDatasets.map(ds => 
+              this.entityQueryService.fetchEntitiesByRule({
+                tenantId,
+                entityType: ds.name,
+                conditions: strippedConditions as any,
+                countOnly: true
+              })
+            ));
 
-            const matchCount = await this.entityQueryService.fetchEntitiesByRule({
-              tenantId,
-              entityType: config.entityType.name,
-              conditions: strippedConditions as any,
-              countOnly: true
-            });
-            liveMatchCount = typeof matchCount === 'number' ? matchCount : 0;
+            liveMatchCount = matchResults.reduce((sum, res) => sum + (typeof res === 'number' ? res : 0), 0);
           } catch (err) {
-            logger.warn({ err, ruleId: rule.id }, 'Failed to calc live match for rule');
+            logger.warn({ err, ruleId: rule.id }, 'Failed to calc live match for rule across multi-datasets');
           }
         }
 
         // Execution metrics (Events)
         const ruleEvents = providerEvents.filter((e: any) => e.matchedRuleId === rule.id);
-        const callCount = ruleEvents.length;
-        const successCount = ruleEvents.filter((e: any) => e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')).length;
+        
+        // A "Call" is an attempt to reach a provider (Step 9 or Error)
+        const successCount = ruleEvents.filter((e: any) => 
+          e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')
+        ).length;
+        
+        const failedCount = ruleEvents.filter((e: any) => 
+          e.step === 'STEP_ERROR_PROVIDER_INVOCATION' || 
+          e.step === 'STEP_ERROR_EXECUTION_FAILED' ||
+          (e.step === 'STEP_9_PROVIDER_RESULT' && e.accepted === false)
+        ).length;
+
+        const totalAttempted = successCount + failedCount;
 
         // Resolve provider name (consistent with distribution chart)
         const providerName = ruleToProviderMap.get(rule.id) || 'unknown';
@@ -614,42 +617,45 @@ export class VoiceRoutingController {
           isActive: rule.isActive,
           conditionsSummary,
           provider: providerName,
-          matchCount: liveMatchCount, // Use the live dataset count
-          callCount, // Use the actual processed events count
+          matchCount: liveMatchCount, 
+          callCount: totalAttempted, // Total attempted calls
           successCount,
-          successRate: callCount > 0 ? Math.round((successCount / callCount) * 100) : 0,
+          failedCount,
+          successRate: totalAttempted > 0 ? Math.round((successCount / totalAttempted) * 100) : 0,
         };
       }));
 
-      // 8. Live Dataset Analysis (Union of all rules)
+      // 8. Live Dataset Analysis (Union of all datasets and rules)
       let totalDatasetRecords = 0;
       let liveMatchedCount = 0;
       
-      if (config.entityType) {
-        if (Array.isArray(config.entityType.data)) {
-          totalDatasetRecords = config.entityType.data.length;
+      // Sum up records from all associated datasets
+      allDatasets.forEach(ds => {
+        if (Array.isArray(ds.data)) {
+          totalDatasetRecords += ds.data.length;
         }
+      });
 
-        // Combined conditions for Matched Audience
-
-        // Combine all rule conditions with OR to find the total "Matched Audience" coverage
-        // We include all rules (even drafts) for the analysis view
-        if (config.rules.length > 0) {
-          const combinedConditions = config.rules.length === 1 
-            ? this.stripPrefixes(config.rules[0].conditions) 
-            : { operator: 'OR', children: config.rules.map(r => this.stripPrefixes(r.conditions)) };
-          
-          try {
-            const matchCount = await this.entityQueryService.fetchEntitiesByRule({
+      // Calculate combined Matched Audience across all associated datasets
+      if (config.rules.length > 0 && allDatasets.length > 0) {
+        const combinedConditions = config.rules.length === 1 
+          ? this.stripPrefixes(config.rules[0].conditions) 
+          : { operator: 'OR', children: config.rules.map((r: any) => this.stripPrefixes(r.conditions)) };
+        
+        try {
+          // Iterate through each dataset and sum the matches
+          const matchResults = await Promise.all(allDatasets.map(ds => 
+            this.entityQueryService.fetchEntitiesByRule({
               tenantId,
-              entityType: config.entityType.name,
+              entityType: ds.name,
               conditions: combinedConditions as any,
               countOnly: true
-            });
-            liveMatchedCount = typeof matchCount === 'number' ? matchCount : 0;
-          } catch (err) {
-            logger.error({ err, configId }, 'Failed to calculate live matched audience');
-          }
+            })
+          ));
+
+          liveMatchedCount = matchResults.reduce((sum, res) => sum + (typeof res === 'number' ? res : 0), 0);
+        } catch (err) {
+          logger.error({ err, configId }, 'Failed to calculate live matched audience across multi-datasets');
         }
       }
 
@@ -663,7 +669,7 @@ export class VoiceRoutingController {
         totalNoMatch,
         totalErrors,
         avgResponseTimeMs,
-        datasets: config.entityType ? [config.entityType.name] : [],
+        datasets: allDatasets.map(ds => ds.name),
         totalDatasetRecords,
         liveMatchedCount,
         liveUnmatchedCount: Math.max(0, totalDatasetRecords - liveMatchedCount),

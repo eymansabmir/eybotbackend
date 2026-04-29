@@ -307,6 +307,8 @@ model Credential {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
+  voiceProviders VoiceProvider[]
+
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
   @@map("credentials")
@@ -348,12 +350,14 @@ model EntityAttribute {
 model VoiceProvider {
   id           String        @id @default(uuid())
   tenantId     String
+  credentialId String?
   providerName String
   config       Json
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   
+  credential   Credential?   @relation(fields: [credentialId], references: [id], onDelete: Cascade)
   routingRules RoutingRule[]
   events       VoiceOrchestrationEvent[]
 
@@ -375,7 +379,8 @@ enum ConfigStatus {
 model RoutingConfig {
   id           String        @id @default(uuid())
   tenantId     String
-  entityTypeId String? // Link to dataset
+  entityTypeId String? // Link to primary dataset
+  entityTypeIds String[] @default([]) // Support for multiple datasets
   name         String
   description  String?
   type         RoutingType   @default(AUTOMATIC)

@@ -93,26 +93,78 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
         continue;
       }
 
-      let cursorId: string | null = null;
+      // Pre-load routing config ONCE per job to avoid N+1 database queries
+      const config = await routingRepo.getRoutingConfig(job.routingConfigId, job.tenantId);
+      if (!config) {
+        logger.error({ jobId: job.jobId, configId: job.routingConfigId }, 'VoiceCampaignConsumer: config not found');
+        continue;
+      }
 
-      while (true) {
-        const whereCursor = cursorId ? 'AND id > $3' : '';
-        const query = `SELECT id, attributes FROM "Entity" WHERE "tenantId" = $1 AND "entityTypeId" = $2 ${whereCursor} ORDER BY id ASC LIMIT ${batchSize}`;
-        let rows: CampaignEntityRow[];
-        if (cursorId) {
-          rows = await entityRepo.queryRaw<CampaignEntityRow>(query, job.tenantId, entityTypeId, cursorId);
-        } else {
-          rows = await entityRepo.queryRaw<CampaignEntityRow>(query, job.tenantId, entityTypeId);
-        }
+      // Fetch all entities for this type
+      const query = `
+        SELECT val->>'id' as id, val as attributes
+        FROM (
+          SELECT jsonb_array_elements(COALESCE(data, '[]'::jsonb)) as val
+          FROM "datasets"
+          WHERE "tenantId" = $1
+          AND "id" = $2
+        ) as sub
+      `;
+      
+      const rows = await entityRepo.queryRaw<CampaignEntityRow>(query, job.tenantId, entityTypeId);
 
-        if (rows.length === 0) {
-          break;
-        }
+      if (rows.length === 0) {
+        continue;
+      }
 
-        cursorId = rows[rows.length - 1]!.id;
-        const concurrentChunks = chunkArray(rows, concurrency);
+      const concurrentChunks = chunkArray(rows, 100); // Increased concurrency to 100
 
-        for (const concurrentBatch of concurrentChunks) {
+      // Pre-load and decrypt all credentials used in the orchestration rules
+      const preloadedCredentials: Record<string, any> = {};
+      if (credentialService) {
+        const credentialIds = new Set<string>();
+        config.rules.forEach((r: any) => {
+          if (r.voiceProviderId) credentialIds.add(r.voiceProviderId);
+          if (r.action?.voiceCredentialId) credentialIds.add(r.action.voiceCredentialId);
+          if (r.action?.telephonyCredentialId) credentialIds.add(r.action.telephonyCredentialId);
+        });
+
+        await Promise.all(Array.from(credentialIds).map(async (credId) => {
+          try {
+            // We'll try to decrypt it. We might not know the exact type here, 
+            // but the credential service usually handles the mapping if we pass a generic type or check the rule.
+            // For now, let's just pre-load them as the routing service will fall back if missing.
+            // To be safe, we'll only pre-load if we can determine the type.
+            const rule = config.rules.find((r: any) => 
+              r.voiceProviderId === credId || 
+              r.action?.voiceCredentialId === credId || 
+              r.action?.telephonyCredentialId === credId
+            );
+            if (rule) {
+              const type = (rule.voiceProviderId === credId || rule.action?.voiceCredentialId === credId)
+                ? voiceRoutingService.resolveVoiceCredentialType(rule.action)
+                : voiceRoutingService.resolveTelephonyCredentialType(rule.action);
+              
+              if (type) {
+                preloadedCredentials[credId] = await credentialService.decryptSecret(job.tenantId, credId, type);
+              }
+            }
+          } catch (err) {
+            logger.warn({ credId, err }, 'VoiceCampaignConsumer: Failed to pre-load credential');
+          }
+        }));
+        
+        logger.info(
+          { 
+            tenantId: job.tenantId, 
+            loadedCount: Object.keys(preloadedCredentials).length,
+            credentialIds: Object.keys(preloadedCredentials)
+          }, 
+          'VoiceCampaignConsumer: Pre-loaded credentials for bulk execution'
+        );
+      }
+
+      for (const concurrentBatch of concurrentChunks) {
           await Promise.all(
             concurrentBatch.map(async (entity: CampaignEntityRow) => {
               progress.totalProcessed += 1;
@@ -124,6 +176,7 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
               }
 
               try {
+                // Pass the pre-loaded config to avoid redundant DB lookups
                 const routeResult = await voiceRoutingService.route({
                   tenantId: job.tenantId,
                   routingConfigId: job.routingConfigId,
@@ -132,6 +185,9 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
                   phone,
                   userId: entity.id,
                   executeProvider: true,
+                  preloadedConfig: config as any,
+                  skipIntermediateEvents: true, // Optimization: reduce DB load
+                  preloadedCredentials // New optimization: avoid per-call decryption
                 });
 
                 if (!routeResult.matchedRuleId) {
@@ -153,7 +209,6 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
 
           progress.updatedAt = new Date().toISOString();
           await setProgress(redis, job.jobId, progress);
-        }
       }
     }
 

@@ -99,8 +99,17 @@ export const CreateRoutingConfigSchema = z.object({
   tenantId: z.string().min(1),
   name: z.string().min(1),
   entityTypeId: z.string().optional(),
+  entityTypeIds: z.array(z.string()).optional(),
   description: z.string().optional(),
   type: z.enum(['MANUAL', 'AUTOMATIC']).optional(),
+});
+
+export const UpdateRoutingConfigSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().optional(),
+  entityTypeIds: z.array(z.string()).optional(),
+  description: z.string().optional(),
+  status: z.enum(['ACTIVE', 'DRAFT', 'PAUSED']).optional(),
 });
 
 export const QueryByRuleSchema = z.object({
@@ -126,4 +135,35 @@ export const ToggleRuleActiveSchema = z.object({
   entityType: z.string().min(1), // Required to find recipients for the campaign
   isActive: z.boolean(),
   triggerCampaign: z.boolean().optional(),
+});
+
+export const UpsertAttributeSchema = z.object({
+  tenantId: z.string().min(1),
+  entityType: z.string().min(1),
+  key: z.string().min(1),
+  type: z.enum(['string', 'number', 'boolean', 'date', 'enum']),
+  operators: z.array(z.string()).optional(),
+  values: z.array(z.unknown()).optional(),
+});
+
+export const DEFAULT_OPERATORS_BY_TYPE: Record<string, string[]> = {
+  number: ['<', '>', '<=', '>=', 'equals', 'not_equals'],
+  date:   ['<', '>', '<=', '>=', 'equals', 'not_equals'],
+  string: ['equals', 'not_equals', 'contains', 'in', 'not_in'],
+  enum:   ['equals', 'not_equals', 'in', 'not_in'],
+  boolean:['equals', 'not_equals'],
+};
+
+export const UpsertVoiceProviderSchema = z.object({
+  id: z.string().uuid().optional(),
+  tenantId: z.string().min(1),
+  credentialId: z.string().uuid(),
+  providerName: z.string().min(1),
+  config: z.record(z.unknown()).default({}),
+  isActive: z.boolean().optional(),
+});
+
+export const ListVoiceProvidersSchema = z.object({
+  tenantId: z.string().min(1),
+  credentialId: z.string().uuid().optional(),
 });

@@ -1,12 +1,14 @@
 import type { ExecuteVoiceProviderInput, VoiceCallRecipient, VoiceProviderAdapter } from '../../voice-providers.interface';
 import { logger } from '../../../../utils/logger';
 
+/*
 interface ExotelCallResponse {
   Call?: {
     Sid?: string;
     Status?: string;
   };
 }
+*/
 
 export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
   readonly name = 'exotel';
@@ -93,6 +95,7 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
     });
   }
 
+/*
   private async post(
     url: string,
     accountSid: string,
@@ -117,6 +120,7 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
 
     return response.json() as Promise<ExotelCallResponse>;
   }
+*/
   
   async initiateCall(input: ExecuteVoiceProviderInput): Promise<{ accepted: boolean; providerReference?: string; message?: string }> {
     const traceId = input.traceId;

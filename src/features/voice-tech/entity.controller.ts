@@ -11,6 +11,8 @@ import {
   IngestFileSchema,
   ListAttributesSchema,
   VoiceIngestStatusSchema,
+  UpsertAttributeSchema,
+  DEFAULT_OPERATORS_BY_TYPE,
 } from './domain/voice-tech.schemas';
 
 const JOB_STATUS_PREFIX = 'voice:ingest:job:';
@@ -178,6 +180,35 @@ export class VoiceEntityController {
           ? `Dataset "${name}" and its associated stack were deleted` 
           : `Dataset "${name}" deleted` 
       });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  upsertAttribute = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const payload = UpsertAttributeSchema.parse(req.body);
+      
+      const entityTypeId = await this.entityRepo.findEntityTypeId(payload.tenantId, payload.entityType);
+      if (!entityTypeId) {
+        res.status(404).json({ success: false, message: `Dataset "${payload.entityType}" not found` });
+        return;
+      }
+
+      await this.entityRepo.upsertAttribute({
+        tenantId: payload.tenantId,
+        entityTypeId,
+        key: payload.key,
+        type: payload.type,
+        operators: (payload.operators && payload.operators.length > 0) 
+          ? payload.operators 
+          : (DEFAULT_OPERATORS_BY_TYPE[payload.type] || []),
+        values: payload.values || [],
+      });
+
+      await this.entityRepo.invalidateAttributesCache(payload.tenantId, payload.entityType);
+
+      res.json({ success: true, message: `Attribute "${payload.key}" upserted` });
     } catch (err) {
       next(err);
     }
