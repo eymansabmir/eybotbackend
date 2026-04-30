@@ -213,7 +213,13 @@ export class NodeExecutor {
 
       case NodeType.SEND_TEXT:
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [
-          { type: currentNode.type, payload: { message: this.text(currentNode.data['message'] as string, context) } },
+          {
+            type: currentNode.type,
+            payload: {
+              message: this.text(currentNode.data['message'] as string, context),
+              footer: currentNode.data['footer'] ? this.text(currentNode.data['footer'] as string, context) : undefined,
+            }
+          },
         ]);
 
       case NodeType.SEND_IMAGE:
@@ -460,11 +466,11 @@ export class NodeExecutor {
       mode,
       ...(mode === 'voice'
         ? {
-            voiceAction:
-              data['voiceAction'] === 'create_transcription'
-                ? 'create_transcription' as const
-                : 'create_speech' as const,
-          }
+          voiceAction:
+            data['voiceAction'] === 'create_transcription'
+              ? 'create_transcription' as const
+              : 'create_speech' as const,
+        }
         : {}),
       credentialId: String(data['credentialId'] ?? ''),
       model: String(data['model'] ?? ''),
@@ -472,9 +478,9 @@ export class NodeExecutor {
       prompt: this.text(String(data['prompt'] ?? ''), ctx),
       messages: Array.isArray(data['messages'])
         ? data['messages'].map((m: any) => ({
-            role: m.role,
-            content: this.text(String(m.content ?? ''), ctx),
-          }))
+          role: m.role,
+          content: this.text(String(m.content ?? ''), ctx),
+        }))
         : undefined,
       tools: Array.isArray(data['tools']) ? data['tools'] : undefined,
       ...(resolvedAudioUrl ? { audioUrl: resolvedAudioUrl } : {}),
@@ -663,12 +669,12 @@ export class NodeExecutor {
 
     const responseMapping = Array.isArray(data['responseMapping'])
       ? (data['responseMapping'] as Array<Record<string, unknown>>)
-          .filter((item) => typeof item['jsonPath'] === 'string' && typeof item['variableName'] === 'string')
-          .map((item) => ({
-            jsonPath: item['jsonPath'] as string,
-            variableName: item['variableName'] as string,
-            scope: (item['scope'] === 'contact' ? 'contact' : 'session') as 'session' | 'contact',
-          }))
+        .filter((item) => typeof item['jsonPath'] === 'string' && typeof item['variableName'] === 'string')
+        .map((item) => ({
+          jsonPath: item['jsonPath'] as string,
+          variableName: item['variableName'] as string,
+          scope: (item['scope'] === 'contact' ? 'contact' : 'session') as 'session' | 'contact',
+        }))
       : undefined;
 
     const resolvedHeaders = resolveRecord(data['headers']);
@@ -721,9 +727,9 @@ export class NodeExecutor {
       const out: Record<string, unknown> = {};
       for (const [key, raw] of Object.entries(value)) {
         if (typeof raw === 'string') {
-           out[key] = this.text(raw, ctx);
+          out[key] = this.text(raw, ctx);
         } else {
-           out[key] = raw;
+          out[key] = raw;
         }
       }
       return Object.keys(out).length > 0 ? out : undefined;
@@ -731,17 +737,17 @@ export class NodeExecutor {
 
     const responseMapping = Array.isArray(data['responseMapping'])
       ? (data['responseMapping'] as Array<Record<string, unknown>>)
-          .filter(
-            (item) =>
-              typeof item['jsonPath'] === 'string' &&
-              typeof item['variableName'] === 'string' &&
-              (item['scope'] === 'session' || item['scope'] === 'contact'),
-          )
-          .map((item) => ({
-            jsonPath: item['jsonPath'] as string,
-            variableName: item['variableName'] as string,
-            scope: item['scope'] as 'session' | 'contact',
-          }))
+        .filter(
+          (item) =>
+            typeof item['jsonPath'] === 'string' &&
+            typeof item['variableName'] === 'string' &&
+            (item['scope'] === 'session' || item['scope'] === 'contact'),
+        )
+        .map((item) => ({
+          jsonPath: item['jsonPath'] as string,
+          variableName: item['variableName'] as string,
+          scope: item['scope'] as 'session' | 'contact',
+        }))
       : undefined;
 
     const action = (data['action'] as string) || 'insert_row';
@@ -797,12 +803,12 @@ export class NodeExecutor {
       tableId: this.text(String(data['tableId'] ?? ''), ctx),
       viewId: data['viewId'] ? this.text(String(data['viewId']), ctx) : undefined,
       filter: data['filter'] ? this.text(String(data['filter']), ctx) : undefined,
-      filterConditions: Array.isArray(data['filterConditions']) 
+      filterConditions: Array.isArray(data['filterConditions'])
         ? data['filterConditions'].map((c: any) => ({
-            field: c.field,
-            operator: c.operator,
-            value: this.text(String(c.value ?? ''), ctx)
-          }))
+          field: c.field,
+          operator: c.operator,
+          value: this.text(String(c.value ?? ''), ctx)
+        }))
         : undefined,
       returnType: data['returnType'] as any,
       ...(data['fields'] ? { fields: resolveFields(data['fields']) } : {}),
@@ -825,8 +831,8 @@ export class NodeExecutor {
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
-      
-      const options = items.flatMap((item: any) => 
+
+      const options = items.flatMap((item: any) =>
         (item.buttons ?? []).map((b: any) => ({ id: b.id, label: b.text, branchKey: b.branchKey }))
       );
 
@@ -844,21 +850,21 @@ export class NodeExecutor {
         nextNodeId: node.id,
         outboundMessages: messages,
         variableMutations: [], isTerminal: false,
-        waitForInput: { 
-          type: 'choice', 
-          options, 
-          defaultBranchKey: interaction.input?.defaultBranchKey, 
-          variableName: interaction.input?.variableName, 
-          variableScope: interaction.input?.variableScope, 
-          since, 
-          timeoutAt 
+        waitForInput: {
+          type: 'choice',
+          options,
+          defaultBranchKey: interaction.input?.defaultBranchKey,
+          variableName: interaction.input?.variableName,
+          variableScope: interaction.input?.variableScope,
+          since,
+          timeoutAt
         },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
 
     if (interaction?.mode === 'input' && userInput !== undefined) {
-      const options = items.flatMap((item: any) => 
+      const options = items.flatMap((item: any) =>
         (item.buttons ?? []).map((b: any) => ({ id: b.id, branchKey: b.branchKey }))
       );
       const selected = (options as any[]).find((o: any) => o.id === userInput);
@@ -941,7 +947,7 @@ export class NodeExecutor {
     if (userInput === undefined) {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? 300) as number) * 1000);
-      
+
       // NPS is effectively a choice node with 0-10
       const length = node.data['length'] ?? 10;
       const startsAt = node.data['startsAt'] ?? 1;
@@ -1058,7 +1064,7 @@ export class NodeExecutor {
       })),
     }));
 
-    const hasQuickReplies = (cards || []).some(card => 
+    const hasQuickReplies = (cards || []).some(card =>
       card.buttonType === 'quick_reply' && (card.quickReplyButtons?.length ?? 0) > 0
     );
 
@@ -1067,8 +1073,8 @@ export class NodeExecutor {
     if (hasQuickReplies && userInput === undefined) {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? 3600) as number) * 1000);
-      
-      const options = interaction?.input?.options ?? cards?.flatMap((card: any) => 
+
+      const options = interaction?.input?.options ?? cards?.flatMap((card: any) =>
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
           label: btn.title,
@@ -1080,21 +1086,21 @@ export class NodeExecutor {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { bodyText, cards } }],
         variableMutations: [], isTerminal: false,
-        waitForInput: { 
-          type: 'choice', 
-          options, 
-          defaultBranchKey: interaction?.input?.defaultBranchKey, 
-          variableName: interaction?.input?.variableName, 
-          variableScope: interaction?.input?.variableScope, 
-          since, 
-          timeoutAt 
+        waitForInput: {
+          type: 'choice',
+          options,
+          defaultBranchKey: interaction?.input?.defaultBranchKey,
+          variableName: interaction?.input?.variableName,
+          variableScope: interaction?.input?.variableScope,
+          since,
+          timeoutAt
         },
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
 
     if (hasQuickReplies && userInput !== undefined) {
-      const options = interaction?.input?.options ?? cards?.flatMap((card: any) => 
+      const options = interaction?.input?.options ?? cards?.flatMap((card: any) =>
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
           id: btn.id,
           branchKey: btn.id
@@ -1105,10 +1111,10 @@ export class NodeExecutor {
       const branchKey = selected?.branchKey ?? interaction?.input?.defaultBranchKey ?? 'timeout';
       const mutations: VariableMutation[] = [];
       if (interaction?.input?.variableName && interaction?.input?.variableScope) {
-        mutations.push({ 
-          scope: interaction.input.variableScope as 'session' | 'contact', 
-          key: interaction.input.variableName as string, 
-          value: userInput 
+        mutations.push({
+          scope: interaction.input.variableScope as 'session' | 'contact',
+          key: interaction.input.variableName as string,
+          value: userInput
         });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
@@ -1170,8 +1176,8 @@ export class NodeExecutor {
     const options = baseOptions;
 
     if (baseOptions.length === 0) {
-        // No localization configured, just proceed silently or inform
-        return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
+      // No localization configured, just proceed silently or inform
+      return this.defaultResult(node, 'default', enteredAt, traverser, [{ type: node.type, payload: { message: "No languages configured." } }]);
     }
 
     const langVar = variableName || variable || 'selected_language';
@@ -1289,7 +1295,7 @@ export class NodeExecutor {
     const variableKey = data.variable || data.variableName; // Support both for safety
     const variableScope = data.variableScope || 'session';
     const config = (data.config as any[]) || [];
-    
+
     const resolvedMessage = this.text(data.message as string || "Please send the requested media.", ctx);
     const resolvedInvalidMessage = this.text(data.invalidMessage as string || "Invalid media type. Please try again.", ctx);
 
