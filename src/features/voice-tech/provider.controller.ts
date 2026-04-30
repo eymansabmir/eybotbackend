@@ -32,8 +32,9 @@ export class VoiceProviderController {
 
   deleteAgent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
-      const tenantId = req.query.tenantId as string;
+      const id = req.params.id as string;
+      const tenantId = typeof req.query.tenantId === 'string' ? req.query.tenantId : '';
+      
       if (!id || !tenantId) {
         res.status(400).json({ success: false, message: 'Missing id or tenantId' });
         return;

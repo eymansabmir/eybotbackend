@@ -65,7 +65,6 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
 
   const retryCount = job.retryCount ?? 0;
   const maxRetries = job.maxRetries ?? DEFAULT_MAX_RETRIES;
-  const batchSize = Math.min(Math.max(Number(process.env.VOICE_CAMPAIGN_BATCH_SIZE ?? '500'), 50), 2000);
   const concurrency = Math.min(Math.max(Number(process.env.VOICE_CAMPAIGN_CALL_CONCURRENCY ?? '50'), 1), 200);
 
   const progress: CampaignProgress = {
@@ -117,7 +116,7 @@ export async function handleVoiceCampaignJob(data: unknown, registry: IPluginReg
         continue;
       }
 
-      const concurrentChunks = chunkArray(rows, 100); // Increased concurrency to 100
+      const concurrentChunks = chunkArray(rows, concurrency); // Increased concurrency to 100
 
       // Pre-load and decrypt all credentials used in the orchestration rules
       const preloadedCredentials: Record<string, any> = {};

@@ -577,7 +577,7 @@ export class VoiceRoutingController {
           try {
             const strippedConditions = this.stripPrefixes(rule.conditions);
             
-            const matchResults = await Promise.all(allDatasets.map(ds => 
+            const matchResults = await Promise.all(allDatasets.map((ds: any) => 
               this.entityQueryService.fetchEntitiesByRule({
                 tenantId,
                 entityType: ds.name,
@@ -586,7 +586,7 @@ export class VoiceRoutingController {
               })
             ));
 
-            liveMatchCount = matchResults.reduce((sum, res) => sum + (typeof res === 'number' ? res : 0), 0);
+            liveMatchCount = matchResults.reduce((sum: number, res: any) => sum + (typeof res === 'number' ? res : 0), 0);
           } catch (err) {
             logger.warn({ err, ruleId: rule.id }, 'Failed to calc live match for rule across multi-datasets');
           }
@@ -630,7 +630,7 @@ export class VoiceRoutingController {
       let liveMatchedCount = 0;
       
       // Sum up records from all associated datasets
-      allDatasets.forEach(ds => {
+      allDatasets.forEach((ds: any) => {
         if (Array.isArray(ds.data)) {
           totalDatasetRecords += ds.data.length;
         }
@@ -644,7 +644,7 @@ export class VoiceRoutingController {
         
         try {
           // Iterate through each dataset and sum the matches
-          const matchResults = await Promise.all(allDatasets.map(ds => 
+          const matchResults = await Promise.all(allDatasets.map((ds: any) => 
             this.entityQueryService.fetchEntitiesByRule({
               tenantId,
               entityType: ds.name,
@@ -653,29 +653,89 @@ export class VoiceRoutingController {
             })
           ));
 
-          liveMatchedCount = matchResults.reduce((sum, res) => sum + (typeof res === 'number' ? res : 0), 0);
+          liveMatchedCount = matchResults.reduce((sum: number, res: any) => sum + (typeof res === 'number' ? res : 0), 0);
         } catch (err) {
           logger.error({ err, configId }, 'Failed to calculate live matched audience across multi-datasets');
         }
       }
+
+      // 9. Status Distribution
+      const statusCounts = new Map<string, number>();
+      allEvents.forEach((e: any) => {
+        if (e.status) {
+          const statusStr = String(e.status);
+          statusCounts.set(statusStr, (statusCounts.get(statusStr) || 0) + 1);
+        }
+      });
+      const statusDistribution = Array.from(statusCounts.entries()).map(([status, count]) => ({
+        status,
+        count,
+        color: status.startsWith('2') ? '#10B981' : status.startsWith('4') ? '#EF4444' : '#3B82F6'
+      }));
+
+      // 10. Funnel Data
+      const steps = [
+        'STEP_1_API_RECEIVED',
+        'STEP_2_ACTION_RECEIVED',
+        'STEP_6_RULE_MATCHED',
+        'STEP_9_PROVIDER_RESULT'
+      ];
+      const funnel = steps.map(step => ({
+        step: step.replace('STEP_', '').replace(/_/g, ' '),
+        count: allEvents.filter((e: any) => e.step === step).length
+      }));
+
+      // 11. Trend (last 24h by hour)
+      const trend = Array.from({ length: 24 }).map((_, i) => {
+        const hour = new Date();
+        hour.setHours(hour.getHours() - (23 - i), 0, 0, 0);
+        const eventsInHour = successfulEvents.filter((e: any) => {
+          const d = new Date(e.createdAt);
+          return d.getTime() >= hour.getTime() && d.getTime() < hour.getTime() + 3600000;
+        });
+        const avgLat = eventsInHour.length > 0 
+          ? Math.round(eventsInHour.reduce((sum: number, e: any) => sum + (e.durationMs || 0), 0) / eventsInHour.length)
+          : 0;
+        return {
+          time: hour.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          latency: avgLat
+        };
+      });
+
+      // 12. Alerts (latest failures)
+      const alerts = failureEvents.slice(-5).map((e: any) => ({
+        provider: e.voiceProviderId ? (providerMap.get(e.voiceProviderId) || 'unknown') : 'unknown',
+        traceId: e.traceId,
+        message: e.message || 'Execution failed',
+        time: e.createdAt
+      })).reverse();
 
       const responseStats = {
         routingName: config.name,
         configStatus: config.status || 'ACTIVE',
         routingType: config.type || 'AUTOMATIC',
         totalEvents: allEvents.length,
+        totalRequests: allEvents.length,
         totalCallsProcessed,
         totalRulesMatched,
         totalNoMatch,
         totalErrors,
         avgResponseTimeMs,
-        datasets: allDatasets.map(ds => ds.name),
+        avgLatency: avgResponseTimeMs,
+        successRate: totalCallsProcessed > 0 ? Math.round((successfulEvents.length / totalCallsProcessed) * 100) : 0,
+        entitiesMatched: liveMatchedCount,
+        datasets: allDatasets.map((ds: any) => ds.name),
         totalDatasetRecords,
         liveMatchedCount,
         liveUnmatchedCount: Math.max(0, totalDatasetRecords - liveMatchedCount),
         rulesCount: config.rules.length,
         providerBreakdown,
+        providers: providerBreakdown.map(p => ({ ...p, name: p.providerName, volume: p.callCount, errorRate: Math.round((p.errorCount / (p.callCount || 1)) * 100) })),
         ruleStats,
+        statusDistribution,
+        funnel,
+        trend,
+        alerts
       };
 
       res.json({ success: true, stats: responseStats });

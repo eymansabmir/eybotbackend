@@ -64,7 +64,7 @@ export interface IVoiceRoutingRepository {
     durationMs?: number;
     metadata?: any;
   }): Promise<void>;
-  getOrchestrationStatsData(tenantId: string, configId: string): Promise<{ config: any; providers: any[]; allEvents: any[] } | null>;
+  getOrchestrationStatsData(tenantId: string, configId: string): Promise<{ config: any; providers: any[]; allEvents: any[]; allDatasets: any[] } | null>;
   listVoiceAgents(tenantId: string, credentialId?: string): Promise<any[]>;
   upsertVoiceAgent(data: { id?: string; tenantId: string; credentialId: string; providerName: string; config: any; isActive?: boolean }): Promise<any>;
   deleteVoiceAgent(id: string, tenantId: string): Promise<void>;
