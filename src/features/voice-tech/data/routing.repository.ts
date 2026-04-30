@@ -150,10 +150,33 @@ export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
       },
     });
 
-    return configs.map(c => ({
-      ...c,
-      entityTypeIds: c.entityTypeIds || []
-    })) as any;
+    const results = await Promise.all(configs.map(async (c) => {
+      // Get all events for this config to compute stats
+      const events = await this.prisma.voiceOrchestrationEvent.findMany({
+        where: { routingConfigId: c.id },
+        select: { step: true, accepted: true, message: true }
+      });
+
+      const successfulCalls = events.filter(e => 
+        e.step === 'STEP_9_PROVIDER_RESULT' && (e.accepted === true || e.message === 'CALL_ACCEPTED')
+      ).length;
+
+      const totalAttempts = events.filter(e => 
+        ['STEP_9_PROVIDER_RESULT', 'STEP_ERROR_PROVIDER_INVOCATION', 'STEP_ERROR_EXECUTION_FAILED'].includes(e.step)
+      ).length;
+
+      // Throughput is roughly calls per hour if we had time range, 
+      // but for summary we can just show total calls or a scaled version
+      // For now, let's just return the success rate and call count
+      return {
+        ...c,
+        entityTypeIds: c.entityTypeIds || [],
+        successRate: totalAttempts > 0 ? Math.round((successfulCalls / totalAttempts) * 100) : 0,
+        throughput: totalAttempts
+      };
+    }));
+
+    return results as any;
   }
 
   async upsertRule(data: {
