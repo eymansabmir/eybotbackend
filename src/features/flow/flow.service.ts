@@ -88,6 +88,15 @@ export class FlowService implements IFlowService {
         throw new ValidationError('Cannot update published flow structure. Archive it first.');
       }
     }
+    // Normalize media URLs to storage paths for consistency with createFlow.
+    // Full GCS/CDN URLs are stripped back to relative paths so the executor
+    // can resolve them correctly at runtime via the storage plugin.
+    if (updates.nodes && updates.nodes.length > 0) {
+      const tempEntity = existing.clone();
+      tempEntity.nodes = updates.nodes;
+      this.normalizeNodeUrls(tempEntity);
+      updates.nodes = tempEntity.nodes;
+    }
     return this.flowRepo.update(id, updates);
   }
 
@@ -262,6 +271,14 @@ export class FlowService implements IFlowService {
         const items = (node.data['items'] as any[]) ?? [];
         items.forEach((item: any) => {
           item.imageUrl = normalize(item.imageUrl);
+        });
+      } else if (node.type === NodeType.SEND_CAROUSEL) {
+        const cards = (node.data['cards'] as any[]) ?? [];
+        cards.forEach((card: any) => {
+          card.url = normalize(card.url);
+          if (card.ctaUrlButton?.url) {
+            card.ctaUrlButton.url = normalize(card.ctaUrlButton.url);
+          }
         });
       }
     }

@@ -865,8 +865,9 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
-      if (interaction.input?.variableName && interaction.input?.variableScope) {
-        mutations.push({ scope: interaction.input.variableScope as 'session' | 'contact', key: interaction.input.variableName as string, value: userInput });
+      if (interaction.input?.variableName) {
+        const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
+        mutations.push({ scope, key: interaction.input.variableName as string, value: userInput });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
@@ -974,6 +975,11 @@ export class NodeExecutor {
     const footer = node.data['footer'] ? this.text(node.data['footer'] as string, ctx) : undefined;
     const interaction = node.data['interaction'] as any;
 
+    logger.debug(
+      { nodeId: node.id, hasInteraction: !!interaction, mode: interaction?.mode, variableName: interaction?.input?.variableName, variableScope: interaction?.input?.variableScope, userInput },
+      '[handleButtons] Interaction state'
+    );
+
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
       const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
@@ -993,19 +999,30 @@ export class NodeExecutor {
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
       
-      if (interaction.input?.variableName && interaction.input?.variableScope) {
+      if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
+        const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
         mutations.push({ 
-          scope: interaction.input.variableScope as 'session' | 'contact', 
+          scope, 
           key: interaction.input.variableName as string, 
           value: valueToSave 
         });
+        logger.info(
+          { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
+          '[handleButtons] Storing user choice in variable'
+        );
+      } else {
+        logger.warn(
+          { nodeId: node.id, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope },
+          '[handleButtons] No variableName or variableScope configured — user choice will NOT be stored'
+        );
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
     }
 
+    logger.debug({ nodeId: node.id }, '[handleButtons] Falling through to output-only mode (no interaction.mode=input)');
     return this.defaultResult(node, 'default', enteredAt, traverser, [
       { type: node.type, payload: { body, footer, buttons: node.data['buttons'] } },
     ]);
@@ -1016,6 +1033,11 @@ export class NodeExecutor {
   ): NodeExecutionResult {
     const body = this.text(node.data['body'] as string, ctx);
     const interaction = node.data['interaction'] as any;
+
+    logger.debug(
+      { nodeId: node.id, hasInteraction: !!interaction, mode: interaction?.mode, variableName: interaction?.input?.variableName, variableScope: interaction?.input?.variableScope, userInput },
+      '[handleList] Interaction state'
+    );
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
@@ -1036,19 +1058,30 @@ export class NodeExecutor {
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
       
-      if (interaction.input?.variableName && interaction.input?.variableScope) {
+      if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
+        const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
         mutations.push({ 
-          scope: interaction.input.variableScope as 'session' | 'contact', 
+          scope, 
           key: interaction.input.variableName as string, 
           value: valueToSave 
         });
+        logger.info(
+          { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
+          '[handleList] Storing user choice in variable'
+        );
+      } else {
+        logger.warn(
+          { nodeId: node.id, variableName: interaction.input?.variableName, variableScope: interaction.input?.variableScope },
+          '[handleList] No variableName or variableScope configured — user choice will NOT be stored'
+        );
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
       return { ...result, historyStep: { ...result.historyStep, userInput } };
     }
 
+    logger.debug({ nodeId: node.id }, '[handleList] Falling through to output-only mode (no interaction.mode=input)');
     return this.defaultResult(node, 'default', enteredAt, traverser, [
       { type: node.type, payload: { body, buttonTitle: node.data['buttonTitle'], sections: node.data['sections'] } },
     ]);
@@ -1119,9 +1152,10 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction?.input?.defaultBranchKey ?? 'timeout';
       const mutations: VariableMutation[] = [];
-      if (interaction?.input?.variableName && interaction?.input?.variableScope) {
+      if (interaction?.input?.variableName) {
+        const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
         mutations.push({ 
-          scope: interaction.input.variableScope as 'session' | 'contact', 
+          scope, 
           key: interaction.input.variableName as string, 
           value: userInput 
         });

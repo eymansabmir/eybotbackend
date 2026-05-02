@@ -4,17 +4,23 @@ import { ConditionExpressionSchema } from './condition.schema';
 import { VariableAssignmentSchema, InputTypeSchema, ValidationRuleSchema } from './variable.schema';
 import { NodeInteractionSchema } from './node-interaction.schema';
  
-const UrlOrVariableSchema = z.string().refine(
+const UrlOrVariableSchema = z.string().min(1, 'Media URL or variable is required').refine(
   (val) => {
+    // Allow variable placeholders: {{var_name}}
     if (val.includes('{{') && val.includes('}}')) return true;
+    // Allow full URLs (http/https)
     try {
       new URL(val);
       return true;
     } catch {
-      return false;
+      // no-op
     }
+    // Allow storage paths (relative paths from cloud storage, e.g. "bot-media/xyz.jpg")
+    // These are non-empty strings that don't start with a protocol but are valid file paths
+    const isStoragePath = /^[a-zA-Z0-9_\-\/\.]+$/.test(val.trim());
+    return isStoragePath;
   },
-  { message: 'Invalid URL or variable placeholder' }
+  { message: 'Must be a valid URL, a variable placeholder ({{var}}), or a storage file path' }
 );
 
 const SendTextDataSchema = z.object({
@@ -277,7 +283,7 @@ const SendCardsDataSchema = z.object({
   items: z.array(
     z.object({
       id: z.string(),
-      imageUrl: z.string().optional(),
+      imageUrl: UrlOrVariableSchema.optional(),
       title: z.string().optional(),
       description: z.string().optional(),
        buttons: z.array(

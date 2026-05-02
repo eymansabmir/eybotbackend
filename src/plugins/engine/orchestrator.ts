@@ -266,6 +266,10 @@ export class FlowOrchestrator {
 
       for (const m of stepResult.variableMutations) {
         this.applyMutation(m, session, contact, allContactMutations);
+        logger.debug({ scope: m.scope, key: m.key, value: m.value }, '[Orchestrator] Applied variable mutation');
+      }
+      if (stepResult.variableMutations.length > 0) {
+        logger.debug({ sessionVars: session.variables }, '[Orchestrator] Session variables after mutations');
       }
 
       if (stepResult.languageChanged) {
