@@ -136,14 +136,23 @@ export class FlowService implements IFlowService {
 
   async syncTranslations(id: string): Promise<void> {
     const flow = await this.flowRepo.findByIdOrFail(id);
-    const localization = (flow.settings as any)?.localization;
+    const nodes = (flow.nodes as any[]) || [];
 
-    if (localization?.isEnabled && Array.isArray(localization.languages) && localization.languages.length > 0) {
+    // Collect all unique languages from all Language Selection nodes
+    const allLanguages = new Set<string>();
+    nodes.filter(n => n.type === NodeType.LANGUAGE).forEach(n => {
+      const langs = n.data?.languages;
+      if (Array.isArray(langs)) langs.forEach(l => allLanguages.add(l));
+    });
+
+    const targetLanguages = Array.from(allLanguages);
+
+    if (targetLanguages.length > 0) {
       try {
         await syncFlowTranslations(
           this.flowRepo,
           id,
-          localization.languages
+          targetLanguages
         );
       } catch (err: unknown) {
         const reason = err instanceof Error ? err.message : 'Unknown translation error';

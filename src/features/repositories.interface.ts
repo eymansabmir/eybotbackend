@@ -6,3 +6,6 @@ export const INBOUND_HANDLER = 'InboundHandler' as const;
 
 export const CREDENTIAL_REPOSITORY = 'CredentialRepository' as const;
 export const CREDENTIAL_SERVICE = 'CredentialService' as const;
+
+export const VOICE_ENTITY_REPOSITORY = 'VoiceEntityRepository' as const;
+export const VOICE_ROUTING_REPOSITORY = 'VoiceRoutingRepository' as const;

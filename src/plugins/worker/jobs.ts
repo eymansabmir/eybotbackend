@@ -59,3 +59,22 @@ export interface RecipientJob {
   variables: Record<string, any>;
   orgId: string;
 }
+
+export interface VoiceIngestJob {
+  jobId: string;
+  tenantId: string;
+  entityType: string;
+  filePath?: string;
+  records?: Array<Record<string, unknown>>;
+  retryCount?: number;
+  maxRetries?: number;
+}
+
+export interface VoiceCampaignJob {
+  jobId: string;
+  tenantId: string;
+  routingConfigId: string;
+  entityTypes: string[];
+  retryCount?: number;
+  maxRetries?: number;
+}

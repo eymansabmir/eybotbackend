@@ -38,3 +38,6 @@ export type { IAnthropicPlugin } from './anthropic';
 
 export { DEEPSEEK_PLUGIN } from './deepseek';
 export type { IDeepSeekPlugin } from './deepseek';
+
+export { VOICE_PROVIDERS_PLUGIN } from './voice-providers';
+export type { IVoiceProvidersPlugin, VoiceProviderAdapter, ExecuteVoiceProviderInput } from './voice-providers';
