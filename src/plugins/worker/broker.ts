@@ -89,6 +89,12 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_DISPATCH, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.WA_STATUS, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_INGEST, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_INGEST_RETRY, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_INGEST_DLQ, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN_RETRY, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN_DLQ, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -115,6 +121,40 @@ export class RabbitMQBroker {
     // WhatsApp Status Updates (delivered/read callbacks from Meta)
     await ch.assertQueue('wa.status.q', { durable: true });
     await ch.bindQueue('wa.status.q', EXCHANGES.WA_STATUS, '');
+
+    // Voice-tech Entity Ingestion
+    await ch.assertQueue('voice.ingest.q', { durable: true });
+    await ch.bindQueue('voice.ingest.q', EXCHANGES.VOICE_INGEST, '');
+
+    // Voice-tech retry queue (delayed redrive back to main queue)
+    await ch.assertQueue('voice.ingest.retry.q', {
+      durable: true,
+      arguments: {
+        'x-message-ttl': 15000,
+        'x-dead-letter-exchange': EXCHANGES.VOICE_INGEST,
+      },
+    });
+    await ch.bindQueue('voice.ingest.retry.q', EXCHANGES.VOICE_INGEST_RETRY, '');
+
+    // Voice-tech dead-letter queue
+    await ch.assertQueue('voice.ingest.dlq.q', { durable: true });
+    await ch.bindQueue('voice.ingest.dlq.q', EXCHANGES.VOICE_INGEST_DLQ, '');
+
+    // Voice-tech bulk campaign orchestration
+    await ch.assertQueue('voice.campaign.q', { durable: true });
+    await ch.bindQueue('voice.campaign.q', EXCHANGES.VOICE_CAMPAIGN, '');
+
+    await ch.assertQueue('voice.campaign.retry.q', {
+      durable: true,
+      arguments: {
+        'x-message-ttl': 15000,
+        'x-dead-letter-exchange': EXCHANGES.VOICE_CAMPAIGN,
+      },
+    });
+    await ch.bindQueue('voice.campaign.retry.q', EXCHANGES.VOICE_CAMPAIGN_RETRY, '');
+
+    await ch.assertQueue('voice.campaign.dlq.q', { durable: true });
+    await ch.bindQueue('voice.campaign.dlq.q', EXCHANGES.VOICE_CAMPAIGN_DLQ, '');
 
     // Campaign: per-instance exclusive queue bound to fanout exchange.
     // Each running instance gets its own queue → every instance receives

@@ -7,6 +7,8 @@ import { handleImportJob } from './consumers/import.consumer';
 import { handleDispatchJob } from './consumers/dispatcher.consumer';
 import { handleExecutionJob } from './consumers/execution.consumer';
 import { handleStatusUpdateJob } from './consumers/status.consumer';
+import { handleVoiceIngestJob } from './consumers/voice-ingest.consumer';
+import { handleVoiceCampaignJob } from './consumers/voice-campaign.consumer';
 
 export class WorkerPlugin implements IPlugin, IWorkerPlugin {
   readonly name = 'worker';
@@ -40,6 +42,11 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
         await this.broker.consume('campaign.import.q', data => handleImportJob(data, registry), 1);
         await this.broker.consume('campaign.start.q', data => handleDispatchJob(data, registry), 5);
         await this.broker.consume('campaign.dispatch.q', data => handleExecutionJob(data, registry), 50);
+        await this.broker.consume('voice.campaign.q', data => handleVoiceCampaignJob(data, registry), 2);
+      }
+
+      if (role === 'all' || role === 'voice-tech') {
+        await this.broker.consume('voice.ingest.q', data => handleVoiceIngestJob(data, registry), 2);
       }
 
       if (role === 'all' || role === 'inbound' || role === 'status') {
