@@ -3,13 +3,32 @@ import { NodeType } from './node-types.enum';
 import { ConditionExpressionSchema } from './condition.schema';
 import { VariableAssignmentSchema, InputTypeSchema, ValidationRuleSchema } from './variable.schema';
 import { NodeInteractionSchema } from './node-interaction.schema';
+ 
+const UrlOrVariableSchema = z.string().min(1, 'Media URL or variable is required').refine(
+  (val) => {
+    // Allow variable placeholders: {{var_name}}
+    if (val.includes('{{') && val.includes('}}')) return true;
+    // Allow full URLs (http/https)
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      // no-op
+    }
+    // Allow storage paths (relative paths from cloud storage, e.g. "bot-media/xyz.jpg")
+    // These are non-empty strings that don't start with a protocol but are valid file paths
+    const isStoragePath = /^[a-zA-Z0-9_\-\/\.]+$/.test(val.trim());
+    return isStoragePath;
+  },
+  { message: 'Must be a valid URL, a variable placeholder ({{var}}), or a storage file path' }
+);
 
 const SendTextDataSchema = z.object({
   message: z.string(),
 });
 
 const SendMediaDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   caption: z.string().optional(),
   mediaId: z.string().optional(),
 });
@@ -55,7 +74,7 @@ const SendListDataSchema = z.object({
 });
 
 const SendDocumentDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   caption: z.string().optional(),
   filename: z.string().optional(),
 });
@@ -108,12 +127,12 @@ const SendCarouselDataSchema = z.object({
   cards: z.array(
     z.object({
       headerType: z.enum(['image', 'video']),
-      url: z.string().url(),
+      url: UrlOrVariableSchema,
       bodyText: z.string().max(160).optional(),
       buttonType: z.enum(['cta_url', 'quick_reply']).optional(),
       ctaUrlButton: z.object({
         displayText: z.string().max(20),
-        url: z.string().url(),
+        url: UrlOrVariableSchema,
       }).optional(),
       quickReplyButtons: z.array(
         z.object({
@@ -183,7 +202,7 @@ const HumanHandoffDataSchema = z.object({
 });
 
 const WebhookDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
   headers: z.record(z.string()).optional(),
   body: z.string().optional(),
@@ -198,7 +217,7 @@ const WebhookDataSchema = z.object({
 });
 
 const HttpRequestDataSchema = z.object({
-  url: z.string().url(),
+  url: UrlOrVariableSchema,
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'CONNECT', 'OPTIONS', 'TRACE']).default('GET'),
   headers: z.record(z.string()).optional(),
   queryParams: z.record(z.string()).optional(),
@@ -264,7 +283,7 @@ const SendCardsDataSchema = z.object({
   items: z.array(
     z.object({
       id: z.string(),
-      imageUrl: z.string().optional(),
+      imageUrl: UrlOrVariableSchema.optional(),
       title: z.string().optional(),
       description: z.string().optional(),
        buttons: z.array(

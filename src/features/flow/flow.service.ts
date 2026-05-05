@@ -18,6 +18,7 @@ export interface IFlowService {
   syncTranslations(id: string): Promise<void>;
   getFlowTranslation(flowId: string, language: string): Promise<any>;
   updateFlowTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
+  importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity>;
 }
 
 export interface ConfigureFlowPayload {
@@ -51,6 +52,24 @@ export class FlowService implements IFlowService {
     return this.flowRepo.create(entity);
   }
 
+  async importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity> {
+    const importData = {
+      ...data,
+      orgId,
+      status: 'draft' as const,
+      isConfigured: false,
+      name: data.name || 'Imported Bot',
+    };
+    
+    // Remove database-specific fields if present
+    delete importData.id;
+    delete (importData as any).createdAt;
+    delete (importData as any).updatedAt;
+    delete (importData as any).publishedAt;
+
+    return this.createFlow(importData);
+  }
+
   async getFlowById(id: string): Promise<FlowEntity> {
     return this.flowRepo.findByIdOrFail(id);
   }
@@ -68,6 +87,15 @@ export class FlowService implements IFlowService {
       if (hasUnsupportedUpdate) {
         throw new ValidationError('Cannot update published flow structure. Archive it first.');
       }
+    }
+    // Normalize media URLs to storage paths for consistency with createFlow.
+    // Full GCS/CDN URLs are stripped back to relative paths so the executor
+    // can resolve them correctly at runtime via the storage plugin.
+    if (updates.nodes && updates.nodes.length > 0) {
+      const tempEntity = existing.clone();
+      tempEntity.nodes = updates.nodes;
+      this.normalizeNodeUrls(tempEntity);
+      updates.nodes = tempEntity.nodes;
     }
     return this.flowRepo.update(id, updates);
   }
@@ -221,37 +249,46 @@ export class FlowService implements IFlowService {
 
   private normalizeNodeUrls(entity: FlowEntity): void {
     const base = env.BASE_MEDIA_URL;
+    const mediaNodeTypes = new Set([
+      NodeType.SEND_IMAGE,
+      NodeType.SEND_VIDEO,
+      NodeType.SEND_AUDIO,
+      NodeType.SEND_DOCUMENT,
+      NodeType.SEND_STICKER,
+    ]);
+
+    const normalize = (val: any) => {
+      if (typeof val !== 'string' || !val.startsWith('http') || (val.includes('{{') && val.includes('}}'))) {
+        return val;
+      }
+      try {
+        if (base && val.startsWith(base)) {
+          return val.replace(`${base}/`, '');
+        }
+        return new URL(val).pathname.replace(/^\/+/, '');
+      } catch {
+        return val;
+      }
+    };
+
     for (const node of entity.nodes) {
       if (!node.data) continue;
-      switch (node.type) {
-        case NodeType.SEND_IMAGE:
-        case NodeType.SEND_VIDEO:
-        case NodeType.SEND_AUDIO:
-        case NodeType.SEND_DOCUMENT:
-        case NodeType.SEND_STICKER:
-          if (node.data.url && typeof node.data.url === 'string') {
-            const url = node.data.url as string;
-            if (url.startsWith('http')) {
-              node.data.url = new URL(url).pathname.replace(/^\/+/, '');
-            } else if (base && url.startsWith(base)) {
-              node.data.url = url.replace(`${base}/`, '');
-            }
+
+      if (mediaNodeTypes.has(node.type as NodeType)) {
+        node.data.url = normalize(node.data.url);
+      } else if (node.type === NodeType.SEND_CARDS) {
+        const items = (node.data['items'] as any[]) ?? [];
+        items.forEach((item: any) => {
+          item.imageUrl = normalize(item.imageUrl);
+        });
+      } else if (node.type === NodeType.SEND_CAROUSEL) {
+        const cards = (node.data['cards'] as any[]) ?? [];
+        cards.forEach((card: any) => {
+          card.url = normalize(card.url);
+          if (card.ctaUrlButton?.url) {
+            card.ctaUrlButton.url = normalize(card.ctaUrlButton.url);
           }
-          break;
-        case NodeType.SEND_CARDS:
-          if (node.data.items && Array.isArray(node.data.items)) {
-            for (const item of node.data.items) {
-              if (item.imageUrl && typeof item.imageUrl === 'string') {
-                const url = item.imageUrl as string;
-                if (url.startsWith('http')) {
-                  item.imageUrl = new URL(url).pathname.replace(/^\/+/, '');
-                } else if (base && url.startsWith(base)) {
-                  item.imageUrl = url.replace(`${base}/`, '');
-                }
-              }
-            }
-          }
-          break;
+        });
       }
     }
   }
