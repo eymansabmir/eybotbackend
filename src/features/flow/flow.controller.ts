@@ -100,8 +100,9 @@ export class FlowController {
   syncTranslations = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = req.params['id'] as string;
-      logger.info({ flowId: id }, 'Synchronizing translations for flow');
-      await this.flowService.syncTranslations(id);
+      const { nodes } = req.body;
+      logger.info({ flowId: id, hasProvidedNodes: !!nodes }, 'Synchronizing translations for flow');
+      await this.flowService.syncTranslations(id, nodes);
       res.status(200).json({ success: true, message: 'Translations synchronized successfully' });
     } catch (err) { next(err); }
   };
