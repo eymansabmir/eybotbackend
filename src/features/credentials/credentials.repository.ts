@@ -1,5 +1,6 @@
 import { Prisma, type Credential, type CredentialType, type PrismaClient } from '@prisma/client';
 import { NotFoundError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 import type {
   CreateEncryptedCredentialInput,
   CredentialQueryOptions,
@@ -134,10 +135,23 @@ export class PrismaCredentialRepository implements ICredentialRepository {
       where.revokedAt = null;
     }
 
-    return this.prisma.credential.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-    });
+    try {
+      return await this.prisma.credential.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+      });
+    } catch (err) {
+      // If database enum values are behind code (migration not applied yet), avoid breaking the UI dropdowns.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError
+        && err.code === 'P2007'
+        && typeof options.type === 'string'
+      ) {
+        logger.warn({ orgId, type: options.type }, 'Credential list skipped due to enum mismatch; run Prisma migrations');
+        return [];
+      }
+      throw err;
+    }
   }
 
   async findActiveWhatsAppByBusinessNumber(waBusinessNumber: string): Promise<Credential | null> {

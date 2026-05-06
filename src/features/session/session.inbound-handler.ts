@@ -35,6 +35,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
     const { orgId, credentialId, message } = job;
+    console.log("STEP 3: SessionInboundHandler started processing job", { orgId, waId: message.waId, text: message.text });
     const { waId, waBusinessNumber, text } = message;
 
     const redis = this.redisPlugin.client;
@@ -65,6 +66,7 @@ export class SessionInboundHandler implements IInboundHandler {
       const { scopedFlows, unboundFlows } = this.partitionFlowsByCredential(publishedFlows, matchingCredential.id);
 
       const activeSession = await this.sessionRepo.findCurrentByWhatsApp(waBusinessNumber, waId);
+      console.log("STEP 4: DB query finished - Active session check", { exists: !!activeSession, sessionId: activeSession?.id });
       const outboundMessages: Array<{ type: string; payload: Record<string, unknown> }> = [];
       let sessionId: string | undefined;
 

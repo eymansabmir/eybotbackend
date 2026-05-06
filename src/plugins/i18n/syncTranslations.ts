@@ -148,6 +148,7 @@ export async function syncFlowTranslations(
       case NodeType.LOCATION_REQUEST:
       case NodeType.LANGUAGE:
         paths.push('data.message');
+        if (node.data.footer) paths.push('data.footer');
         break;
       case NodeType.MEDIA_CONDITIONAL:
         if (node.data.message) paths.push('data.message');

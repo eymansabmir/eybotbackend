@@ -40,8 +40,11 @@ export class WhatsAppWebhookController {
   handle = async (req: Request, res: Response, _next: NextFunction): Promise<void> => {
     try {
       const payload = req.body as WhatsAppWebhookPayload;
+      console.log("STEP 1: Webhook received raw payload from Meta", JSON.stringify(payload, null, 2));
+
       const context = await this.resolveInboundContext(req, payload);
       if (!context) {
+        console.log("STEP 1.1: Webhook context resolution failed (Unknown Org/Credential or status update)");
         // Meta retries non-2xx responses aggressively; ack and drop unknown-account traffic.
         res.status(200).json({ status: 'ignored' });
         return;
@@ -49,7 +52,7 @@ export class WhatsAppWebhookController {
 
       // Return 200 immediately — Meta requires a fast response
       res.status(200).json({ status: 'accepted' });
-
+      console.log("STEP 2: Webhook context resolved, passing to worker queue", context);
       logger.debug({ payload }, 'WhatsApp webhook payload received');
 
       const message = this.whatsappPlugin.normalizer.normalize(context.orgId, payload);

@@ -3,9 +3,18 @@ import { PrismaClient, RecipientStatus } from '@prisma/client';
 export interface CampaignRecipientForTracking {
   id: string;
   campaignId: string;
+  status: RecipientStatus;
+  messageId: string | null;
   deliveredAt: Date | null;
   readAt: Date | null;
   repliedAt: Date | null;
+}
+
+export interface CampaignRecipientWithCampaign {
+  id: string;
+  campaignId: string;
+  status: RecipientStatus;
+  messageId: string | null;
 }
 
 export interface ICampaignRecipientRepository {
@@ -15,6 +24,13 @@ export interface ICampaignRecipientRepository {
   updateStatusWithStats(id: string, campaignId: string, status: RecipientStatus): Promise<void>;
   updateMessageId(id: string, messageId: string): Promise<void>;
   findByCampaignMessageId(messageId: string): Promise<CampaignRecipientForTracking | null>;
+  findByRecipientIdWithCampaign(recipientId: string): Promise<CampaignRecipientWithCampaign | null>;
+  updateVoiceTerminalStatus(
+    recipientId: string,
+    campaignId: string,
+    status: 'completed' | 'failed',
+    providerReference?: string,
+  ): Promise<void>;
   updateLifecycle(recipientId: string, campaignId: string, lifecycleField: 'deliveredAt' | 'readAt' | 'repliedAt', statsField: 'delivered' | 'read' | 'replied'): Promise<void>;
 }
 
@@ -93,10 +109,85 @@ export class PrismaCampaignRecipientRepository implements ICampaignRecipientRepo
     return {
       id: recipient.id,
       campaignId: recipient.version.campaignId,
+      status: recipient.status,
+      messageId: recipient.messageId,
       deliveredAt: recipient.deliveredAt,
       readAt: recipient.readAt,
       repliedAt: recipient.repliedAt,
     };
+  }
+
+  async findByRecipientIdWithCampaign(recipientId: string): Promise<CampaignRecipientWithCampaign | null> {
+    const recipient = await this.prisma.campaignRecipient.findUnique({
+      where: { id: recipientId },
+      include: { version: { select: { campaignId: true } } },
+    });
+
+    if (!recipient) return null;
+
+    return {
+      id: recipient.id,
+      campaignId: recipient.version.campaignId,
+      status: recipient.status,
+      messageId: recipient.messageId,
+    };
+  }
+
+  async updateVoiceTerminalStatus(
+    recipientId: string,
+    campaignId: string,
+    status: 'completed' | 'failed',
+    providerReference?: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const current = await tx.campaignRecipient.findUnique({
+        where: { id: recipientId },
+        select: { status: true, messageId: true, sentAt: true },
+      });
+
+      if (!current) {
+        return;
+      }
+
+      const recipientData: Record<string, unknown> = {};
+
+      if (current.status !== status) {
+        recipientData['status'] = status;
+      }
+
+      if (status === RecipientStatus.completed && !current.sentAt) {
+        recipientData['sentAt'] = new Date();
+      }
+
+      if (providerReference && !current.messageId) {
+        recipientData['messageId'] = providerReference;
+      }
+
+      if (Object.keys(recipientData).length > 0) {
+        await tx.campaignRecipient.update({
+          where: { id: recipientId },
+          data: recipientData,
+        });
+      }
+
+      const alreadyTerminal = current.status === RecipientStatus.completed || current.status === RecipientStatus.failed;
+      if (alreadyTerminal) {
+        return;
+      }
+
+      const statsData: Record<string, unknown> = {
+        ...(status === RecipientStatus.completed ? { completed: { increment: 1 } } : {}),
+        ...(status === RecipientStatus.failed ? { failed: { increment: 1 } } : {}),
+        ...(current.status === RecipientStatus.pending ? { pending: { decrement: 1 } } : {}),
+      };
+
+      if (Object.keys(statsData).length > 0) {
+        await tx.campaignStats.update({
+          where: { campaignId },
+          data: statsData,
+        });
+      }
+    });
   }
 
   async updateLifecycle(
