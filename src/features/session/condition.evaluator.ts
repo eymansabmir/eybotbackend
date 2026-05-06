@@ -13,10 +13,7 @@ export class ConditionEvaluator {
         const normalizedText = normalizeTriggerText(text);
         const simplifiedText = simplifyTriggerText(text);
         if (!normalizedText) {
-            // Empty inbound text can only match catch-all config
-            const hasKeywords = Boolean(config.keywords && config.keywords.some(kw => kw.trim().length > 0));
-            const hasComparisons = Boolean(config.comparisons && config.comparisons.some(c => c.value.trim().length > 0));
-            return !hasKeywords && !hasComparisons;
+            return false;
         }
 
         // Fallback for legacy "keywords" array if no advanced comparisons exist

@@ -12,6 +12,7 @@ import type { ICredentialRepository } from '../credentials/credentials.repositor
 import type { FlowEntity } from '../flow/flow.entity';
 import { selectFlowByTrigger } from './trigger-selector';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
+import { simplifyTriggerText } from './trigger-normalization';
 
 type RedisLockClient = {
   set(key: string, value: string, ex: 'EX', ttl: number, nx: 'NX'): Promise<string | null>;
@@ -103,9 +104,31 @@ export class SessionInboundHandler implements IInboundHandler {
         const actualType = message.type;
 
         if (expectedType === 'choice') {
+          const options = activeSession.waitingFor?.options || [];
+          const isButtonOrList = actualType === 'button' || actualType === 'interactive';
+          
           if (message.interactiveOptionId) {
             userInput = message.interactiveOptionId;
-          } else if (actualType !== 'text' && actualType !== 'button' && actualType !== 'interactive') {
+          } else if (actualType === 'text') {
+            // Normalize for comparison
+            const inputLower = simplifyTriggerText(text || '');
+            const matchedOption = options.find(o => 
+              simplifyTriggerText(o.label || '') === inputLower || 
+              o.id === text
+            );
+
+            if (matchedOption) {
+              userInput = matchedOption.id;
+            } else if (!activeSession.waitingFor?.defaultBranchKey) {
+              // Not a valid choice and no default branch -> Invalid Input
+              return [{
+                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: invalidInputMessage },
+              }];
+            }
+          } else if (!isButtonOrList) {
+            // Non-textual, non-button input (image, voice, etc.) is always invalid for choice nodes
             return [{
               waId, waBusinessNumber, orgId, sessionId: activeSession.id,
               messageType: NodeType.SEND_TEXT,
@@ -144,10 +167,21 @@ export class SessionInboundHandler implements IInboundHandler {
               return [{
                 waId, waBusinessNumber, orgId, sessionId: activeSession.id,
                 messageType: NodeType.SEND_TEXT,
-                payload: { message: 'I could not process that file. Please try again.' },
-              }];
+              payload: { message: flow.settings.invalidInputMessage || 'I could not process that file. Please try again.' },
+            }];
             }
             userInput = uploadUrl;
+          }
+        } else if (expectedType === 'text') {
+          const isTextualMessage = actualType === 'text' || actualType === 'button' || actualType === 'interactive';
+          const hasCaption = actualType !== 'text' && text && text !== actualType;
+
+          if (!isTextualMessage && !hasCaption) {
+            return [{
+              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+              messageType: NodeType.SEND_TEXT,
+              payload: { message: invalidInputMessage },
+            }];
           }
         } else if (activeSession.waitingFor?.type === 'media_conditional') {
           const currentNode = flowToExecute.nodes.find((n) => n.id === activeSession.currentNodeId);
@@ -208,7 +242,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
             const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
             if (!uploadUrl) {
-              return handleInvalidAttempt('I could not process that file. Please try again.');
+              return handleInvalidAttempt(flow.settings.invalidInputMessage || 'I could not process that file. Please try again.');
             }
             userInput = JSON.stringify({ type: message.type, value: uploadUrl });
           } else {

@@ -309,28 +309,51 @@ export class FlowService implements IFlowService {
     const allFlows = await this.flowRepo.findByOrgId(orgId);
     const otherFlows = excludeFlowId ? allFlows.filter(f => f.id !== excludeFlowId) : allFlows;
 
-    const newKeywords = (triggerConfig.keywords || []).map(k => simplifyTriggerText(k)).filter(Boolean);
-    const newComparisons = (triggerConfig.comparisons || []).filter(c => c.value.trim().length > 0);
+    const normalize = (val: string) => simplifyTriggerText(val);
+
+    const newItems = [
+      ...(triggerConfig.keywords || []).map(k => ({ op: 'KEYWORD', val: normalize(k) })),
+      ...(triggerConfig.comparisons || []).map(c => ({ op: c.operator, val: normalize(c.value) }))
+    ].filter(i => i.val.length > 0);
 
     for (const flow of otherFlows) {
-      const existingKeywords = (flow.triggerConfig?.keywords || []).map(k => simplifyTriggerText(k)).filter(Boolean);
-      const existingComparisons = (flow.triggerConfig?.comparisons || []).filter(c => c.value.trim().length > 0);
+      const existingItems = [
+        ...(flow.triggerConfig?.keywords || []).map(k => ({ op: 'KEYWORD', val: normalize(k) })),
+        ...(flow.triggerConfig?.comparisons || []).map(c => ({ op: c.operator, val: normalize(c.value) }))
+      ].filter(i => i.val.length > 0);
 
-      // Check keywords
-      for (const kw of newKeywords) {
-        if (existingKeywords.includes(kw)) {
-          throw new ValidationError(`Trigger keyword '${kw}' is already in use by bot '${flow.name}'`);
-        }
-      }
+      for (const ni of newItems) {
+        for (const ei of existingItems) {
+          const v1 = ni.val;
+          const v2 = ei.val;
+          const op1 = ni.op;
+          const op2 = ei.op;
 
-      // Check comparisons
-      for (const comp of newComparisons) {
-        const normalizedVal = simplifyTriggerText(comp.value);
-        const duplicate = existingComparisons.find(ec => 
-          ec.operator === comp.operator && simplifyTriggerText(ec.value) === normalizedVal
-        );
-        if (duplicate) {
-          throw new ValidationError(`Trigger condition '${comp.operator} ${comp.value}' is already in use by bot '${flow.name}'`);
+          // 1. Exact match check (always blocked)
+          if (op1 === op2 && v1 === v2) {
+            const label = op1 === 'KEYWORD' ? 'keyword' : `condition '${op1}'`;
+            throw new ValidationError(`Trigger ${label} '${v1}' is already in use by bot '${flow.name}'`);
+          }
+
+          // 2. Ambiguity check: Same operator type + Containment/Overlap
+          // We block cases where one condition is a subset of another, leading to scoring ties or shadowing.
+          const isContains = (op: string) => op === 'CONTAINS' || op === 'KEYWORD';
+          
+          let conflict = false;
+          if (isContains(op1) && isContains(op2)) {
+            if (v1.includes(v2) || v2.includes(v1)) conflict = true;
+          } else if (op1 === 'STARTS_WITH' && op2 === 'STARTS_WITH') {
+            if (v1.startsWith(v2) || v2.startsWith(v1)) conflict = true;
+          } else if (op1 === 'ENDS_WITH' && op2 === 'ENDS_WITH') {
+            if (v1.endsWith(v2) || v2.endsWith(v1)) conflict = true;
+          }
+
+          if (conflict) {
+            throw new ValidationError(
+              `Trigger condition '${v1}' overlaps with existing condition '${v2}' in bot '${flow.name}'. ` +
+              `Please select a more unique start condition to avoid ambiguity and ensure the correct bot is triggered.`
+            );
+          }
         }
       }
     }

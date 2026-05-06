@@ -32,10 +32,18 @@ export class VariableResolver {
     const scope = parts[0];
 
     if (scope === 'system') return this.resolveSystem(parts[1]);
-    if (scope === 'session') return this.nested(parts.slice(1), context.session.variables);
+    if (scope === 'session') {
+      if (parts.length === 2 && parts[1] === 'id') return context.session.id;
+      return this.nested(parts.slice(1), context.session.variables);
+    }
     if (scope === 'contact') {
       if (parts[1] === 'customFields') return this.nested(parts.slice(2), context.contact.customFields);
-      return this.nested(parts.slice(1), context.contact as unknown as Record<string, unknown>);
+      
+      // Fallback: Check if it's a direct property of contact (waId, name) or a custom field
+      const direct = this.nested(parts.slice(1), context.contact as unknown as Record<string, unknown>);
+      if (direct !== undefined) return direct;
+      
+      return this.nested(parts.slice(1), context.contact.customFields);
     }
     if (scope === 'flow') return this.nested(parts.slice(1), context.flow as unknown as Record<string, unknown>);
     return undefined;
