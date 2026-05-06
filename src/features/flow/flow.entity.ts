@@ -18,6 +18,8 @@ export interface FlowProperties {
     publishedAt?: Date | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
+    executions?: number;
+    successfulExecutions?: number;
 }
 
 export class FlowEntity {
@@ -36,6 +38,8 @@ export class FlowEntity {
     public publishedAt?: Date | undefined;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
+    public executions: number;
+    public successfulExecutions: number;
 
     constructor(props: FlowProperties) {
         this.id = props.id;
@@ -53,6 +57,8 @@ export class FlowEntity {
         this.publishedAt = props.publishedAt;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
+        this.executions = props.executions ?? 0;
+        this.successfulExecutions = props.successfulExecutions ?? 0;
     }
 
     public publish(): void {
@@ -88,6 +94,8 @@ export class FlowEntity {
             publishedAt: this.publishedAt,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
+            executions: this.executions,
+            successfulExecutions: this.successfulExecutions,
         };
     }
 

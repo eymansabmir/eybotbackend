@@ -1,8 +1,8 @@
-import { Flow as PrismaFlow, FlowStatus as PrismaFlowStatus } from '@prisma/client';
+import { FlowStatus as PrismaFlowStatus } from '@prisma/client';
 import { FlowEntity } from './flow.entity';
 
 export class FlowMapper {
-    public static toEntity(prismaFlow: PrismaFlow): FlowEntity {
+    public static toEntity(prismaFlow: any): FlowEntity {
         return new FlowEntity({
             id: prismaFlow.id,
             orgId: prismaFlow.orgId,
@@ -18,6 +18,8 @@ export class FlowMapper {
             publishedAt: prismaFlow.publishedAt ?? undefined,
             createdAt: prismaFlow.createdAt,
             updatedAt: prismaFlow.updatedAt,
+            executions: prismaFlow.executions ?? 0,
+            successfulExecutions: prismaFlow.successfulExecutions ?? 0,
         });
     }
 

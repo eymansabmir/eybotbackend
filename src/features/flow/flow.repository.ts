@@ -32,7 +32,8 @@ export class PrismaFlowRepository implements IFlowRepository {
     async findById(id: string): Promise<FlowEntity | null> {
         const flow = await this.prisma.flow.findUnique({ where: { id } });
         if (!flow) return null;
-        return FlowMapper.toEntity(flow);
+        const enriched = await this.enrichFlowsWithMetrics([flow]);
+        return FlowMapper.toEntity(enriched[0]);
     }
 
     async findByIdOrFail(id: string): Promise<FlowEntity> {
@@ -52,7 +53,35 @@ export class PrismaFlowRepository implements IFlowRepository {
             where,
             orderBy: { updatedAt: 'desc' },
         });
-        return flows.map(FlowMapper.toEntity);
+        const enriched = await this.enrichFlowsWithMetrics(flows);
+        return enriched.map(FlowMapper.toEntity);
+    }
+
+    private async enrichFlowsWithMetrics(flows: any[]): Promise<any[]> {
+        if (flows.length === 0) return [];
+        const flowIds = flows.map(f => f.id);
+
+        const [totalCounts, successCounts] = await Promise.all([
+            this.prisma.chatSession.groupBy({
+                by: ['flowId'],
+                _count: { _all: true },
+                where: { flowId: { in: flowIds } }
+            }),
+            this.prisma.chatSession.groupBy({
+                by: ['flowId'],
+                _count: { _all: true },
+                where: { 
+                    flowId: { in: flowIds },
+                    status: 'completed'
+                }
+            })
+        ]);
+
+        return flows.map(flow => ({
+            ...flow,
+            executions: totalCounts.find(c => c.flowId === flow.id)?._count._all || 0,
+            successfulExecutions: successCounts.find(c => c.flowId === flow.id)?._count._all || 0,
+        }));
     }
 
     async findPublishedByKeyword(keyword: string): Promise<FlowEntity | null> {
