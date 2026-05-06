@@ -7,7 +7,7 @@ export class ConditionEvaluator {
      * Takes inspiration from Autobot's `messageMatchStartCondition`.
      */
     static evaluate(text: string, config: TriggerConfig | null | undefined): boolean {
-        if (!config) return true; // Empty config means it acts as a catch-all
+        if (!config) return false; // Missing config means no trigger defined
         if (config.enabled === false) return false;
 
         const normalizedText = normalizeTriggerText(text);
@@ -22,19 +22,19 @@ export class ConditionEvaluator {
         // Fallback for legacy "keywords" array if no advanced comparisons exist
         if ((!config.comparisons || config.comparisons.length === 0) && config.keywords && config.keywords.length > 0) {
             const keywords = config.keywords.map(kw => simplifyTriggerText(kw)).filter(Boolean);
-            if (keywords.length === 0) return true;
+            if (keywords.length === 0) return false;
             return keywords.some(kw => normalizedText.includes(kw) || simplifiedText.includes(kw));
         }
 
-        // If no comparisons and no legacy keywords, it's a catch-all
+        // If no comparisons and no legacy keywords, it's not a match (disabling unintentional catch-all)
         if (!config.comparisons || config.comparisons.length === 0) {
-            return true;
+            return false;
         }
 
         const logicalOperator = config.logicalOperator || 'OR';
         const effectiveComparisons = config.comparisons.filter(c => c.value.trim().length > 0);
         if (effectiveComparisons.length === 0) {
-            return true;
+            return false;
         }
 
         const matchComparison = (inputValue: string, op: string, val: string) => {

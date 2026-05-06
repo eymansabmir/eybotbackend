@@ -3,6 +3,7 @@ import { IFlowRepository } from './flow.repository';
 import { NodeType } from '../../schemas/node-types.enum';
 import { ValidationError } from '../../utils/errors';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
+import { simplifyTriggerText } from '../session/trigger-normalization';
 import { env } from '../../config/env';
 
 export interface IFlowService {
@@ -49,6 +50,7 @@ export class FlowService implements IFlowService {
     });
     this.normalizeNodeUrls(entity);
     this.validateGraph(entity);
+    await this.validateTriggerUniqueness(entity.orgId, entity.triggerConfig);
     return this.flowRepo.create(entity);
   }
 
@@ -97,6 +99,11 @@ export class FlowService implements IFlowService {
       this.normalizeNodeUrls(tempEntity);
       updates.nodes = tempEntity.nodes;
     }
+
+    if (updates.triggerConfig) {
+      await this.validateTriggerUniqueness(existing.orgId, updates.triggerConfig, id);
+    }
+
     return this.flowRepo.update(id, updates);
   }
 
@@ -130,6 +137,9 @@ export class FlowService implements IFlowService {
     const validationClone = flow.clone();
     Object.assign(validationClone, updates);
     this.validateGraph(validationClone);
+    if (updates.triggerConfig) {
+      await this.validateTriggerUniqueness(flow.orgId, updates.triggerConfig, id);
+    }
     
     return this.flowRepo.update(id, updates);
   }
@@ -280,6 +290,39 @@ export class FlowService implements IFlowService {
             card.ctaUrlButton.url = normalize(card.ctaUrlButton.url);
           }
         });
+      }
+    }
+  }
+
+  private async validateTriggerUniqueness(orgId: string, triggerConfig: FlowProperties['triggerConfig'], excludeFlowId?: string): Promise<void> {
+    if (!triggerConfig) return;
+
+    const allFlows = await this.flowRepo.findByOrgId(orgId);
+    const otherFlows = excludeFlowId ? allFlows.filter(f => f.id !== excludeFlowId) : allFlows;
+
+    const newKeywords = (triggerConfig.keywords || []).map(k => simplifyTriggerText(k)).filter(Boolean);
+    const newComparisons = (triggerConfig.comparisons || []).filter(c => c.value.trim().length > 0);
+
+    for (const flow of otherFlows) {
+      const existingKeywords = (flow.triggerConfig?.keywords || []).map(k => simplifyTriggerText(k)).filter(Boolean);
+      const existingComparisons = (flow.triggerConfig?.comparisons || []).filter(c => c.value.trim().length > 0);
+
+      // Check keywords
+      for (const kw of newKeywords) {
+        if (existingKeywords.includes(kw)) {
+          throw new ValidationError(`Trigger keyword '${kw}' is already in use by bot '${flow.name}'`);
+        }
+      }
+
+      // Check comparisons
+      for (const comp of newComparisons) {
+        const normalizedVal = simplifyTriggerText(comp.value);
+        const duplicate = existingComparisons.find(ec => 
+          ec.operator === comp.operator && simplifyTriggerText(ec.value) === normalizedVal
+        );
+        if (duplicate) {
+          throw new ValidationError(`Trigger condition '${comp.operator} ${comp.value}' is already in use by bot '${flow.name}'`);
+        }
       }
     }
   }

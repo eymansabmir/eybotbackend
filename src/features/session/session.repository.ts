@@ -16,6 +16,7 @@ export interface ISessionRepository {
     update(id: string, updates: Partial<SessionProperties>): Promise<SessionEntity>;
     updateStatus(id: string, status: SessionStatus): Promise<SessionEntity>;
     delete(id: string): Promise<void>;
+    findLastSession(waBusinessNumber: string, waId: string): Promise<SessionEntity | null>;
 }
 
 export class PrismaSessionRepository implements ISessionRepository {
@@ -152,6 +153,18 @@ export class PrismaSessionRepository implements ISessionRepository {
             }
             throw error;
         }
+    }
+
+    async findLastSession(waBusinessNumber: string, waId: string): Promise<SessionEntity | null> {
+        const session = await this.prisma.chatSession.findFirst({
+            where: {
+                waBusinessNumber,
+                waId,
+            },
+            orderBy: { updatedAt: 'desc' },
+        });
+        if (!session) return null;
+        return SessionMapper.toEntity(session);
     }
 }
 
