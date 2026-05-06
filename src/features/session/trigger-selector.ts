@@ -70,7 +70,6 @@ function scoreExplicitMatch(text: string, config: TriggerConfig): number {
 
 export function selectFlowByTrigger<T extends TriggerSelectableFlow>(flows: T[], text: string): T | null {
   const explicitMatches: Array<{ flow: T; score: number }> = [];
-  const catchAllMatches: T[] = [];
 
   for (const flow of flows) {
     const config = flow.triggerConfig;
@@ -80,8 +79,6 @@ export function selectFlowByTrigger<T extends TriggerSelectableFlow>(flows: T[],
 
     if (hasExplicitStartCondition(config)) {
       explicitMatches.push({ flow, score: scoreExplicitMatch(text, config) });
-    } else {
-      catchAllMatches.push(flow);
     }
   }
 
@@ -96,15 +93,6 @@ export function selectFlowByTrigger<T extends TriggerSelectableFlow>(flows: T[],
       return bTime - aTime;
     });
     return explicitMatches[0]?.flow ?? null;
-  }
-
-  if (catchAllMatches.length > 0) {
-    catchAllMatches.sort((a, b) => {
-      const aTime = a.updatedAt ? a.updatedAt.getTime() : 0;
-      const bTime = b.updatedAt ? b.updatedAt.getTime() : 0;
-      return bTime - aTime;
-    });
-    return catchAllMatches[0] ?? null;
   }
 
   return null;

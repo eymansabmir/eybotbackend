@@ -12,6 +12,7 @@ import type { ICredentialRepository } from '../credentials/credentials.repositor
 import type { FlowEntity } from '../flow/flow.entity';
 import { selectFlowByTrigger } from './trigger-selector';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
+import { simplifyTriggerText } from './trigger-normalization';
 
 type RedisLockClient = {
   set(key: string, value: string, ex: 'EX', ttl: number, nx: 'NX'): Promise<string | null>;
@@ -74,51 +75,6 @@ export class SessionInboundHandler implements IInboundHandler {
         // Strict continuity: do not switch to another flow while current session is active.
         logger.info({ sessionId: activeSession.id, waId }, 'SessionInboundHandler: resuming active session');
 
-        let userInput = text;
-        if (activeSession.waitingFor?.type === 'choice' && message.interactiveOptionId) {
-          userInput = message.interactiveOptionId;
-        }
-
-        if (activeSession.waitingFor?.type === 'location' && message.location) {
-          userInput = JSON.stringify(message.location);
-        }
-
-        if (activeSession.waitingFor?.type === 'file') {
-          const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
-          const textFallback = (text ?? '').trim();
-
-          if (!hasMediaInput) {
-            if (textFallback.length > 0) {
-              userInput = textFallback;
-              logger.info({ waId, sessionId: activeSession.id }, 'SessionInboundHandler: file wait accepted text fallback input');
-            } else {
-              return [{
-                waId,
-                waBusinessNumber,
-                messageType: NodeType.SEND_TEXT,
-                payload: { message: 'Please upload a file to continue, or send text input.' },
-                orgId,
-                sessionId: activeSession.id,
-              }];
-            }
-          }
-
-          if (hasMediaInput) {
-            const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
-            if (!uploadUrl) {
-              return [{
-                waId,
-                waBusinessNumber,
-                messageType: NodeType.SEND_TEXT,
-                payload: { message: 'I could not process that file. Please try again with a supported attachment or send text input.' },
-                orgId,
-                sessionId: activeSession.id,
-              }];
-            }
-            userInput = uploadUrl;
-          }
-        }
-
         const flow = await this.flowRepo.findByIdOrFail(activeSession.flowId);
         const languageVariableKey = this.resolveLanguageVariableKey(flow);
         const currentNodeRaw = flow.nodes.find((node) => node.id === activeSession.currentNodeId);
@@ -137,17 +93,103 @@ export class SessionInboundHandler implements IInboundHandler {
               return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
             }) as any;
           }
-        } else if (language && isAtLanguageNode) {
-          logger.info(
-            { sessionId: activeSession.id, flowId: flow.id, language },
-            'SessionInboundHandler: skipping preloaded translation at language node to avoid stale language prompts'
-          );
         }
 
-        if (activeSession.waitingFor?.type === 'media_conditional') {
+        const invalidInputMessage = flow.settings.invalidInputMessage || 'Invalid input. Please try again using the options provided.';
+
+        let userInput = text;
+
+        // General type validation before processing
+        const expectedType = activeSession.waitingFor?.type;
+        const actualType = message.type;
+
+        if (expectedType === 'choice') {
+          const options = activeSession.waitingFor?.options || [];
+          const isButtonOrList = actualType === 'button' || actualType === 'interactive';
+          
+          if (message.interactiveOptionId) {
+            userInput = message.interactiveOptionId;
+          } else if (actualType === 'text') {
+            // Normalize for comparison
+            const inputLower = simplifyTriggerText(text || '');
+            const matchedOption = options.find(o => 
+              simplifyTriggerText(o.label || '') === inputLower || 
+              o.id === text
+            );
+
+            if (matchedOption) {
+              userInput = matchedOption.id;
+            } else if (!activeSession.waitingFor?.defaultBranchKey) {
+              // Not a valid choice and no default branch -> Invalid Input
+              return [{
+                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: invalidInputMessage },
+              }];
+            }
+          } else if (!isButtonOrList) {
+            // Non-textual, non-button input (image, voice, etc.) is always invalid for choice nodes
+            return [{
+              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+              messageType: NodeType.SEND_TEXT,
+              payload: { message: invalidInputMessage },
+            }];
+          }
+        } else if (expectedType === 'location') {
+          if (message.location) {
+            userInput = JSON.stringify(message.location);
+          } else {
+            return [{
+              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+              messageType: NodeType.SEND_TEXT,
+              payload: { message: invalidInputMessage },
+            }];
+          }
+        } else if (expectedType === 'file') {
+          const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
+          const textFallback = (text ?? '').trim();
+
+          if (!hasMediaInput) {
+            if (textFallback.length > 0) {
+              userInput = textFallback;
+            } else {
+              return [{
+                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+                messageType: NodeType.SEND_TEXT,
+                payload: { message: invalidInputMessage },
+              }];
+            }
+          }
+
+          if (hasMediaInput) {
+            const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
+            if (!uploadUrl) {
+              return [{
+                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+                messageType: NodeType.SEND_TEXT,
+              payload: { message: flow.settings.invalidInputMessage || 'I could not process that file. Please try again.' },
+            }];
+            }
+            userInput = uploadUrl;
+          }
+        } else if (expectedType === 'text') {
+          const isTextualMessage = actualType === 'text' || actualType === 'button' || actualType === 'interactive';
+          const hasCaption = actualType !== 'text' && text && text !== actualType;
+
+          if (!isTextualMessage && !hasCaption) {
+            return [{
+              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+              messageType: NodeType.SEND_TEXT,
+              payload: { message: invalidInputMessage },
+            }];
+          }
+        } else if (activeSession.waitingFor?.type === 'media_conditional') {
           const currentNode = flowToExecute.nodes.find((n) => n.id === activeSession.currentNodeId);
           const config = currentNode?.data?.['config'] as Array<{ type: string; subTypes: string[] }> | undefined;
-          const invalidMessage = (currentNode?.data?.['invalidMessage'] as string) || 'Invalid media type. Please send a supported format.';
+          
+          // Node-level invalidMessage takes priority, then flow-level, then default.
+          const nodeInvalidMessage = (currentNode?.data?.['invalidMessage'] as string);
+          const currentInvalidMessage = nodeInvalidMessage || invalidInputMessage;
           
           let retries = (activeSession.variables['_media_retries'] as number) || 0;
           const maxRetries = (currentNode?.data?.['maxRetries'] as number) || 3;
@@ -173,7 +215,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
           if (!matchedConfig) {
             logger.info({ waId, sessionId: activeSession.id, type: message.type, retries }, 'SessionInboundHandler: media_conditional rejected unexpected type');
-            return handleInvalidAttempt(invalidMessage);
+            return handleInvalidAttempt(currentInvalidMessage);
           }
 
           // Subtype validation for media
@@ -194,13 +236,13 @@ export class SessionInboundHandler implements IInboundHandler {
 
               if (!isAllowed) {
                 logger.info({ waId, sessionId: activeSession.id, ext, mime, retries }, 'SessionInboundHandler: media_conditional rejected unsupported subtype');
-                return handleInvalidAttempt(invalidMessage);
+                return handleInvalidAttempt(currentInvalidMessage);
               }
             }
 
             const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
             if (!uploadUrl) {
-              return handleInvalidAttempt('I could not process that file. Please try again.');
+              return handleInvalidAttempt(flow.settings.invalidInputMessage || 'I could not process that file. Please try again.');
             }
             userInput = JSON.stringify({ type: message.type, value: uploadUrl });
           } else {
@@ -248,9 +290,11 @@ export class SessionInboundHandler implements IInboundHandler {
             isCurrent: false,
           });
 
+          const flowFallbackMessage = flow.settings.fallbackMessage || 'Sorry, something went wrong in the current journey. Please send your trigger keyword again to restart.';
+          
           outboundMessages.push({
             type: NodeType.SEND_TEXT,
-            payload: { message: 'Sorry, something went wrong in the current journey. Please send your trigger keyword again to restart.' },
+            payload: { message: flowFallbackMessage },
           });
           sessionId = activeSession.id;
         }
@@ -258,11 +302,27 @@ export class SessionInboundHandler implements IInboundHandler {
         // Strict zombie check: prevent interactions with old messages from starting new flows.
         if (message.contextMessageId) {
           logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
+          
+          // Fetch last session to identify which flow's fallback to use
+          const lastSession = await this.sessionRepo.findLastSession(waBusinessNumber, waId);
+          let finishedJourneyMessage = 'You already finished this flow. To start the flow again, please type the trigger keyword.';
+          
+          if (lastSession) {
+            try {
+              const flow = await this.flowRepo.findById(lastSession.flowId);
+              if (flow?.settings?.finishedJourneyMessage) {
+                finishedJourneyMessage = flow.settings.finishedJourneyMessage;
+              }
+            } catch (err) {
+              logger.warn({ err, flowId: lastSession.flowId }, 'SessionInboundHandler: failed to fetch flow for finished journey message');
+            }
+          }
+
           return [{
             waId,
             waBusinessNumber,
             messageType: NodeType.SEND_TEXT,
-            payload: { message: 'You already finished this flow. To start the flow again, please type the trigger keyword.' },
+            payload: { message: finishedJourneyMessage },
             orgId,
           }];
         }
@@ -358,11 +418,6 @@ export class SessionInboundHandler implements IInboundHandler {
           return trans ? { ...orig, data: { ...orig.data, ...this.safeTranslationData(orig, trans) } } : orig;
         }) as any;
       }
-    } else if (language && hasLanguageNode) {
-      logger.info(
-        { flowId: matchedFlow.id, language },
-        'SessionInboundHandler: skipping preloaded translation for new session because flow contains a language node'
-      );
     }
 
     try {
