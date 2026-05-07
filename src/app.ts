@@ -107,7 +107,7 @@ export function createApp(registry: IPluginRegistry): Application {
     origin: FRONTEND_URL,
     credentials: true,
   }));
-  app.all('/api/auth/{*any}', authHandler);
+  app.use('/api/auth', authHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(pinoHttp({
