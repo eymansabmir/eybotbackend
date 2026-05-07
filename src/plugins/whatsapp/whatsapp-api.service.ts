@@ -66,9 +66,13 @@ export class WhatsAppAPIService {
         action: { buttons: buttons.map(b => ({ type: 'reply', reply: { id: b.id, title: this.sliceGraphemes(b.title, 20) } })) }
       },
     };
-    if (header?.type === 'text' && header.text) header.text = String(header.text).trim().slice(0, 60);
+    if (header?.type === 'text' && header.text) {
+      header.text = this.sliceGraphemes(String(header.text), 60);
+    }
     if (header) payload.interactive.header = header;
-    if (footer) payload.interactive.footer = { text: String(footer).trim().slice(0, 60) };
+    if (footer) {
+      payload.interactive.footer = { text: this.sliceGraphemes(String(footer), 60) };
+    }
     return this.call(payload);
   }
 
@@ -85,7 +89,7 @@ export class WhatsAppAPIService {
         action: { button: this.sliceGraphemes(buttonTitle || 'Options', 20), sections: normalizedSections },
       },
     };
-    if (footer) payload.interactive.footer = { text: footer };
+    if (footer) payload.interactive.footer = { text: this.sliceGraphemes(footer, 60) };
     return this.call(payload);
   }
 
@@ -128,14 +132,22 @@ export class WhatsAppAPIService {
 
   private sliceGraphemes(text: string, limit: number): string {
     if (!text) return '';
+    const trimmed = text.trim();
+    if (trimmed.length <= limit) return trimmed;
+
     try {
       // Use Intl.Segmenter for grapheme-aware slicing (Node 16+)
       const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-      const segments = Array.from(segmenter.segment(text.trim()));
-      return segments.slice(0, limit).map(s => s.segment).join('');
+      const segments = segmenter.segment(trimmed);
+      let result = '';
+      for (const { segment } of segments) {
+        if ((result + segment).length > limit) break;
+        result += segment;
+      }
+      return result;
     } catch (e) {
       // Fallback for environments where Intl.Segmenter is missing
-      return text.trim().slice(0, limit);
+      return trimmed.slice(0, limit);
     }
   }
 

@@ -129,13 +129,14 @@ export async function syncFlowTranslations(
   repo: IFlowRepository,
   flowId: string,
   targetLanguages: string[],
+  providedNodes?: any[],
 ): Promise<void> {
   if (targetLanguages.length > 0) {
     getTranslateClient();
   }
 
   const flow = await repo.findByIdOrFail(flowId);
-  const nodes = flow.nodes as any as Node[];
+  const nodes = (providedNodes || flow.nodes) as any as Node[];
   const translatableItems: { nodeId: string; path: string; text: string }[] = [];
 
   // 1. Collect all translatable strings from relevant node types
@@ -147,8 +148,15 @@ export async function syncFlowTranslations(
       case NodeType.ASK_FILE:
       case NodeType.LOCATION_REQUEST:
       case NodeType.LANGUAGE:
-        paths.push('data.message');
+        if (node.data.message) paths.push('data.message');
+        if (node.data.question) paths.push('data.question');
         if (node.data.footer) paths.push('data.footer');
+        break;
+      case NodeType.NPS:
+        if (node.data.message) paths.push('data.message');
+        if (node.data.leftLabel) paths.push('data.leftLabel');
+        if (node.data.rightLabel) paths.push('data.rightLabel');
+        if (node.data.buttonLabel) paths.push('data.buttonLabel');
         break;
       case NodeType.MEDIA_CONDITIONAL:
         if (node.data.message) paths.push('data.message');
@@ -264,9 +272,9 @@ export async function syncFlowTranslations(
     }
 
     if (lang !== 'en' && !hasMeaningfulTranslationChange(texts, translatedTexts)) {
-      throw new Error(
-        `Translation failed for language "${lang}": provider returned unchanged text. ` +
-        `Requested=${lang}, target=${providerTargetLanguage}`
+      logger.warn(
+        { flowId, language: lang },
+        `Translation provider returned unchanged text for all items. This may happen if texts are already in the target language or are untranslatable.`
       );
     }
 

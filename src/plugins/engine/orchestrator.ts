@@ -169,38 +169,46 @@ export class FlowOrchestrator {
     // Check DB preference FIRST to prevent English flickering in step 0
     let detectedLang: string | undefined;
 
-    if (runtime?.getPreferredLanguage) {
-      console.log(`[Orchestrator] Step 0: Checking DB for persistent preference...`);
-      const dbPref = await runtime.getPreferredLanguage(flow.id!, session.waId);
-      if (dbPref) {
-        console.log(`[Orchestrator] Step 0: Found DB preference '${dbPref}'. Using as primary.`);
-        detectedLang = dbPref;
-      }
-    }
+    // Find the primary language node to check its skip logic
+    const primaryLangNode = flow.nodes.find((n) => n.type === NodeType.LANGUAGE);
+    const globalSkipEnabled = !!(primaryLangNode?.data as any)?.skipIfAlreadySelected;
 
-    // Fallback to session/contact if DB was empty
-    if (!detectedLang) {
-      const langKeys = ['selected_language', 'user_lang'];
-      for (const key of langKeys) {
-        detectedLang = (session.variables[key] as string) || (contact.customFields[key] as string);
-        if (detectedLang) {
-          console.log(`[Orchestrator] Step 0: Found preference in variables: '${detectedLang}' (key: ${key})`);
-          break;
+    if (globalSkipEnabled) {
+      if (runtime?.getPreferredLanguage) {
+        console.log(`[Orchestrator] Step 0: Checking DB for persistent preference (Skip is ON)...`);
+        const dbPref = await runtime.getPreferredLanguage(flow.id!, session.waId);
+        if (dbPref) {
+          console.log(`[Orchestrator] Step 0: Found DB preference '${dbPref}'. Using as primary.`);
+          detectedLang = dbPref;
         }
       }
-    }
 
-    if (detectedLang && runtime?.getTranslation) {
-      console.log(`[Orchestrator] Step 0: Loading translations for '${detectedLang}'...`);
-      try {
-        const translations = await runtime.getTranslation(detectedLang);
-        if (translations && Array.isArray(translations)) {
-          console.log(`[Orchestrator] Step 0: Successfully applied translations. Journey will start in '${detectedLang}'.`);
-          traverser.updateNodes(translations as any);
+      // Fallback to session/contact if DB was empty
+      if (!detectedLang) {
+        const langKeys = ['selected_language', 'user_lang'];
+        for (const key of langKeys) {
+          detectedLang = (session.variables[key] as string) || (contact.customFields[key] as string);
+          if (detectedLang) {
+            console.log(`[Orchestrator] Step 0: Found preference in variables: '${detectedLang}' (key: ${key})`);
+            break;
+          }
         }
-      } catch (err) {
-        console.error(`[Orchestrator] Step 0: Error loading translations:`, err);
       }
+
+      if (detectedLang && runtime?.getTranslation) {
+        console.log(`[Orchestrator] Step 0: Loading translations for '${detectedLang}'...`);
+        try {
+          const translations = await runtime.getTranslation(detectedLang);
+          if (translations && Array.isArray(translations)) {
+            console.log(`[Orchestrator] Step 0: Successfully applied translations. Journey will start in '${detectedLang}'.`);
+            traverser.updateNodes(translations as any);
+          }
+        } catch (err) {
+          console.error(`[Orchestrator] Step 0: Error loading translations:`, err);
+        }
+      }
+    } else {
+      console.log(`[Orchestrator] Step 0: Skip logic is OFF or no Language node found. Journey will start in default language.`);
     }
     // ------------------------------------
 

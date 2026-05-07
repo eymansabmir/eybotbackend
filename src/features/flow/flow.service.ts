@@ -16,7 +16,7 @@ export interface IFlowService {
   archiveFlow(id: string): Promise<FlowEntity>;
   deleteFlow(id: string): Promise<void>;
   validateGraph(entity: FlowEntity): void;
-  syncTranslations(id: string): Promise<void>;
+  syncTranslations(id: string, nodes?: any[]): Promise<void>;
   getFlowTranslation(flowId: string, language: string): Promise<any>;
   updateFlowTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
   importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity>;
@@ -144,13 +144,13 @@ export class FlowService implements IFlowService {
     return this.flowRepo.update(id, updates);
   }
 
-  async syncTranslations(id: string): Promise<void> {
+  async syncTranslations(id: string, nodes?: any[]): Promise<void> {
     const flow = await this.flowRepo.findByIdOrFail(id);
-    const nodes = (flow.nodes as any[]) || [];
+    const sourceNodes = (nodes || flow.nodes) as any[] || [];
 
     // Collect all unique languages from all Language Selection nodes
     const allLanguages = new Set<string>();
-    nodes.filter(n => n.type === NodeType.LANGUAGE).forEach(n => {
+    sourceNodes.filter(n => n.type === NodeType.LANGUAGE).forEach(n => {
       const langs = n.data?.languages;
       if (Array.isArray(langs)) langs.forEach(l => allLanguages.add(l));
     });
@@ -162,7 +162,8 @@ export class FlowService implements IFlowService {
         await syncFlowTranslations(
           this.flowRepo,
           id,
-          targetLanguages
+          targetLanguages,
+          nodes
         );
       } catch (err: unknown) {
         const reason = err instanceof Error ? err.message : 'Unknown translation error';
