@@ -32,6 +32,8 @@ export interface SessionProperties {
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
     isCurrent?: boolean | undefined;
+    renudgeAttempts?: number | undefined;
+    lastRenudgeAt?: Date | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
 }
@@ -50,6 +52,8 @@ export class SessionEntity {
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
     public isCurrent: boolean;
+    public renudgeAttempts: number;
+    public lastRenudgeAt?: Date | undefined;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
 
@@ -66,6 +70,8 @@ export class SessionEntity {
         this.history = props.history || [];
         this.waitingFor = props.waitingFor;
         this.isCurrent = props.isCurrent ?? true;
+        this.renudgeAttempts = props.renudgeAttempts ?? 0;
+        this.lastRenudgeAt = props.lastRenudgeAt;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
     }
@@ -110,6 +116,8 @@ export class SessionEntity {
             history: this.history,
             waitingFor: this.waitingFor,
             isCurrent: this.isCurrent,
+            renudgeAttempts: this.renudgeAttempts,
+            lastRenudgeAt: this.lastRenudgeAt,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
         };

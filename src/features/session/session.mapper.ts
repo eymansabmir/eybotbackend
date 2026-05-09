@@ -27,6 +27,8 @@ export class SessionMapper {
             history: (prismaSession.history as any) ?? [],
             waitingFor,
             isCurrent: prismaSession.isCurrent,
+            renudgeAttempts: prismaSession.renudgeAttempts,
+            lastRenudgeAt: prismaSession.lastRenudgeAt ?? undefined,
             createdAt: prismaSession.createdAt,
             updatedAt: prismaSession.updatedAt,
         });
@@ -49,6 +51,8 @@ export class SessionMapper {
             history: data.history ?? [],
             waitingFor: data.waitingFor ?? null,
             isCurrent: data.isCurrent,
+            renudgeAttempts: data.renudgeAttempts,
+            lastRenudgeAt: data.lastRenudgeAt ?? null,
         };
     }
 }

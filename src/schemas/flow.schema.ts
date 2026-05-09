@@ -22,6 +22,23 @@ export const TriggerConfigSchema = z.object({
 
 export type TriggerConfig = z.infer<typeof TriggerConfigSchema>;
 
+export const RenudgeConfigSchema = z.object({
+  id: z.string().optional(),
+  flowId: z.string().optional(),
+  enabled: z.boolean().default(false),
+  durationMinutes: z.number().default(30),
+  maxAttempts: z.number().default(1),
+  message: z.string().default('Are you still there? Would you like to continue?'),
+  buttons: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+  })).optional(),
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
+});
+
+export type RenudgeConfig = z.infer<typeof RenudgeConfigSchema>;
+
 export const FlowSettingsSchema = z.object({
   credentialId: z.string().optional(),
   timeoutSeconds: z.number().default(300),
@@ -56,10 +73,11 @@ export const FlowSchema = z.object({
   nodes: z.array(NodeSchema),
   edges: z.array(EdgeSchema),
   settings: FlowSettingsSchema,
+  renudgeConfig: RenudgeConfigSchema.optional(),
   isConfigured: z.boolean().default(false),
-  publishedAt: z.date().optional(),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+  publishedAt: z.coerce.date().optional(),
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
 });
 
 export type Flow = z.infer<typeof FlowSchema>;

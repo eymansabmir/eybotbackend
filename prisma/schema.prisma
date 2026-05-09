@@ -30,6 +30,8 @@ model Flow {
   updatedAt    DateTime          @updatedAt
   campaigns    Campaign[]
   translations FlowTranslation[]
+  renudgeConfig RenudgeConfig?
+  renudgeLogs   RenudgeLog[]
 
   @@index([orgId, status])
 }
@@ -71,6 +73,9 @@ model ChatSession {
 
   isCurrent Boolean @default(true)
 
+  renudgeAttempts Int     @default(0)
+  lastRenudgeAt   DateTime? @db.Timestamptz(3)
+
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
@@ -78,6 +83,38 @@ model ChatSession {
   @@index([flowId, status])
   @@index([waBusinessNumber, waId, isCurrent])
   @@map("chat_session")
+}
+
+model RenudgeConfig {
+  id              String   @id @default(uuid())
+  flowId          String   @unique
+  enabled         Boolean  @default(false)
+  durationMinutes Int      @default(30)
+  maxAttempts     Int      @default(1)
+  message         String   @default("Are you still there? Would you like to continue?")
+  buttons         Json?    // Array of { id: string, title: string }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@map("renudge_configs")
+}
+
+model RenudgeLog {
+  id        String   @id @default(uuid())
+  flowId    String
+  waId      String
+  sessionId String
+  attempt   Int
+  sentAt    DateTime @default(now())
+
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@index([flowId, waId])
+  @@index([sessionId])
+  @@map("renudge_logs")
 }
 
 model Session {

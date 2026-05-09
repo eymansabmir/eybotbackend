@@ -47,6 +47,7 @@ export class FlowService implements IFlowService {
         maxConsecutiveLogicSteps: 10,
         fallbackMessage: 'Sorry, something went wrong.',
       },
+      renudgeConfig: data.renudgeConfig,
     });
     this.normalizeNodeUrls(entity);
     this.validateGraph(entity);
@@ -83,7 +84,7 @@ export class FlowService implements IFlowService {
   async updateFlow(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity> {
     const existing = await this.flowRepo.findByIdOrFail(id);
     if (existing.status === 'published') {
-      const allowedPublishedUpdateKeys = new Set(['settings', 'triggerConfig', 'isConfigured']);
+      const allowedPublishedUpdateKeys = new Set(['settings', 'triggerConfig', 'isConfigured', 'renudgeConfig']);
       const hasUnsupportedUpdate = Object.keys(updates).some((key) => !allowedPublishedUpdateKeys.has(key));
 
       if (hasUnsupportedUpdate) {

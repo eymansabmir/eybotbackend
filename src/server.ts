@@ -15,6 +15,7 @@ import { EnginePlugin } from './plugins/engine/engine.plugin';
 import { WhatsAppPlugin } from './plugins/whatsapp/whatsapp.plugin';
 import { AuthPlugin } from './plugins/auth/auth.plugin';
 import { WorkerPlugin } from './plugins/worker/worker.plugin';
+import { RenudgeService } from './features/renudge/renudge.service';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
 import { PrismaSessionRepository } from './features/session/session.repository';
@@ -25,6 +26,7 @@ import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { REDIS_PLUGIN, type IRedisPlugin } from './plugins/redis';
 import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
+import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
 import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
@@ -35,6 +37,7 @@ import {
   INBOUND_HANDLER,
   VOICE_ENTITY_REPOSITORY,
   VOICE_ROUTING_REPOSITORY,
+  RENUDGE_SERVICE,
 } from './features/repositories.interface';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
@@ -56,7 +59,6 @@ async function startServer(): Promise<void> {
   const registry = new PluginRegistry();
 
   const enableServer = process.env.ENABLE_SERVER !== 'false';
-  const enableWorker = process.env.ENABLE_WORKER !== 'false';
 
   registry.register(new DatabasePlugin());
   registry.register(new RedisPlugin());
@@ -66,9 +68,7 @@ async function startServer(): Promise<void> {
   registry.register(new AuthPlugin());
   registry.register(new VoiceProvidersPlugin());
 
-  if (enableWorker) {
-    registry.register(new WorkerPlugin());
-  }
+  registry.register(new WorkerPlugin());
 
   registry.register(new OpenAIPlugin());
   registry.register(new ElevenLabsPlugin());
@@ -87,6 +87,7 @@ async function startServer(): Promise<void> {
   const redisPlugin = registry.get<IRedisPlugin>(REDIS_PLUGIN);
   const storagePlugin = registry.get<IStoragePlugin>(STORAGE_PLUGIN);
   const whatsappPlugin = registry.get<IWhatsAppPlugin>(WHATSAPP_PLUGIN);
+  const workerPlugin = registry.get<IWorkerPlugin>(WORKER_PLUGIN);
   
   const flowRepo = new PrismaFlowRepository(dbPlugin.prisma);
   const sessionRepo = new PrismaSessionRepository(dbPlugin.prisma);
@@ -96,6 +97,7 @@ async function startServer(): Promise<void> {
   const credentialService = new CredentialService(credentialRepo);
   const voiceEntityRepo = new PrismaEntityRepository(dbPlugin.prisma, redisPlugin.client);
   const voiceRoutingRepo = new PrismaVoiceRoutingRepository(dbPlugin.prisma, redisPlugin.client);
+  const renudgeService = new RenudgeService(workerPlugin, dbPlugin);
 
   registry.registerValue(FLOW_REPOSITORY, flowRepo);
   registry.registerValue(SESSION_REPOSITORY, sessionRepo);
@@ -105,6 +107,7 @@ async function startServer(): Promise<void> {
   registry.registerValue(CREDENTIAL_SERVICE, credentialService);
   registry.registerValue(VOICE_ENTITY_REPOSITORY, voiceEntityRepo);
   registry.registerValue(VOICE_ROUTING_REPOSITORY, voiceRoutingRepo);
+  registry.registerValue(RENUDGE_SERVICE, renudgeService);
 
   const inboundHandler = new SessionInboundHandler(
     flowRepo,
@@ -114,6 +117,7 @@ async function startServer(): Promise<void> {
     storagePlugin,
     whatsappPlugin,
     credentialRepo,
+    renudgeService,
   );
   registry.registerValue(INBOUND_HANDLER, inboundHandler);
 

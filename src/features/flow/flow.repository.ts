@@ -25,12 +25,18 @@ export class PrismaFlowRepository implements IFlowRepository {
 
     async create(flow: FlowEntity): Promise<FlowEntity> {
         const data = FlowMapper.toPrisma(flow);
-        const created = await this.prisma.flow.create({ data });
+        const created = await this.prisma.flow.create({ 
+            data,
+            include: { renudgeConfig: true }
+        });
         return FlowMapper.toEntity(created);
     }
 
     async findById(id: string): Promise<FlowEntity | null> {
-        const flow = await this.prisma.flow.findUnique({ where: { id } });
+        const flow = await this.prisma.flow.findUnique({ 
+            where: { id },
+            include: { renudgeConfig: true }
+        });
         if (!flow) return null;
         const enriched = await this.enrichFlowsWithMetrics([flow]);
         return FlowMapper.toEntity(enriched[0]);
@@ -51,6 +57,7 @@ export class PrismaFlowRepository implements IFlowRepository {
         }
         const flows = await this.prisma.flow.findMany({
             where,
+            include: { renudgeConfig: true },
             orderBy: { updatedAt: 'desc' },
         });
         const enriched = await this.enrichFlowsWithMetrics(flows);
@@ -123,15 +130,40 @@ export class PrismaFlowRepository implements IFlowRepository {
             delete data.createdAt;
             delete data.updatedAt;
 
+            const renudgeConfig = data.renudgeConfig;
+            delete data.renudgeConfig;
+
             const updated = await this.prisma.flow.update({
                 where: { id },
                 data: {
                     ...data,
-                    ...(data.nodes ? { nodes: data.nodes } : {})
+                    ...(data.nodes ? { nodes: data.nodes } : {}),
+                    ...(renudgeConfig ? {
+                        renudgeConfig: {
+                            upsert: {
+                                create: {
+                                    enabled: renudgeConfig.enabled,
+                                    durationMinutes: renudgeConfig.durationMinutes,
+                                    maxAttempts: renudgeConfig.maxAttempts,
+                                    message: renudgeConfig.message,
+                                    buttons: renudgeConfig.buttons as any,
+                                },
+                                update: {
+                                    enabled: renudgeConfig.enabled,
+                                    durationMinutes: renudgeConfig.durationMinutes,
+                                    maxAttempts: renudgeConfig.maxAttempts,
+                                    message: renudgeConfig.message,
+                                    buttons: renudgeConfig.buttons as any,
+                                }
+                            }
+                        }
+                    } : {})
                 },
+                include: { renudgeConfig: true }
             });
+            
             if (data.nodes) {
-                console.log(`[PrismaFlowRepository] Updated nodes for flow ${id}:`, JSON.stringify(data.nodes, null, 2));
+                console.log(`[PrismaFlowRepository] Updated nodes for flow ${id}`);
             }
             return FlowMapper.toEntity(updated);
         } catch (error: unknown) {

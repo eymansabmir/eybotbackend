@@ -8,8 +8,8 @@ export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 export const SessionHistoryStepSchema = z.object({
   nodeId: z.string(),
   nodeType: z.nativeEnum(NodeType),
-  enteredAt: z.date(),
-  exitedAt: z.date().optional(),
+  enteredAt: z.coerce.date(),
+  exitedAt: z.coerce.date().optional(),
   branchTaken: z.string().optional(),
   userInput: z.string().optional(),
 });
@@ -17,8 +17,8 @@ export const SessionHistoryStepSchema = z.object({
 export type SessionHistoryStep = z.infer<typeof SessionHistoryStepSchema>;
 
 const BaseWaitingSchema = z.object({
-  since: z.date(),
-  timeoutAt: z.date(),
+  since: z.coerce.date(),
+  timeoutAt: z.coerce.date(),
 });
 
 const TextWaitingSchema = BaseWaitingSchema.extend({
@@ -64,8 +64,8 @@ export const SessionSchema = z.object({
   history: z.array(SessionHistoryStepSchema),
   waitingFor: WaitingForSchema.optional(),
   isCurrent: z.boolean().default(true),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
 });
 
 export type Session = z.infer<typeof SessionSchema>;

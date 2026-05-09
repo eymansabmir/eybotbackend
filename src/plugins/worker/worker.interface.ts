@@ -15,6 +15,8 @@ export const EXCHANGES = {
   VOICE_CAMPAIGN: 'voice.campaign',
   VOICE_CAMPAIGN_RETRY: 'voice.campaign.retry',
   VOICE_CAMPAIGN_DLQ: 'voice.campaign.dlq',
+  RE_NUDGE: 'wa.renudge',
+  RE_NUDGE_RETRY: 'wa.renudge.retry',
 } as const;
 
 export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];
@@ -35,5 +37,5 @@ export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];
  * same message, enabling broadcast to all running campaign workers.
  */
 export interface IWorkerPlugin {
-  publish(exchange: ExchangeName, data: unknown, routingKey?: string): Promise<void>;
+  publish(exchange: ExchangeName, data: unknown, routingKey?: string, options?: any): Promise<void>;
 }

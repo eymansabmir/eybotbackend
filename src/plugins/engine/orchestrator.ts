@@ -136,7 +136,7 @@ export class FlowOrchestrator {
     flow: FlowEntity,
     contact: ContactInfo,
     session: SessionEntity,
-    userInput: string,
+    userInput?: string,
     runtime?: RuntimeIntegrations,
   ): Promise<OrchestratorResult> {
     if (session.status === 'completed' || session.status === 'timed_out') {
@@ -265,7 +265,7 @@ export class FlowOrchestrator {
 
       const stepResult = this.executor.execute(execInput, traverser);
 
-      console.log(`[Orchestrator] Step ${stepCount}: Execution finished. Messages sent: ${stepResult.outboundMessages.length}, Next Node: ${stepResult.nextNodeId}`);
+      console.log(`[Orchestrator] Step ${stepCount}: Execution finished. Branch taken: '${stepResult.historyStep.branchTaken}', Next Node: ${stepResult.nextNodeId}`);
 
       isFirstStep = false;
       stepCount++;
