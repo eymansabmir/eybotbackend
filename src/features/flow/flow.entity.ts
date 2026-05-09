@@ -25,7 +25,7 @@ export interface FlowProperties {
 
 export interface RenudgeConfigProperties {
     id?: string;
-    flowId: string;
+    flowId?: string;
     enabled: boolean;
     durationMinutes: number;
     maxAttempts: number;
