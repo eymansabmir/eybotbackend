@@ -41,7 +41,7 @@ export type RenudgeConfig = z.infer<typeof RenudgeConfigSchema>;
 
 export const FlowSettingsSchema = z.object({
   credentialId: z.string().optional(),
-  timeoutSeconds: z.number().default(300),
+  timeoutSeconds: z.number().default(86400),
   maxSteps: z.number().default(100),
   maxConsecutiveLogicSteps: z.number().default(10),
   fallbackMessage: z.string().default('Sorry, something went wrong. Please try again later.'),

@@ -61,18 +61,6 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
           expiresIn: 300,
           allowedAttempts: 5,
           sendVerificationOTP: async ({ email, otp, type }) => {
-            // Domain Whitelist Check
-            const allowedDomainsStr = env.ALLOWED_DOMAINS;
-            if (allowedDomainsStr) {
-              const allowedDomains = allowedDomainsStr.split(',').map((d) => d.trim().toLowerCase());
-              const userDomain = email.split('@')[1]?.toLowerCase();
-
-              if (!userDomain || !allowedDomains.includes(userDomain)) {
-                logger.warn({ email, type }, 'AuthPlugin: Attempted login from unauthorized domain');
-                throw new Error('This domain is not authorized to access this platform. Please use your company email.');
-              }
-            }
-
             if (!isProduction) {
               logger.info(
                 { email, type },
