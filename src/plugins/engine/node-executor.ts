@@ -9,6 +9,7 @@ import type { OutboundMessage } from './engine.interface';
 import type { WaitingFor } from '../../features/session/session.entity';
 import { ISO_TO_NATIVE_NAME } from '../i18n/languages';
 import { MUTATION_STRATEGIES, type MutationStrategy } from './mutation-strategies';
+import { env } from '../../config/env';
 
 export interface VariableMutation {
   scope: 'session' | 'contact';
@@ -231,7 +232,7 @@ export class NodeExecutor {
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            url: currentNode.data['url'] ? this.text(currentNode.data['url'] as string, context) : undefined,
+            url: currentNode.data['url'] ? this.resolveMediaUrl(this.text(currentNode.data['url'] as string, context)) : undefined,
             mediaId: currentNode.data['mediaId'] ? this.text(currentNode.data['mediaId'] as string, context) : undefined,
             ...(currentNode.data['caption'] ? { caption: this.text(currentNode.data['caption'] as string, context) } : {}),
             ...(currentNode.data['filename'] ? { filename: currentNode.data['filename'] } : {}),
@@ -375,6 +376,25 @@ export class NodeExecutor {
     return this.resolver.resolve(template, ctx);
   }
 
+  private resolveMediaUrl(url: string): string {
+    if (!url || url.startsWith('http') || (url.includes('{{') && url.includes('}}'))) {
+      return url;
+    }
+
+    const base = env.BASE_MEDIA_URL;
+    const bucketName = env.GCS_BUCKET_NAME;
+
+    if (base) {
+      return `${base}/${url.replace(/^\/+/, '')}`;
+    }
+
+    if (bucketName) {
+      return `https://storage.googleapis.com/${bucketName}/${url.replace(/^\/+/, '')}`;
+    }
+
+    return url;
+  }
+
   private parseThreadIdStorage(template: string): { scope: 'session' | 'contact'; key: string } | undefined {
     const match = /^\{\{\s*(session|contact)\.([a-zA-Z0-9_]+)\s*\}\}$/.exec(template.trim());
     if (!match) return undefined;
@@ -446,7 +466,7 @@ export class NodeExecutor {
     const resolvedThreadId = rawThreadIdTemplate ? this.text(rawThreadIdTemplate, ctx).trim() : '';
     const resolvedAudioUrl =
       typeof data['audioUrl'] === 'string'
-        ? this.resolveTemplateWithScopeFallback(data['audioUrl'], ctx)
+        ? this.resolveMediaUrl(this.resolveTemplateWithScopeFallback(data['audioUrl'], ctx))
         : undefined;
     const threadIdStorage = rawThreadIdTemplate ? this.parseThreadIdStorage(rawThreadIdTemplate) : undefined;
     const hasThreadTemplateMarkers = rawThreadIdTemplate.includes('{{') || rawThreadIdTemplate.includes('}}');
@@ -840,7 +860,7 @@ export class NodeExecutor {
       const messages: OutboundMessage[] = items.map((item: any) => ({
         type: node.type,
         payload: {
-          imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+          imageUrl: item.imageUrl ? this.resolveMediaUrl(this.text(item.imageUrl, ctx)) : undefined,
           title: item.title ? this.text(item.title, ctx) : undefined,
           description: item.description ? this.text(item.description, ctx) : undefined,
           buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
@@ -882,7 +902,7 @@ export class NodeExecutor {
     const messages: OutboundMessage[] = items.map((item: any) => ({
       type: node.type,
       payload: {
-        imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+        imageUrl: item.imageUrl ? this.resolveMediaUrl(this.text(item.imageUrl, ctx)) : undefined,
         title: item.title ? this.text(item.title, ctx) : undefined,
         description: item.description ? this.text(item.description, ctx) : undefined,
         buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
@@ -1099,12 +1119,12 @@ export class NodeExecutor {
     const bodyText = node.data['bodyText'] ? this.text(node.data['bodyText'] as string, ctx) : undefined;
     const cards = (node.data['cards'] as any[])?.map(card => ({
       ...card,
-      url: card.url ? this.text(card.url as string, ctx) : undefined,
+      url: card.url ? this.resolveMediaUrl(this.text(card.url as string, ctx)) : undefined,
       bodyText: card.bodyText ? this.text(card.bodyText as string, ctx) : undefined,
       ctaUrlButton: card.ctaUrlButton ? {
         ...card.ctaUrlButton,
         displayText: card.ctaUrlButton.displayText ? this.text(card.ctaUrlButton.displayText as string, ctx) : undefined,
-        url: card.ctaUrlButton.url ? this.text(card.ctaUrlButton.url as string, ctx) : undefined,
+        url: card.ctaUrlButton.url ? this.resolveMediaUrl(this.text(card.ctaUrlButton.url as string, ctx)) : undefined,
       } : undefined,
       quickReplyButtons: card.quickReplyButtons?.map((btn: any) => ({
         ...btn,

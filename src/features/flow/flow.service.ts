@@ -73,11 +73,15 @@ export class FlowService implements IFlowService {
   }
 
   async getFlowById(id: string): Promise<FlowEntity> {
-    return this.flowRepo.findByIdOrFail(id);
+    const flow = await this.flowRepo.findByIdOrFail(id);
+    this.denormalizeNodeUrls(flow);
+    return flow;
   }
 
   async getFlowsByOrgId(orgId: string, status?: string): Promise<FlowEntity[]> {
-    return this.flowRepo.findByOrgId(orgId, status as any);
+    const flows = await this.flowRepo.findByOrgId(orgId, status as any);
+    flows.forEach(f => this.denormalizeNodeUrls(f));
+    return flows;
   }
 
   async updateFlow(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity> {
@@ -90,9 +94,6 @@ export class FlowService implements IFlowService {
         throw new ValidationError('Cannot update published flow structure. Archive it first.');
       }
     }
-    // Normalize media URLs to storage paths for consistency with createFlow.
-    // Full GCS/CDN URLs are stripped back to relative paths so the executor
-    // can resolve them correctly at runtime via the storage plugin.
     if (updates.nodes && updates.nodes.length > 0) {
       const tempEntity = existing.clone();
       tempEntity.nodes = updates.nodes;
@@ -104,7 +105,9 @@ export class FlowService implements IFlowService {
       await this.validateTriggerUniqueness(existing.orgId, updates.triggerConfig, id);
     }
 
-    return this.flowRepo.update(id, updates);
+    const updated = await this.flowRepo.update(id, updates);
+    this.denormalizeNodeUrls(updated);
+    return updated;
   }
 
   async publishFlow(id: string): Promise<FlowEntity> {
@@ -260,6 +263,8 @@ export class FlowService implements IFlowService {
 
   private normalizeNodeUrls(entity: FlowEntity): void {
     const base = env.BASE_MEDIA_URL;
+    const bucketName = env.GCS_BUCKET_NAME;
+
     const mediaNodeTypes = new Set([
       NodeType.SEND_IMAGE,
       NodeType.SEND_VIDEO,
@@ -273,10 +278,31 @@ export class FlowService implements IFlowService {
         return val;
       }
       try {
+        const url = new URL(val);
+
+        // 1. Handle BASE_MEDIA_URL
         if (base && val.startsWith(base)) {
           return val.replace(`${base}/`, '');
         }
-        return new URL(val).pathname.replace(/^\/+/, '');
+
+        // 2. Handle GCS Standard: https://storage.googleapis.com/{bucket}/
+        if (url.hostname === 'storage.googleapis.com') {
+          const parts = url.pathname.replace(/^\/+/, '').split('/');
+          if (bucketName && parts[0] === bucketName) {
+            return parts.slice(1).join('/');
+          }
+          return url.pathname.replace(/^\/+/, '');
+        }
+
+        // 3. Handle Bucket-first: https://{bucket}.storage.googleapis.com/
+        if (url.hostname.endsWith('.storage.googleapis.com')) {
+          const bucketFromUrl = url.hostname.replace('.storage.googleapis.com', '');
+          if (bucketName && bucketFromUrl === bucketName) {
+            return url.pathname.replace(/^\/+/, '');
+          }
+        }
+
+        return val;
       } catch {
         return val;
       }
@@ -298,6 +324,55 @@ export class FlowService implements IFlowService {
           card.url = normalize(card.url);
           if (card.ctaUrlButton?.url) {
             card.ctaUrlButton.url = normalize(card.ctaUrlButton.url);
+          }
+        });
+      }
+    }
+  }
+
+  private denormalizeNodeUrls(entity: FlowEntity): void {
+    const base = env.BASE_MEDIA_URL;
+    const bucketName = env.GCS_BUCKET_NAME;
+
+    const denormalize = (val: any) => {
+      if (typeof val !== 'string' || val.startsWith('http') || (val.includes('{{') && val.includes('}}'))) {
+        return val;
+      }
+
+      // If it's a relative path, resolve it
+      if (base) {
+        return `${base}/${val}`;
+      }
+      if (bucketName) {
+        return `https://storage.googleapis.com/${bucketName}/${val}`;
+      }
+      return val;
+    };
+
+    const mediaNodeTypes = new Set([
+      NodeType.SEND_IMAGE,
+      NodeType.SEND_VIDEO,
+      NodeType.SEND_AUDIO,
+      NodeType.SEND_DOCUMENT,
+      NodeType.SEND_STICKER,
+    ]);
+
+    for (const node of entity.nodes) {
+      if (!node.data) continue;
+
+      if (mediaNodeTypes.has(node.type as NodeType)) {
+        node.data.url = denormalize(node.data.url);
+      } else if (node.type === NodeType.SEND_CARDS) {
+        const items = (node.data['items'] as any[]) ?? [];
+        items.forEach((item: any) => {
+          item.imageUrl = denormalize(item.imageUrl);
+        });
+      } else if (node.type === NodeType.SEND_CAROUSEL) {
+        const cards = (node.data['cards'] as any[]) ?? [];
+        cards.forEach((card: any) => {
+          card.url = denormalize(card.url);
+          if (card.ctaUrlButton?.url) {
+            card.ctaUrlButton.url = denormalize(card.ctaUrlButton.url);
           }
         });
       }
