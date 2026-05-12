@@ -31,6 +31,7 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
+    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
     isCurrent?: boolean | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
@@ -38,8 +39,8 @@ export interface SessionProperties {
 
 export class SessionEntity {
     public id?: string | undefined;
-    public readonly flowId: string;
-    public readonly flowVersion: number;
+    public flowId: string;
+    public flowVersion: number;
     /** @deprecated Contact management removed; kept optional for DB backward compat */
     public readonly contactId?: string | undefined;
     public readonly waId: string;
@@ -49,6 +50,7 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
+    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
     public isCurrent: boolean;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
@@ -65,6 +67,7 @@ export class SessionEntity {
         this.variables = props.variables || {};
         this.history = props.history || [];
         this.waitingFor = props.waitingFor;
+        this.flowStack = props.flowStack || [];
         this.isCurrent = props.isCurrent ?? true;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
@@ -96,6 +99,20 @@ export class SessionEntity {
         this.status = 'active';
     }
 
+    public jumpToFlow(flowId: string, version: number, startNodeId: string): void {
+        this.flowId = flowId;
+        this.flowVersion = version;
+        this.currentNodeId = startNodeId;
+    }
+
+    public pushStack(flowId: string, version: number, returnNodeId: string): void {
+        this.flowStack.push({ flowId, flowVersion: version, returnNodeId });
+    }
+
+    public popStack(): { flowId: string; flowVersion: number; returnNodeId: string } | undefined {
+        return this.flowStack.pop();
+    }
+
     public toJSON() {
         return {
             id: this.id,
@@ -109,6 +126,7 @@ export class SessionEntity {
             variables: this.variables,
             history: this.history,
             waitingFor: this.waitingFor,
+            flowStack: this.flowStack,
             isCurrent: this.isCurrent,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,

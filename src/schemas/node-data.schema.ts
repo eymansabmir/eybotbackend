@@ -196,6 +196,11 @@ const JumpToFlowDataSchema = z.object({
   targetFlowId: z.string(),
 });
 
+const BotNodeDataSchema = z.object({
+  targetFlowId: z.string(),
+  targetNodeId: z.string().optional(),
+});
+
 const HumanHandoffDataSchema = z.object({
   message: z.string().optional(),
   tag: z.string().optional(),
@@ -448,6 +453,7 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.START) }),
   z.object({ type: z.literal(NodeType.END) }),
   z.object({ type: z.literal(NodeType.JUMP_TO_FLOW), ...JumpToFlowDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.BOT_NODE), ...BotNodeDataSchema.shape }),
   z.object({ type: z.literal(NodeType.HUMAN_HANDOFF), ...HumanHandoffDataSchema.shape }),
   z.object({ type: z.literal(NodeType.WEBHOOK), ...WebhookDataSchema.shape }),
   z.object({ type: z.literal(NodeType.HTTP_REQUEST), ...HttpRequestDataSchema.shape }),

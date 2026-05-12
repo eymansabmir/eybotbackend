@@ -41,6 +41,9 @@ export interface NodeExecutionResult {
   historyStep: HistoryStep;
   isTerminal: boolean;
   languageChanged?: string;
+  jumpToFlowId?: string;
+  jumpToNodeId?: string;
+  returnNodeId?: string;
 }
 
 export interface NodeExecutionInput {
@@ -322,10 +325,9 @@ export class NodeExecutor {
         return this.handleRandomSplit(currentNode, enteredAt, traverser);
 
       case NodeType.JUMP_TO_FLOW:
-        return {
-          nextNodeId: null, outboundMessages: [], variableMutations: [], isTerminal: true,
-          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date(), branchTaken: currentNode.data['targetFlowId'] as string },
-        };
+        return this.handleJumpToFlow(currentNode, enteredAt);
+      case NodeType.BOT_NODE:
+        return this.handleBotNode(currentNode, enteredAt, traverser);
 
       case NodeType.HUMAN_HANDOFF: {
         const msg = currentNode.data['message'] ? this.text(currentNode.data['message'] as string, context) : undefined;
@@ -1432,5 +1434,42 @@ export class NodeExecutor {
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
+  }
+
+  private handleJumpToFlow(currentNode: Node, enteredAt: Date): NodeExecutionResult {
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
+  }
+
+  private handleBotNode(currentNode: Node, enteredAt: Date, traverser: GraphTraverser): NodeExecutionResult {
+    const nextNodeId = traverser.getNextNodeId(currentNode.id, 'default');
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      jumpToNodeId: currentNode.data['targetNodeId'] as string,
+      returnNodeId: nextNodeId || undefined,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
   }
 }
