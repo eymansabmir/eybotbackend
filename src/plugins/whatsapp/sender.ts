@@ -104,6 +104,10 @@ export class DirectWhatsAppSender implements IWhatsAppSender {
       }
       case NodeType.SEND_CAROUSEL:
         return this.api.sendCarousel(waId, p['bodyText'] as string | undefined, p['cards'] as any[]);
+      case NodeType.REDIRECT:
+        // WhatsApp doesn't support automatic browser redirects.
+        // The closest equivalent is sending the URL as a clickable text message.
+        return this.api.sendText(waId, p['url'] as string);
       default:
         logger.warn({ waId, messageType: msg.type }, 'DirectWhatsAppSender: unknown message type');
         return undefined;

@@ -40,6 +40,11 @@ export enum NodeType {
   DEEPSEEK = 'deepseek',
   VARIABLE_MANAGER = 'variable_manager',
   MEDIA_CONDITIONAL = 'media_conditional',
+  REDIRECT = 'redirect',
+  SCRIPT = 'script',
+  JUMP = 'jump',
+  RETURN = 'return',
+  WAIT = 'wait',
 }
 
 export const MESSAGING_NODE_TYPES = [
@@ -68,6 +73,10 @@ export const LOGIC_NODE_TYPES = [
   NodeType.SET_VARIABLE,
   NodeType.RANDOM_SPLIT,
   NodeType.VARIABLE_MANAGER,
+  NodeType.REDIRECT,
+  NodeType.SCRIPT,
+  NodeType.JUMP,
+  NodeType.RETURN,
 ];
 
 export const FLOW_CONTROL_NODE_TYPES = [

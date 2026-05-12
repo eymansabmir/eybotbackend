@@ -31,6 +31,7 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
+    returnMark?: { nodeId: string } | undefined;
     isCurrent?: boolean | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
@@ -49,6 +50,7 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
+    public returnMark?: { nodeId: string } | undefined;
     public isCurrent: boolean;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
@@ -65,6 +67,7 @@ export class SessionEntity {
         this.variables = props.variables || {};
         this.history = props.history || [];
         this.waitingFor = props.waitingFor;
+        this.returnMark = props.returnMark;
         this.isCurrent = props.isCurrent ?? true;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
@@ -109,6 +112,7 @@ export class SessionEntity {
             variables: this.variables,
             history: this.history,
             waitingFor: this.waitingFor,
+            returnMark: this.returnMark,
             isCurrent: this.isCurrent,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,

@@ -110,6 +110,7 @@ export class SessionService implements ISessionService {
       variables: result.session.variables,
       history: result.session.history,
       waitingFor: result.session.waitingFor,
+      returnMark: result.session.returnMark,
       isCurrent: result.session.isCurrent,
     });
 
