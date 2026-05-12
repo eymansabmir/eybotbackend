@@ -16,7 +16,8 @@ export type WaitingFor =
     | { type: 'choice'; since: Date; timeoutAt: Date; options: { id: string; branchKey: string; label?: string }[]; defaultBranchKey?: string; variableName?: string; variableScope?: 'session' | 'contact' }
     | { type: 'file'; since: Date; timeoutAt: Date; variableName: string; variableScope: 'session' | 'contact' }
     | { type: 'location'; since: Date; timeoutAt: Date; variableName: string; variableScope: 'session' | 'contact' }
-    | { type: 'media_conditional'; since: Date; timeoutAt: Date; variableName?: string; variableScope?: 'session' | 'contact' };
+    | { type: 'media_conditional'; since: Date; timeoutAt: Date; variableName?: string; variableScope?: 'session' | 'contact' }
+    | { type: 'wait'; since: Date; timeoutAt: Date };
 
 export interface SessionProperties {
     id?: string | undefined;

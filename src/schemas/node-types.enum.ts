@@ -30,6 +30,7 @@ export enum NodeType {
   HUMAN_HANDOFF = 'human_handoff',
 
   BOT_NODE = 'bot_node',
+  WAIT = 'wait',
 
   WEBHOOK = 'webhook',
   HTTP_REQUEST = 'http_request',
@@ -77,6 +78,7 @@ export const FLOW_CONTROL_NODE_TYPES = [
   NodeType.END,
   NodeType.JUMP_TO_FLOW,
   NodeType.BOT_NODE,
+  NodeType.WAIT,
   NodeType.HUMAN_HANDOFF,
 ];
 
