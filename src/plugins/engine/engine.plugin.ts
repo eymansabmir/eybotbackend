@@ -324,6 +324,30 @@ export class EnginePlugin implements IPlugin, IEnginePlugin {
           create: { botId, waId, preferredLanguage: language },
         });
       },
+      getFlowById: async (flowId: string) => {
+        const db = this._registry.get<IDatabasePlugin>('database');
+        const flowRecord = await db.prisma.flow.findUnique({
+          where: { id: flowId },
+        });
+        if (!flowRecord) return null;
+        
+        const { FlowEntity } = await import('../../features/flow/flow.entity');
+        return new FlowEntity({
+          id: flowRecord.id,
+          orgId: flowRecord.orgId,
+          name: flowRecord.name,
+          description: flowRecord.description ?? undefined,
+          status: flowRecord.status as any,
+          version: flowRecord.version,
+          triggerType: flowRecord.triggerType as any,
+          triggerConfig: flowRecord.triggerConfig as any,
+          nodes: flowRecord.nodes as any,
+          edges: flowRecord.edges as any,
+          settings: flowRecord.settings as any,
+          createdAt: flowRecord.createdAt,
+          updatedAt: flowRecord.updatedAt,
+        });
+      },
     };
   }
 

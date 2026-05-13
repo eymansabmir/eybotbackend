@@ -26,6 +26,7 @@ export class SessionMapper {
             variables: (prismaSession.variables as any) ?? {},
             history: (prismaSession.history as any) ?? [],
             waitingFor,
+            flowStack: (prismaSession.flowStack as any) ?? [],
             isCurrent: prismaSession.isCurrent,
             createdAt: prismaSession.createdAt,
             updatedAt: prismaSession.updatedAt,
@@ -48,6 +49,7 @@ export class SessionMapper {
             variables: data.variables ?? {},
             history: data.history ?? [],
             waitingFor: data.waitingFor ?? null,
+            flowStack: data.flowStack ?? [],
             isCurrent: data.isCurrent,
         };
     }

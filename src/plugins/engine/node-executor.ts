@@ -41,6 +41,9 @@ export interface NodeExecutionResult {
   historyStep: HistoryStep;
   isTerminal: boolean;
   languageChanged?: string;
+  jumpToFlowId?: string;
+  jumpToNodeId?: string;
+  returnNodeId?: string;
 }
 
 export interface NodeExecutionInput {
@@ -322,10 +325,11 @@ export class NodeExecutor {
         return this.handleRandomSplit(currentNode, enteredAt, traverser);
 
       case NodeType.JUMP_TO_FLOW:
-        return {
-          nextNodeId: null, outboundMessages: [], variableMutations: [], isTerminal: true,
-          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date(), branchTaken: currentNode.data['targetFlowId'] as string },
-        };
+        return this.handleJumpToFlow(currentNode, enteredAt);
+      case NodeType.BOT_NODE:
+        return this.handleBotNode(currentNode, enteredAt, traverser);
+      case NodeType.WAIT:
+        return this.handleWaitNode(currentNode, enteredAt, traverser, userInput);
 
       case NodeType.HUMAN_HANDOFF: {
         const msg = currentNode.data['message'] ? this.text(currentNode.data['message'] as string, context) : undefined;
@@ -1432,5 +1436,74 @@ export class NodeExecutor {
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
+  }
+
+  private handleJumpToFlow(currentNode: Node, enteredAt: Date): NodeExecutionResult {
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
+  }
+
+  private handleBotNode(currentNode: Node, enteredAt: Date, traverser: GraphTraverser): NodeExecutionResult {
+    const nextNodeId = traverser.getNextNodeId(currentNode.id, 'default');
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      jumpToNodeId: currentNode.data['targetNodeId'] as string,
+      returnNodeId: nextNodeId || undefined,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
+  }
+
+  private handleWaitNode(node: Node, enteredAt: Date, traverser: GraphTraverser, userInput?: string): NodeExecutionResult {
+    // If userInput is present (even as an empty string from a resume trigger), 
+    // it means we have finished waiting and should move to the next node.
+    if (userInput !== undefined) {
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    const data = node.data as any;
+    const duration = Number(data.duration) || 1;
+    const unit = data.unit || 'minutes';
+
+    let ms = 0;
+    switch (unit) {
+      case 'seconds': ms = duration * 1000; break;
+      case 'minutes': ms = duration * 60 * 1000; break;
+      case 'hours': ms = duration * 3600 * 1000; break;
+      case 'days': ms = duration * 86400 * 1000; break;
+      default: ms = duration * 60 * 1000;
+    }
+
+    const timeoutAt = new Date(enteredAt.getTime() + ms);
+
+    return {
+      nextNodeId: null, // Stay on this node while waiting
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      waitForInput: { type: 'wait', since: enteredAt, timeoutAt },
+      historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+    };
   }
 }

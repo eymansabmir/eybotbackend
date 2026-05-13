@@ -39,6 +39,7 @@ export interface RuntimeIntegrations {
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
+  getFlowById?(flowId: string): Promise<FlowEntity | null>;
 }
 
 export interface DeepSeekNodeExecutionInput {
@@ -159,7 +160,8 @@ export class FlowOrchestrator {
     userInput: string | undefined,
     runtime?: RuntimeIntegrations,
   ): Promise<OrchestratorResult> {
-    const traverser = new GraphTraverser(flow.nodes, flow.edges);
+    let currentFlow = flow;
+    let traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
     const allMessages: OutboundMessage[] = [];
     const allContactMutations: Record<string, unknown> = {};
     let stepCount = 0;
@@ -258,8 +260,8 @@ export class FlowOrchestrator {
       // -------------------------------------
 
       const execInput = isFirstStep && userInput !== undefined
-        ? { context: { session, contact, flow }, currentNode, userInput }
-        : { context: { session, contact, flow }, currentNode };
+        ? { context: { session, contact, flow: currentFlow }, currentNode, userInput }
+        : { context: { session, contact, flow: currentFlow }, currentNode };
 
       console.log(`[Orchestrator] Step ${stepCount}: Executing ${currentNode.type} (${currentNode.id}). Input: '${(execInput as any).userInput ?? 'undefined'}'`);
 
@@ -298,7 +300,7 @@ export class FlowOrchestrator {
 
       if (stepResult.openAIRequest) {
         const openAIOutput = await this.executeOpenAIRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.openAIRequest,
@@ -330,7 +332,7 @@ export class FlowOrchestrator {
 
       if (stepResult.anthropicRequest) {
         const anthropicOutput = await this.executeAnthropicRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.anthropicRequest,
@@ -350,7 +352,7 @@ export class FlowOrchestrator {
 
       if (stepResult.deepSeekRequest) {
         const deepSeekOutput = await this.executeDeepSeekRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.deepSeekRequest,
@@ -370,7 +372,7 @@ export class FlowOrchestrator {
 
       if (stepResult.elevenLabsRequest) {
         const elevenLabsOutput = await this.executeElevenLabsRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.elevenLabsRequest,
@@ -390,7 +392,7 @@ export class FlowOrchestrator {
 
       if (stepResult.httpRequest) {
         const httpRequestOutput = await this.executeHttpRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.httpRequest,
@@ -404,7 +406,7 @@ export class FlowOrchestrator {
 
       if (stepResult.googleSheetsRequest) {
         const output = await this.executeGoogleSheetsRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.googleSheetsRequest,
@@ -418,7 +420,7 @@ export class FlowOrchestrator {
 
       if (stepResult.nocoDBRequest) {
         const output = await this.executeNocoDBRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.nocoDBRequest,
@@ -451,6 +453,43 @@ export class FlowOrchestrator {
       }
 
       if (stepResult.isTerminal || stepResult.nextNodeId === null) {
+        if (stepResult.jumpToFlowId && runtime?.getFlowById) {
+          console.log(`[Orchestrator] Jump detected to flow: ${stepResult.jumpToFlowId}`);
+          const nextFlow = await runtime.getFlowById(stepResult.jumpToFlowId);
+          if (nextFlow) {
+            // If this is a returnable jump (Bot Node), push current state to stack
+            if (stepResult.returnNodeId) {
+              session.pushStack(session.flowId, session.flowVersion, stepResult.returnNodeId);
+            }
+
+            currentFlow = nextFlow;
+            traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
+            const startNodeId = stepResult.jumpToNodeId || currentFlow.nodes.find((n) => n.type === NodeType.START)?.id;
+            
+            if (startNodeId) {
+              session.jumpToFlow(currentFlow.id!, currentFlow.version, startNodeId);
+              session.addToHistory(stepResult.historyStep);
+              isFirstStep = true;
+              continue;
+            }
+          }
+        }
+
+        // End of current flow - check if we should return to a parent flow
+        const returnPoint = session.popStack();
+        if (returnPoint && runtime?.getFlowById) {
+          console.log(`[Orchestrator] Returning to parent flow: ${returnPoint.flowId} at node: ${returnPoint.returnNodeId}`);
+          const parentFlow = await runtime.getFlowById(returnPoint.flowId);
+          if (parentFlow) {
+            currentFlow = parentFlow;
+            traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
+            session.jumpToFlow(currentFlow.id!, currentFlow.version, returnPoint.returnNodeId);
+            // We do NOT add to history here as the return point itself is a node that will be executed next
+            isFirstStep = false; 
+            continue;
+          }
+        }
+
         session.updateStatus('completed');
         session.isCurrent = false;
         return {

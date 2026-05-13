@@ -61,9 +61,14 @@ export class GraphTraverser {
   }
 
   getNextNode(sourceNodeId: string, branchKey: string): Node | null {
+    const targetId = this.getNextNodeId(sourceNodeId, branchKey);
+    return targetId ? this.getNode(targetId) : null;
+  }
+
+  getNextNodeId(sourceNodeId: string, branchKey: string = ''): string | null {
     const edges = this.edgesBySource.get(sourceNodeId) ?? [];
-    const edge = edges.find(e => e.sourceBranchKey === branchKey);
-    return edge ? this.getNode(edge.targetNodeId) : null;
+    const edge = edges.find(e => (e.sourceBranchKey || '') === branchKey);
+    return edge ? edge.targetNodeId : null;
   }
 
   private buildEdgeIndex(edges: Edge[]): Map<string, Edge[]> {

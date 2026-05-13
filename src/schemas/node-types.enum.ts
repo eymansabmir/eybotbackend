@@ -29,6 +29,9 @@ export enum NodeType {
   JUMP_TO_FLOW = 'jump_to_flow',
   HUMAN_HANDOFF = 'human_handoff',
 
+  BOT_NODE = 'bot_node',
+  WAIT = 'wait',
+
   WEBHOOK = 'webhook',
   HTTP_REQUEST = 'http_request',
   GOOGLE_SHEETS = 'google_sheets',
@@ -74,6 +77,8 @@ export const FLOW_CONTROL_NODE_TYPES = [
   NodeType.START,
   NodeType.END,
   NodeType.JUMP_TO_FLOW,
+  NodeType.BOT_NODE,
+  NodeType.WAIT,
   NodeType.HUMAN_HANDOFF,
 ];
 
