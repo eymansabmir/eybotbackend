@@ -27,6 +27,7 @@ export class SessionMapper {
             history: (prismaSession.history as any) ?? [],
             waitingFor,
             returnMark: (prismaSession.returnMark as any) ?? undefined,
+            flowStack: (prismaSession.flowStack as any) ?? [],
             isCurrent: prismaSession.isCurrent,
             createdAt: prismaSession.createdAt,
             updatedAt: prismaSession.updatedAt,
@@ -50,6 +51,7 @@ export class SessionMapper {
             history: data.history ?? [],
             waitingFor: data.waitingFor ?? null,
             returnMark: data.returnMark ?? null,
+            flowStack: data.flowStack ?? [],
             isCurrent: data.isCurrent,
         };
     }
