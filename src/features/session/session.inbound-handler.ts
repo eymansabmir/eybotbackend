@@ -277,6 +277,7 @@ export class SessionInboundHandler implements IInboundHandler {
             variables: result.session.variables,
             history: result.session.history,
             waitingFor: result.session.waitingFor,
+            returnMark: result.session.returnMark,
             flowStack: result.session.flowStack,
             isCurrent: result.session.isCurrent,
           });
@@ -444,6 +445,7 @@ export class SessionInboundHandler implements IInboundHandler {
         variables: result.session.variables,
         history: result.session.history,
         waitingFor: result.session.waitingFor,
+        returnMark: result.session.returnMark,
         flowStack: result.session.flowStack,
         isCurrent: result.session.isCurrent,
       });

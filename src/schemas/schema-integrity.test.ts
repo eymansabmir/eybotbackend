@@ -272,6 +272,11 @@ describe('Frontend ↔ Backend NodeType parity', () => {
     'elevenlabs',
     'anthropic',
     'deepseek',
+    'variable_manager',
+    'media_conditional',
+    'redirect',
+    'script',
+    'jump',
   ];
 
   const backendValues = Object.values(NodeType) as string[];

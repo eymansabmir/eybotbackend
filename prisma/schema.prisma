@@ -4,46 +4,38 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  
 }
 
 model Flow {
-  id          String     @id @default(uuid())
-  orgId       String
-  name        String
-  description String?
-  status      FlowStatus @default(draft)
-  version     Int        @default(1)
-
+  id            String            @id @default(uuid())
+  orgId         String
+  name          String
+  description   String?
+  status        FlowStatus        @default(draft)
+  version       Int               @default(1)
   triggerType   String
   triggerConfig Json
-
-  nodes    Json
-  edges    Json
-  settings Json
-
-  publishedAt DateTime?
-
-  isConfigured Boolean @default(false)
-
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  campaigns    Campaign[]
-  translations FlowTranslation[]
+  nodes         Json
+  edges         Json
+  settings      Json
+  publishedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  isConfigured  Boolean           @default(false)
+  campaigns     Campaign[]
+  translations  FlowTranslation[]
 
   @@index([orgId, status])
 }
 
 model FlowTranslation {
-  id             String @id @default(uuid())
+  id             String   @id @default(uuid())
   flowId         String
   language       String
   translatedData Json
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  flow           Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@unique([flowId, language], name: "flowId_language")
   @@index([flowId])
@@ -51,12 +43,20 @@ model FlowTranslation {
 }
 
 model ChatSession {
-  id String @id @default(uuid())
-
-  flowId      String @default("")
-  flowVersion Int    @default(1)
-
+  id               String        @id @default(uuid())
+  flowId           String        @default("")
+  flowVersion      Int           @default(1)
   contactId        String?
+  waId             String        @default("")
+  waBusinessNumber String        @default("")
+  status           SessionStatus @default(active)
+  currentNodeId    String        @default("")
+  variables        Json?
+  history          Json?
+  isCurrent        Boolean       @default(true)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  returnMark       Json?
   waId             String  @default("")
   waBusinessNumber String  @default("")
 
@@ -84,7 +84,7 @@ model ChatSession {
 model Session {
   id        String   @id @default(uuid())
   expiresAt DateTime @db.Timestamptz(3)
-  token     String
+  token     String   @unique
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
   ipAddress String?
@@ -92,44 +92,38 @@ model Session {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([token])
   @@index([userId])
   @@map("session")
 }
 
 model Contact {
-  id String @id @default(uuid())
-
-  orgId String
-  waId  String
-  name  String
-
+  id           String   @id @default(uuid())
+  orgId        String
+  waId         String
+  name         String
   tags         String[]
   customFields Json?
-
-  optIn Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  optIn        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([orgId, waId])
   @@index([orgId])
 }
 
 model Campaign {
-  id              String         @id @default(uuid())
+  id              String            @id @default(uuid())
   orgId           String
   name            String
   flowId          String
   scheduleTime    DateTime?
-  status          CampaignStatus @default(draft)
+  status          CampaignStatus    @default(draft)
   activeVersionId String?
-
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  flow      Flow              @relation(fields: [flowId], references: [id])
-  versions  CampaignVersion[]
-  stats     CampaignStats?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  flow            Flow              @relation(fields: [flowId], references: [id])
+  stats           CampaignStats?
+  versions        CampaignVersion[]
 
   @@index([orgId, status])
 }
@@ -140,12 +134,10 @@ model CampaignVersion {
   filePath      String
   versionNumber Int
   status        CampaignVersionStatus @default(draft)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  campaign   Campaign            @relation(fields: [campaignId], references: [id])
-  recipients CampaignRecipient[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  recipients    CampaignRecipient[]
+  campaign      Campaign              @relation(fields: [campaignId], references: [id])
 
   @@index([campaignId])
 }
@@ -154,20 +146,16 @@ model CampaignRecipient {
   id                String          @id @default(uuid())
   campaignVersionId String
   waId              String
-  messageId         String?         @unique // Tracking the specific message sent by Meta
   variables         Json?
   status            RecipientStatus @default(pending)
-
-  // Lifecycle Timestamps
-  sentAt      DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime? // Seen
-  repliedAt   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  version CampaignVersion @relation(fields: [campaignVersionId], references: [id])
+  sentAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deliveredAt       DateTime?
+  messageId         String?         @unique
+  readAt            DateTime?
+  repliedAt         DateTime?
+  version           CampaignVersion @relation(fields: [campaignVersionId], references: [id])
 
   @@index([messageId])
   @@index([campaignVersionId, status])
@@ -175,19 +163,210 @@ model CampaignRecipient {
 }
 
 model CampaignStats {
-  campaignId String @id
-  total      Int    @default(0)
-  sent       Int    @default(0)
-  delivered  Int    @default(0)
-  read       Int    @default(0)
-  replied    Int    @default(0)
-  failed     Int    @default(0)
-  pending    Int    @default(0)
-  completed  Int    @default(0)
+  campaignId String   @id
+  total      Int      @default(0)
+  sent       Int      @default(0)
+  failed     Int      @default(0)
+  pending    Int      @default(0)
+  completed  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  delivered  Int      @default(0)
+  read       Int      @default(0)
+  replied    Int      @default(0)
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+}
 
-  updatedAt DateTime @updatedAt
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  accounts      Account[]
+  sessions      Session[]
 
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  @@map("user")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Credential {
+  id             String          @id @default(uuid())
+  orgId          String
+  name           String
+  type           CredentialType
+  ciphertext     Bytes
+  iv             Bytes
+  authTag        Bytes
+  keyVersion     Int             @default(1)
+  metadata       Json?
+  isActive       Boolean         @default(true)
+  lastTestedAt   DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  voiceProviders VoiceProvider[]
+
+  @@unique([orgId, type, name])
+  @@index([orgId, type, isActive])
+  @@map("credentials")
+}
+
+model EntityType {
+  id             String                    @id @default(uuid())
+  tenantId       String
+  name           String
+  fileId         String?
+  type           String                    @default("AUTOMATIC")
+  data           Json?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  attributes     EntityAttribute[]
+  routingConfigs RoutingConfig[]
+  events         VoiceOrchestrationEvent[]
+
+  @@unique([tenantId, name])
+  @@map("datasets")
+}
+
+model EntityAttribute {
+  id           String     @id @default(uuid())
+  tenantId     String
+  entityTypeId String
+  key          String
+  type         String
+  operators    Json
+  values       Json?
+  entityType   EntityType @relation(fields: [entityTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entityTypeId, key])
+  @@map("dataset_attributes")
+}
+
+model VoiceProvider {
+  id           String                    @id @default(uuid())
+  tenantId     String
+  providerName String
+  config       Json
+  isActive     Boolean                   @default(true)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  credentialId String?
+  routingRules RoutingRule[]
+  events       VoiceOrchestrationEvent[]
+  credential   Credential?               @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("voice_providers")
+}
+
+model RoutingConfig {
+  id            String                    @id @default(uuid())
+  tenantId      String
+  name          String
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  description   String?
+  entityTypeId  String?
+  status        ConfigStatus              @default(ACTIVE)
+  type          RoutingType               @default(AUTOMATIC)
+  entityTypeIds String[]                  @default([])
+  entityType    EntityType?               @relation(fields: [entityTypeId], references: [id])
+  rules         RoutingRule[]
+  events        VoiceOrchestrationEvent[]
+
+  @@index([tenantId])
+  @@map("routing_configs")
+}
+
+model RoutingRule {
+  id              String                    @id @default(uuid())
+  routingConfigId String
+  priority        Int
+  conditions      Json
+  action          Json
+  isActive        Boolean                   @default(true)
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  voiceProviderId String?
+  routingConfig   RoutingConfig             @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
+  voiceProvider   VoiceProvider?            @relation(fields: [voiceProviderId], references: [id])
+  events          VoiceOrchestrationEvent[]
+
+  @@index([routingConfigId])
+  @@map("routing_rules")
+}
+
+model VoiceOrchestrationEvent {
+  id              String         @id @default(uuid())
+  tenantId        String
+  traceId         String
+  entityId        String?
+  entityTypeId    String?
+  routingConfigId String?
+  voiceProviderId String?
+  matchedRuleId   String?
+  flow            String         @default("voice_orchestration")
+  step            String
+  status          Int?
+  accepted        Boolean?
+  message         String?
+  durationMs      Int?
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  entityType      EntityType?    @relation(fields: [entityTypeId], references: [id])
+  matchedRule     RoutingRule?   @relation(fields: [matchedRuleId], references: [id])
+  routingConfig   RoutingConfig? @relation(fields: [routingConfigId], references: [id])
+  voiceProvider   VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
+
+  @@index([tenantId, traceId])
+  @@index([createdAt])
+  @@map("voice_orchestration_events")
+}
+
+model UserLanguagePreference {
+  id                String   @id @default(uuid())
+  botId             String
+  waId              String
+  preferredLanguage String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([botId, waId])
+  @@index([botId, waId])
+  @@map("user_language_preferences")
 }
 
 enum FlowStatus {
@@ -221,58 +400,11 @@ enum CampaignVersionStatus {
 enum RecipientStatus {
   pending
   sent
+  failed
+  completed
   delivered
   read
   replied
-  failed
-  completed
-}
-
-model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
-  sessions      Session[]
-  accounts      Account[]
-
-  @@unique([email])
-  @@map("user")
-}
-
-model Account {
-  id                    String    @id
-  accountId             String
-  providerId            String
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken           String?
-  refreshToken          String?
-  idToken               String?
-  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
-  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
-  scope                 String?
-  password              String?
-  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
-
-  @@index([userId])
-  @@map("account")
-}
-
-model Verification {
-  id         String   @id
-  identifier String
-  value      String
-  expiresAt  DateTime @db.Timestamptz(3)
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
-
-  @@index([identifier])
-  @@map("verification")
 }
 
 enum CredentialType {
@@ -280,90 +412,15 @@ enum CredentialType {
   GOOGLE_SHEETS
   NOCODB
   ELEVENLABS
-  EXOTEL
-  SARVAM
-  VAPI
   ZAPIER
   HTTP_REQUEST
   ANTHROPIC
   MAKE
   DEEPSEEK
   WHATSAPP_CLOUD
-}
-
-model Credential {
-  id           String         @id @default(uuid())
-  orgId        String
-  name         String
-  type         CredentialType
-  ciphertext   Bytes
-  iv           Bytes
-  authTag      Bytes
-  keyVersion   Int            @default(1)
-  metadata     Json? // baseUrl, projectId, etc (non-secret)
-  isActive     Boolean        @default(true)
-  lastTestedAt DateTime?
-  revokedAt    DateTime?
-
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-
-  voiceProviders VoiceProvider[]
-
-  @@unique([orgId, type, name])
-  @@index([orgId, type, isActive])
-  @@map("credentials")
-}
-
-model EntityType {
-  id             String          @id @default(uuid())
-  tenantId       String
-  name           String
-  fileId         String?         // From diagram: File ID / URI
-  type           String          @default("AUTOMATIC") // From diagram: Manual / Automatic
-  data           Json?           // From diagram: Data (JSON)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-
-  routingConfigs RoutingConfig[]
-  attributes     EntityAttribute[]
-  events         VoiceOrchestrationEvent[]
-
-  @@unique([tenantId, name])
-  @@map("datasets")
-}
-
-model EntityAttribute {
-  id           String @id @default(uuid())
-  tenantId     String
-  entityTypeId String
-  key          String
-  type         String
-  operators    Json
-  values       Json?
-
-  entityType   EntityType @relation(fields: [entityTypeId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, entityTypeId, key])
-  @@map("dataset_attributes")
-}
-
-model VoiceProvider {
-  id           String        @id @default(uuid())
-  tenantId     String
-  credentialId String?
-  providerName String
-  config       Json
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  
-  credential   Credential?   @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-  routingRules RoutingRule[]
-  events       VoiceOrchestrationEvent[]
-
-  @@index([tenantId])
-  @@map("voice_providers")
+  EXOTEL
+  SARVAM
+  VAPI
 }
 
 enum RoutingType {
@@ -375,84 +432,4 @@ enum ConfigStatus {
   ACTIVE
   DRAFT
   PAUSED
-}
-
-model RoutingConfig {
-  id           String        @id @default(uuid())
-  tenantId     String
-  entityTypeId String? // Link to primary dataset
-  entityTypeIds String[] @default([]) // Support for multiple datasets
-  name         String
-  description  String?
-  type         RoutingType   @default(AUTOMATIC)
-  status       ConfigStatus  @default(ACTIVE)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  
-  rules        RoutingRule[]
-  entityType   EntityType? @relation(fields: [entityTypeId], references: [id])
-  events       VoiceOrchestrationEvent[]
-
-  @@index([tenantId])
-  @@map("routing_configs")
-}
-
-model RoutingRule {
-  id              String   @id @default(uuid())
-  routingConfigId String
-  voiceProviderId String? // Explicit Vendor Link
-  priority        Int
-  conditions      Json
-  action          Json
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  routingConfig RoutingConfig  @relation(fields: [routingConfigId], references: [id], onDelete: Cascade)
-  voiceProvider VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
-  events        VoiceOrchestrationEvent[]
-
-  @@index([routingConfigId])
-  @@map("routing_rules")
-}
-
-model VoiceOrchestrationEvent {
-  id            String   @id @default(uuid())
-  tenantId      String
-  traceId       String
-  entityId      String?
-  entityTypeId  String?
-  routingConfigId String?
-  voiceProviderId String?
-  matchedRuleId String?
-  flow          String   @default("voice_orchestration")
-  step          String
-  status        Int? // HTTP status or custom code
-  accepted      Boolean?
-  message       String?
-  durationMs    Int?
-  metadata      Json?
-  createdAt     DateTime @default(now())
-
-  entityType    EntityType?    @relation(fields: [entityTypeId], references: [id])
-  routingConfig RoutingConfig? @relation(fields: [routingConfigId], references: [id])
-  voiceProvider VoiceProvider? @relation(fields: [voiceProviderId], references: [id])
-  matchedRule   RoutingRule?   @relation(fields: [matchedRuleId], references: [id])
-
-  @@index([tenantId, traceId])
-  @@index([createdAt])
-  @@map("voice_orchestration_events")
-}
-
-model UserLanguagePreference {
-  id                String   @id @default(uuid())
-  botId             String
-  waId              String
-  preferredLanguage String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@unique([botId, waId])
-  @@index([botId, waId])
-  @@map("user_language_preferences")
 }

@@ -7,6 +7,7 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
+import ivm from 'isolated-vm';
 import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,
@@ -16,6 +17,7 @@ import type {
   VariableMutation,
   AnthropicNodeRequest,
   DeepSeekNodeRequest,
+  ScriptNodeRequest,
 } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
@@ -432,6 +434,30 @@ export class FlowOrchestrator {
         }
       }
 
+      if (stepResult.scriptRequest) {
+        const output = await this.executeScriptRequest(
+          flow,
+          session,
+          contact,
+          stepResult.scriptRequest,
+          runtime,
+        );
+
+        for (const mutation of output.mutations) {
+          this.applyMutation(mutation, session, contact, allContactMutations);
+        }
+      }
+
+      if (stepResult.returnMark) {
+        session.returnMark = stepResult.returnMark;
+        logger.debug({ returnMark: session.returnMark }, '[Orchestrator] Set return mark');
+      }
+
+      if (currentNode.type === NodeType.RETURN) {
+        session.returnMark = undefined;
+        logger.debug('[Orchestrator] Cleared return mark after RETURN node execution');
+      }
+
       session.addToHistory(stepResult.historyStep);
 
       if (stepResult.nextNodeId) {
@@ -839,10 +865,87 @@ export class FlowOrchestrator {
         return { mutations: [] };
       }
 
-      if (error instanceof Error) {
-        throw new FlowExecutionError(error.message, request.nodeId);
-      }
-      throw new FlowExecutionError('HTTP request runtime execution failed', request.nodeId);
+      throw new FlowExecutionError(error instanceof Error ? error.message : 'HTTP request execution failed', request.nodeId);
+    }
+  }
+
+  private async executeScriptRequest(
+    _flow: FlowEntity,
+    session: SessionEntity,
+    _contact: ContactInfo,
+    request: ScriptNodeRequest,
+    _runtime?: RuntimeIntegrations,
+  ): Promise<{ mutations: VariableMutation[] }> {
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+    const context = isolate.createContextSync();
+    const global = context.global;
+    global.setSync('global', global.derefInto());
+
+    const variableMutations: VariableMutation[] = [];
+    const variablesObj = { ...session.variables };
+    global.setSync('variables', new ivm.Reference(variablesObj));
+
+    context.evalClosureSync(
+      `globalThis.variables = new Proxy($0.copySync(), {
+        set: function(target, prop, value) {
+          target[prop] = value;
+          $1.applySync(undefined, [prop, value]);
+          return true;
+        }
+      });`,
+      [
+        new ivm.Reference(variablesObj),
+        new ivm.Reference((key: string, value: any) => {
+          variableMutations.push({
+            scope: 'session',
+            key,
+            value,
+          });
+        })
+      ]
+    );
+
+    context.evalClosureSync(
+      `globalThis.fetch = async (...args) => {
+        const result = await $0.apply(undefined, args, { arguments: { copy: true }, promise: true, result: { copy: true, promise: true } });
+        return {
+          ok: result.ok,
+          status: result.status,
+          statusText: result.statusText,
+          text: async () => result.text,
+          json: async () => JSON.parse(result.text),
+        };
+      }`,
+      [
+        new ivm.Reference(async (...args: any[]) => {
+          const response = await fetch(args[0], args[1]);
+          const text = await response.text();
+          return {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            text,
+          };
+        }),
+      ]
+    );
+
+    try {
+      await context.evalClosure(
+        `return (async function() {
+          const AsyncFunction = async function () {}.constructor;
+          return new AsyncFunction($0)();
+        }())`,
+        [request.code],
+        { result: { copy: true, promise: true }, timeout: 5000 }
+      );
+      return { mutations: variableMutations };
+    } catch (err) {
+      console.error(`[Orchestrator] Error executing script in node ${request.nodeId}:`, err);
+      return { mutations: variableMutations };
+    } finally {
+      context.release();
+      isolate.dispose();
     }
   }
 

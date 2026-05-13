@@ -32,6 +32,7 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
+    returnMark?: { nodeId: string } | undefined;
     flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
     isCurrent?: boolean | undefined;
     createdAt?: Date | undefined;
@@ -51,6 +52,7 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
+    public returnMark?: { nodeId: string } | undefined;
     public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
     public isCurrent: boolean;
     public readonly createdAt?: Date | undefined;
@@ -68,6 +70,7 @@ export class SessionEntity {
         this.variables = props.variables || {};
         this.history = props.history || [];
         this.waitingFor = props.waitingFor;
+        this.returnMark = props.returnMark;
         this.flowStack = props.flowStack || [];
         this.isCurrent = props.isCurrent ?? true;
         this.createdAt = props.createdAt;
@@ -127,6 +130,7 @@ export class SessionEntity {
             variables: this.variables,
             history: this.history,
             waitingFor: this.waitingFor,
+            returnMark: this.returnMark,
             flowStack: this.flowStack,
             isCurrent: this.isCurrent,
             createdAt: this.createdAt,
