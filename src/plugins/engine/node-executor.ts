@@ -9,6 +9,7 @@ import type { OutboundMessage } from './engine.interface';
 import type { WaitingFor } from '../../features/session/session.entity';
 import { ISO_TO_NATIVE_NAME } from '../i18n/languages';
 import { MUTATION_STRATEGIES, type MutationStrategy } from './mutation-strategies';
+import { env } from '../../config/env';
 
 export interface VariableMutation {
   scope: 'session' | 'contact';
@@ -36,10 +37,20 @@ export interface NodeExecutionResult {
   httpRequest?: HttpRequestNodeRequest;
   googleSheetsRequest?: GoogleSheetsNodeRequest;
   nocoDBRequest?: NocoDBNodeRequest;
+  scriptRequest?: ScriptNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
   languageChanged?: string;
+  returnMark?: { nodeId: string };
+}
+
+export interface ScriptNodeRequest {
+  nodeId: string;
+  code: string;
+  jumpToFlowId?: string;
+  jumpToNodeId?: string;
+  returnNodeId?: string;
 }
 
 export interface NodeExecutionInput {
@@ -186,6 +197,10 @@ const LOGIC_TYPES = new Set<NodeType>([
   NodeType.RANDOM_SPLIT,
   NodeType.START,
   NodeType.JUMP_TO_FLOW,
+  NodeType.REDIRECT,
+  NodeType.SCRIPT,
+  NodeType.JUMP,
+  NodeType.RETURN,
 ]);
 
 export class NodeExecutor {
@@ -231,7 +246,7 @@ export class NodeExecutor {
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            url: currentNode.data['url'] ? this.text(currentNode.data['url'] as string, context) : undefined,
+            url: currentNode.data['url'] ? this.resolveMediaUrl(this.text(currentNode.data['url'] as string, context)) : undefined,
             mediaId: currentNode.data['mediaId'] ? this.text(currentNode.data['mediaId'] as string, context) : undefined,
             ...(currentNode.data['caption'] ? { caption: this.text(currentNode.data['caption'] as string, context) } : {}),
             ...(currentNode.data['filename'] ? { filename: currentNode.data['filename'] } : {}),
@@ -320,11 +335,23 @@ export class NodeExecutor {
       case NodeType.RANDOM_SPLIT:
         return this.handleRandomSplit(currentNode, enteredAt, traverser);
 
+      case NodeType.REDIRECT:
+        return this.handleRedirect(currentNode, context, enteredAt, traverser);
+
+      case NodeType.SCRIPT:
+        return this.handleScript(currentNode, context, enteredAt, traverser);
+
       case NodeType.JUMP_TO_FLOW:
-        return {
-          nextNodeId: null, outboundMessages: [], variableMutations: [], isTerminal: true,
-          historyStep: { nodeId: currentNode.id, nodeType: currentNode.type, enteredAt, exitedAt: new Date(), branchTaken: currentNode.data['targetFlowId'] as string },
-        };
+        return this.handleJumpToFlow(currentNode, enteredAt);
+      case NodeType.BOT_NODE:
+        return this.handleBotNode(currentNode, enteredAt, traverser);
+      case NodeType.WAIT:
+        return this.handleWaitNode(currentNode, enteredAt, traverser, userInput);
+
+      case NodeType.JUMP:
+        return this.handleJump(currentNode, enteredAt, traverser);
+      case NodeType.RETURN:
+        return this.handleReturn(currentNode, context, enteredAt, traverser);
 
       case NodeType.HUMAN_HANDOFF: {
         const msg = currentNode.data['message'] ? this.text(currentNode.data['message'] as string, context) : undefined;
@@ -373,6 +400,25 @@ export class NodeExecutor {
 
   private text(template: string, ctx: VariableContext): string {
     return this.resolver.resolve(template, ctx);
+  }
+
+  private resolveMediaUrl(url: string): string {
+    if (!url || url.startsWith('http') || (url.includes('{{') && url.includes('}}'))) {
+      return url;
+    }
+
+    const base = env.BASE_MEDIA_URL;
+    const bucketName = env.GCS_BUCKET_NAME;
+
+    if (base) {
+      return `${base}/${url.replace(/^\/+/, '')}`;
+    }
+
+    if (bucketName) {
+      return `https://storage.googleapis.com/${bucketName}/${url.replace(/^\/+/, '')}`;
+    }
+
+    return url;
   }
 
   private parseThreadIdStorage(template: string): { scope: 'session' | 'contact'; key: string } | undefined {
@@ -446,7 +492,7 @@ export class NodeExecutor {
     const resolvedThreadId = rawThreadIdTemplate ? this.text(rawThreadIdTemplate, ctx).trim() : '';
     const resolvedAudioUrl =
       typeof data['audioUrl'] === 'string'
-        ? this.resolveTemplateWithScopeFallback(data['audioUrl'], ctx)
+        ? this.resolveMediaUrl(this.resolveTemplateWithScopeFallback(data['audioUrl'], ctx))
         : undefined;
     const threadIdStorage = rawThreadIdTemplate ? this.parseThreadIdStorage(rawThreadIdTemplate) : undefined;
     const hasThreadTemplateMarkers = rawThreadIdTemplate.includes('{{') || rawThreadIdTemplate.includes('}}');
@@ -772,6 +818,106 @@ export class NodeExecutor {
     };
   }
 
+  private handleRedirect(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const url = node.data['url'] as string;
+    const isNewTab = node.data['isNewTab'] as boolean;
+
+    const resolvedUrl = this.text(url, ctx);
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, [
+      {
+        type: NodeType.REDIRECT,
+        payload: {
+          url: resolvedUrl,
+          isNewTab,
+        }
+      }
+    ]);
+  }
+
+  private handleScript(
+    node: Node,
+    _ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const code = node.data['content'] as string | undefined;
+    if (!code || code.trim() === '') {
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    return {
+      ...this.defaultResult(node, 'default', enteredAt, traverser),
+      scriptRequest: {
+        nodeId: node.id,
+        code,
+      },
+    };
+  }
+
+  private handleJump(
+    node: Node,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const targetNodeId = node.data['targetNodeId'] as string;
+    // Support both 'default' and 'next' for backward compatibility during transition
+    const nextNodeAfterJump = traverser.getNextNode(node.id, 'default') || traverser.getNextNode(node.id, 'next');
+
+    console.log(`[NodeExecutor] JUMP node ${node.id} executing. Target: ${targetNodeId}, Return point: ${nextNodeAfterJump?.id}`);
+
+    return {
+      nextNodeId: targetNodeId || null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      returnMark: nextNodeAfterJump ? { nodeId: nextNodeAfterJump.id } : undefined,
+      historyStep: {
+        nodeId: node.id,
+        nodeType: node.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: targetNodeId
+      },
+    };
+  }
+
+  private handleReturn(
+    node: Node,
+    ctx: { session: { returnMark?: { nodeId: string } } },
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const returnPoint = ctx.session.returnMark;
+
+    console.log(`[NodeExecutor] RETURN node ${node.id} executing. Return point from session: ${returnPoint?.nodeId}`);
+
+    if (!returnPoint) {
+      console.warn(`[NodeExecutor] RETURN node ${node.id} called but no returnMark found in session.`);
+      // If no return point, just go to default next node of Return block
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    return {
+      nextNodeId: returnPoint.nodeId,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      historyStep: {
+        nodeId: node.id,
+        nodeType: node.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: 'return'
+      },
+    };
+  }
+
   private handleNocoDB(
     node: Node,
     ctx: VariableContext,
@@ -840,7 +986,7 @@ export class NodeExecutor {
       const messages: OutboundMessage[] = items.map((item: any) => ({
         type: node.type,
         payload: {
-          imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+          imageUrl: item.imageUrl ? this.resolveMediaUrl(this.text(item.imageUrl, ctx)) : undefined,
           title: item.title ? this.text(item.title, ctx) : undefined,
           description: item.description ? this.text(item.description, ctx) : undefined,
           buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
@@ -882,7 +1028,7 @@ export class NodeExecutor {
     const messages: OutboundMessage[] = items.map((item: any) => ({
       type: node.type,
       payload: {
-        imageUrl: item.imageUrl ? this.text(item.imageUrl, ctx) : undefined,
+        imageUrl: item.imageUrl ? this.resolveMediaUrl(this.text(item.imageUrl, ctx)) : undefined,
         title: item.title ? this.text(item.title, ctx) : undefined,
         description: item.description ? this.text(item.description, ctx) : undefined,
         buttons: item.buttons?.map((b: any) => ({ id: b.id, title: this.text(b.text, ctx) })) ?? [],
@@ -1004,15 +1150,15 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
-      
+
       if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: valueToSave 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: valueToSave
         });
         logger.info(
           { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
@@ -1063,15 +1209,15 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
-      
+
       if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: valueToSave 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: valueToSave
         });
         logger.info(
           { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
@@ -1099,12 +1245,12 @@ export class NodeExecutor {
     const bodyText = node.data['bodyText'] ? this.text(node.data['bodyText'] as string, ctx) : undefined;
     const cards = (node.data['cards'] as any[])?.map(card => ({
       ...card,
-      url: card.url ? this.text(card.url as string, ctx) : undefined,
+      url: card.url ? this.resolveMediaUrl(this.text(card.url as string, ctx)) : undefined,
       bodyText: card.bodyText ? this.text(card.bodyText as string, ctx) : undefined,
       ctaUrlButton: card.ctaUrlButton ? {
         ...card.ctaUrlButton,
         displayText: card.ctaUrlButton.displayText ? this.text(card.ctaUrlButton.displayText as string, ctx) : undefined,
-        url: card.ctaUrlButton.url ? this.text(card.ctaUrlButton.url as string, ctx) : undefined,
+        url: card.ctaUrlButton.url ? this.resolveMediaUrl(this.text(card.ctaUrlButton.url as string, ctx)) : undefined,
       } : undefined,
       quickReplyButtons: card.quickReplyButtons?.map((btn: any) => ({
         ...btn,
@@ -1160,10 +1306,10 @@ export class NodeExecutor {
       const mutations: VariableMutation[] = [];
       if (interaction?.input?.variableName) {
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: userInput 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: userInput
         });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
@@ -1277,14 +1423,14 @@ export class NodeExecutor {
   ): NodeExecutionResult {
     const assignments = (node.data['assignments'] ?? []) as any[];
     const mutations: VariableMutation[] = assignments.map(a => {
-        const strategy = (MUTATION_STRATEGIES[a.type] || MUTATION_STRATEGIES.value) as MutationStrategy;
-        const value = strategy(a.value, a.systemVariable, ctx, this.resolver);
+      const strategy = (MUTATION_STRATEGIES[a.type] || MUTATION_STRATEGIES.value) as MutationStrategy;
+      const value = strategy(a.value, a.systemVariable, ctx, this.resolver);
 
-        return {
-            scope: a.scope || 'session',
-            key: a.variable,
-            value: value,
-        };
+      return {
+        scope: a.scope || 'session',
+        key: a.variable,
+        value: value,
+      };
     });
     return this.defaultResult(node, 'default', enteredAt, traverser, [], mutations);
   }
@@ -1412,5 +1558,74 @@ export class NodeExecutor {
         historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
       };
     }
+  }
+
+  private handleJumpToFlow(currentNode: Node, enteredAt: Date): NodeExecutionResult {
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
+  }
+
+  private handleBotNode(currentNode: Node, enteredAt: Date, traverser: GraphTraverser): NodeExecutionResult {
+    const nextNodeId = traverser.getNextNodeId(currentNode.id, 'default');
+    return {
+      nextNodeId: null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: true,
+      jumpToFlowId: currentNode.data['targetFlowId'] as string,
+      jumpToNodeId: currentNode.data['targetNodeId'] as string,
+      returnNodeId: nextNodeId || undefined,
+      historyStep: {
+        nodeId: currentNode.id,
+        nodeType: currentNode.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: currentNode.data['targetFlowId'] as string,
+      },
+    };
+  }
+
+  private handleWaitNode(node: Node, enteredAt: Date, traverser: GraphTraverser, userInput?: string): NodeExecutionResult {
+    // If userInput is present (even as an empty string from a resume trigger), 
+    // it means we have finished waiting and should move to the next node.
+    if (userInput !== undefined) {
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    const data = node.data as any;
+    const duration = Number(data.duration) || 1;
+    const unit = data.unit || 'minutes';
+
+    let ms = 0;
+    switch (unit) {
+      case 'seconds': ms = duration * 1000; break;
+      case 'minutes': ms = duration * 60 * 1000; break;
+      case 'hours': ms = duration * 3600 * 1000; break;
+      case 'days': ms = duration * 86400 * 1000; break;
+      default: ms = duration * 60 * 1000;
+    }
+
+    const timeoutAt = new Date(enteredAt.getTime() + ms);
+
+    return {
+      nextNodeId: null, // Stay on this node while waiting
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      waitForInput: { type: 'wait', since: enteredAt, timeoutAt },
+      historyStep: { nodeId: node.id, nodeType: node.type, enteredAt },
+    };
   }
 }

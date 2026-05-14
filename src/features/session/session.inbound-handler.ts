@@ -312,11 +312,15 @@ export class SessionInboundHandler implements IInboundHandler {
           );
 
           await this.sessionRepo.update(result.session.id!, {
+            flowId: result.session.flowId,
+            flowVersion: result.session.flowVersion,
             status: result.session.status,
             currentNodeId: result.session.currentNodeId,
             variables: result.session.variables,
             history: result.session.history,
             waitingFor: result.session.waitingFor,
+            returnMark: result.session.returnMark,
+            flowStack: result.session.flowStack,
             isCurrent: result.session.isCurrent,
             renudgeAttempts: 0, // Explicitly reset on new step
             lastRenudgeAt: undefined,
@@ -484,11 +488,15 @@ export class SessionInboundHandler implements IInboundHandler {
       const sessionId = saved.id!;
 
       await this.sessionRepo.update(sessionId, {
+        flowId: result.session.flowId,
+        flowVersion: result.session.flowVersion,
         status: result.session.status,
         currentNodeId: result.session.currentNodeId,
         variables: result.session.variables,
         history: result.session.history,
         waitingFor: result.session.waitingFor,
+        returnMark: result.session.returnMark,
+        flowStack: result.session.flowStack,
         isCurrent: result.session.isCurrent,
       });
 

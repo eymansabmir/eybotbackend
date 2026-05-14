@@ -7,6 +7,7 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
+import ivm from 'isolated-vm';
 import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,
@@ -16,6 +17,7 @@ import type {
   VariableMutation,
   AnthropicNodeRequest,
   DeepSeekNodeRequest,
+  ScriptNodeRequest,
 } from './node-executor';
 
 const MAX_LOOP_STEPS = 50;
@@ -39,6 +41,7 @@ export interface RuntimeIntegrations {
   executeHttpRequest?(input: HttpRequestNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeGoogleSheets?(input: GoogleSheetsNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
   executeNocoDB?(input: NocoDBNodeExecutionInput): Promise<{ mutations: VariableMutation[] }>;
+  getFlowById?(flowId: string): Promise<FlowEntity | null>;
 }
 
 export interface DeepSeekNodeExecutionInput {
@@ -159,7 +162,8 @@ export class FlowOrchestrator {
     userInput: string | undefined,
     runtime?: RuntimeIntegrations,
   ): Promise<OrchestratorResult> {
-    const traverser = new GraphTraverser(flow.nodes, flow.edges);
+    let currentFlow = flow;
+    let traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
     const allMessages: OutboundMessage[] = [];
     const allContactMutations: Record<string, unknown> = {};
     let stepCount = 0;
@@ -258,8 +262,8 @@ export class FlowOrchestrator {
       // -------------------------------------
 
       const execInput = isFirstStep && userInput !== undefined
-        ? { context: { session, contact, flow }, currentNode, userInput }
-        : { context: { session, contact, flow }, currentNode };
+        ? { context: { session, contact, flow: currentFlow }, currentNode, userInput }
+        : { context: { session, contact, flow: currentFlow }, currentNode };
 
       console.log(`[Orchestrator] Step ${stepCount}: Executing ${currentNode.type} (${currentNode.id}). Input: '${(execInput as any).userInput ?? 'undefined'}'`);
 
@@ -298,7 +302,7 @@ export class FlowOrchestrator {
 
       if (stepResult.openAIRequest) {
         const openAIOutput = await this.executeOpenAIRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.openAIRequest,
@@ -330,7 +334,7 @@ export class FlowOrchestrator {
 
       if (stepResult.anthropicRequest) {
         const anthropicOutput = await this.executeAnthropicRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.anthropicRequest,
@@ -350,7 +354,7 @@ export class FlowOrchestrator {
 
       if (stepResult.deepSeekRequest) {
         const deepSeekOutput = await this.executeDeepSeekRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.deepSeekRequest,
@@ -370,7 +374,7 @@ export class FlowOrchestrator {
 
       if (stepResult.elevenLabsRequest) {
         const elevenLabsOutput = await this.executeElevenLabsRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.elevenLabsRequest,
@@ -390,7 +394,7 @@ export class FlowOrchestrator {
 
       if (stepResult.httpRequest) {
         const httpRequestOutput = await this.executeHttpRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.httpRequest,
@@ -404,7 +408,7 @@ export class FlowOrchestrator {
 
       if (stepResult.googleSheetsRequest) {
         const output = await this.executeGoogleSheetsRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.googleSheetsRequest,
@@ -418,7 +422,7 @@ export class FlowOrchestrator {
 
       if (stepResult.nocoDBRequest) {
         const output = await this.executeNocoDBRequest(
-          flow,
+          currentFlow,
           session,
           contact,
           stepResult.nocoDBRequest,
@@ -428,6 +432,30 @@ export class FlowOrchestrator {
         for (const mutation of output.mutations) {
           this.applyMutation(mutation, session, contact, allContactMutations);
         }
+      }
+
+      if (stepResult.scriptRequest) {
+        const output = await this.executeScriptRequest(
+          flow,
+          session,
+          contact,
+          stepResult.scriptRequest,
+          runtime,
+        );
+
+        for (const mutation of output.mutations) {
+          this.applyMutation(mutation, session, contact, allContactMutations);
+        }
+      }
+
+      if (stepResult.returnMark) {
+        session.returnMark = stepResult.returnMark;
+        logger.debug({ returnMark: session.returnMark }, '[Orchestrator] Set return mark');
+      }
+
+      if (currentNode.type === NodeType.RETURN) {
+        session.returnMark = undefined;
+        logger.debug('[Orchestrator] Cleared return mark after RETURN node execution');
       }
 
       session.addToHistory(stepResult.historyStep);
@@ -451,6 +479,43 @@ export class FlowOrchestrator {
       }
 
       if (stepResult.isTerminal || stepResult.nextNodeId === null) {
+        if (stepResult.jumpToFlowId && runtime?.getFlowById) {
+          console.log(`[Orchestrator] Jump detected to flow: ${stepResult.jumpToFlowId}`);
+          const nextFlow = await runtime.getFlowById(stepResult.jumpToFlowId);
+          if (nextFlow) {
+            // If this is a returnable jump (Bot Node), push current state to stack
+            if (stepResult.returnNodeId) {
+              session.pushStack(session.flowId, session.flowVersion, stepResult.returnNodeId);
+            }
+
+            currentFlow = nextFlow;
+            traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
+            const startNodeId = stepResult.jumpToNodeId || currentFlow.nodes.find((n) => n.type === NodeType.START)?.id;
+            
+            if (startNodeId) {
+              session.jumpToFlow(currentFlow.id!, currentFlow.version, startNodeId);
+              session.addToHistory(stepResult.historyStep);
+              isFirstStep = true;
+              continue;
+            }
+          }
+        }
+
+        // End of current flow - check if we should return to a parent flow
+        const returnPoint = session.popStack();
+        if (returnPoint && runtime?.getFlowById) {
+          console.log(`[Orchestrator] Returning to parent flow: ${returnPoint.flowId} at node: ${returnPoint.returnNodeId}`);
+          const parentFlow = await runtime.getFlowById(returnPoint.flowId);
+          if (parentFlow) {
+            currentFlow = parentFlow;
+            traverser = new GraphTraverser(currentFlow.nodes, currentFlow.edges);
+            session.jumpToFlow(currentFlow.id!, currentFlow.version, returnPoint.returnNodeId);
+            // We do NOT add to history here as the return point itself is a node that will be executed next
+            isFirstStep = false; 
+            continue;
+          }
+        }
+
         session.updateStatus('completed');
         session.isCurrent = false;
         return {
@@ -800,10 +865,87 @@ export class FlowOrchestrator {
         return { mutations: [] };
       }
 
-      if (error instanceof Error) {
-        throw new FlowExecutionError(error.message, request.nodeId);
-      }
-      throw new FlowExecutionError('HTTP request runtime execution failed', request.nodeId);
+      throw new FlowExecutionError(error instanceof Error ? error.message : 'HTTP request execution failed', request.nodeId);
+    }
+  }
+
+  private async executeScriptRequest(
+    _flow: FlowEntity,
+    session: SessionEntity,
+    _contact: ContactInfo,
+    request: ScriptNodeRequest,
+    _runtime?: RuntimeIntegrations,
+  ): Promise<{ mutations: VariableMutation[] }> {
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+    const context = isolate.createContextSync();
+    const global = context.global;
+    global.setSync('global', global.derefInto());
+
+    const variableMutations: VariableMutation[] = [];
+    const variablesObj = { ...session.variables };
+    global.setSync('variables', new ivm.Reference(variablesObj));
+
+    context.evalClosureSync(
+      `globalThis.variables = new Proxy($0.copySync(), {
+        set: function(target, prop, value) {
+          target[prop] = value;
+          $1.applySync(undefined, [prop, value]);
+          return true;
+        }
+      });`,
+      [
+        new ivm.Reference(variablesObj),
+        new ivm.Reference((key: string, value: any) => {
+          variableMutations.push({
+            scope: 'session',
+            key,
+            value,
+          });
+        })
+      ]
+    );
+
+    context.evalClosureSync(
+      `globalThis.fetch = async (...args) => {
+        const result = await $0.apply(undefined, args, { arguments: { copy: true }, promise: true, result: { copy: true, promise: true } });
+        return {
+          ok: result.ok,
+          status: result.status,
+          statusText: result.statusText,
+          text: async () => result.text,
+          json: async () => JSON.parse(result.text),
+        };
+      }`,
+      [
+        new ivm.Reference(async (...args: any[]) => {
+          const response = await fetch(args[0], args[1]);
+          const text = await response.text();
+          return {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            text,
+          };
+        }),
+      ]
+    );
+
+    try {
+      await context.evalClosure(
+        `return (async function() {
+          const AsyncFunction = async function () {}.constructor;
+          return new AsyncFunction($0)();
+        }())`,
+        [request.code],
+        { result: { copy: true, promise: true }, timeout: 5000 }
+      );
+      return { mutations: variableMutations };
+    } catch (err) {
+      console.error(`[Orchestrator] Error executing script in node ${request.nodeId}:`, err);
+      return { mutations: variableMutations };
+    } finally {
+      context.release();
+      isolate.dispose();
     }
   }
 
