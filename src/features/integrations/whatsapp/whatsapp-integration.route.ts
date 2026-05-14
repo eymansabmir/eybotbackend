@@ -10,7 +10,7 @@ const GetPhoneNumberSchema = z.object({
 });
 
 function normalizeBaseUrl(value: string): string {
-  return value.replace(/\/+$/, '');
+  return value.replace(/\/{1,10}$/, '');
 }
 
 function inferPublicBaseUrl(req: Request): string {
@@ -31,7 +31,7 @@ function resolveWebhookPath(): { callbackPath: string; usesCustomWebhookPath: bo
   if (!custom) {
     return { callbackPath: '/api/webhooks/whatsapp', usesCustomWebhookPath: false };
   }
-  const normalized = custom.replace(/^\/+/, '');
+  const normalized = custom.replace(/^\/{1,10}/, '');
   return { callbackPath: `/api/v1/${normalized}`, usesCustomWebhookPath: true };
 }
 
