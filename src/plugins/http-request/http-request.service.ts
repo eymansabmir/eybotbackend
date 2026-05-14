@@ -130,7 +130,7 @@ function toAuthorizationHeaderValue(rawToken: string): string {
   if (!token) return '';
 
   // Preserve explicit auth schemes if user stored full Authorization value.
-  if (/^[A-Za-z][A-Za-z0-9_-]*\s+.+$/.test(token)) {
+  if (/^[A-Za-z][A-Za-z0-9_-]{0,64}\s{1,10}.{1,2048}$/.test(token)) {
     return token;
   }
 
@@ -187,8 +187,8 @@ function extractJsonPath(input: unknown, jsonPath: string): unknown {
   }
 
   const tokens = path
-    .replace(/\[(\d+)\]/g, '.$1')
-    .replace(/^\./, '')
+    .replace(/\[(\d{1,10})\]/g, '.$1')
+    .replace(/^\.{1,5}/, '')
     .split('.')
     .filter(Boolean);
 
@@ -198,7 +198,7 @@ function extractJsonPath(input: unknown, jsonPath: string): unknown {
       return undefined;
     }
 
-    if (Array.isArray(current) && /^\d+$/.test(token)) {
+    if (Array.isArray(current) && /^\d{1,10}$/.test(token)) {
       current = current[Number(token)];
       continue;
     }
