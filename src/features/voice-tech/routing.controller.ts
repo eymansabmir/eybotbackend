@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { NotFoundError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import type { RoutingConditionNode } from './domain/condition.types';
@@ -57,7 +57,7 @@ export class VoiceRoutingController {
     if (typeof requestId === 'number' && Number.isFinite(requestId)) {
       return String(requestId);
     }
-    return `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    return `voice-${Date.now()}-${randomInt(100000, 999999)}`;
   }
 
   listConfigs = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
