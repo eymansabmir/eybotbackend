@@ -1,8 +1,15 @@
 node_modules
 npm-debug.log
 Dockerfile
+.dockerignore
 .git
 .gitignore
 dist
 coverage
 .env
+credentials.json
+gcp-key.json
+*.log
+.vscode
+.idea
+.DS_Store
