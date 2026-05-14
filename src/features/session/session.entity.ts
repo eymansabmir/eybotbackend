@@ -32,7 +32,7 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
-    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
+    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }> | undefined;
     isCurrent?: boolean | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
@@ -51,7 +51,7 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
-    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
+    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }>;
     public isCurrent: boolean;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
@@ -106,11 +106,11 @@ export class SessionEntity {
         this.currentNodeId = startNodeId;
     }
 
-    public pushStack(flowId: string, version: number, returnNodeId: string): void {
-        this.flowStack.push({ flowId, flowVersion: version, returnNodeId });
+    public pushStack(flowId: string, version: number, returnNodeId: string, outputMappings?: Array<{ parentKey: string; childKey: string }>): void {
+        this.flowStack.push({ flowId, flowVersion: version, returnNodeId, outputMappings });
     }
 
-    public popStack(): { flowId: string; flowVersion: number; returnNodeId: string } | undefined {
+    public popStack(): { flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> } | undefined {
         return this.flowStack.pop();
     }
 
