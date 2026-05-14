@@ -1,6 +1,8 @@
 import { VariableContext } from './variable-resolver';
 import { VariableResolver } from './variable-resolver';
-import * as vm from 'vm';
+import Mexp from 'math-expression-evaluator';
+
+const mexp = new Mexp();
 
 export type MutationStrategy = (value: string, systemVariable: string | undefined, ctx: VariableContext, resolver: VariableResolver) => unknown;
 
@@ -49,10 +51,10 @@ export const MUTATION_STRATEGIES: Record<string, MutationStrategy> = {
     const expression = v || '';
     try {
       const resolvedExpr = resolver.resolve(expression, ctx);
-      // Execute in a sandboxed V8 context instead of eval
-      const safeExpr = resolvedExpr.replace(/[^0-9+\-*/().\s]/g, '');
-      const script = new vm.Script(safeExpr);
-      return script.runInNewContext({}, { timeout: 100 });
+      const safeExpr = resolvedExpr.replace(/[^0-9+\-*/().\s^%]/g, '');
+      
+      const result = mexp.eval(safeExpr);
+      return Number.isNaN(result) ? expression : result;
     } catch (e) {
       return expression;
     }
