@@ -34,7 +34,6 @@ export interface SessionProperties {
     waitingFor?: WaitingFor | undefined;
     flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }> | undefined;
     returnMark?: { nodeId: string } | undefined;
-    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
     isCurrent?: boolean | undefined;
     renudgeAttempts?: number | undefined;
     lastRenudgeAt?: Date | undefined;
@@ -57,7 +56,6 @@ export class SessionEntity {
     public waitingFor?: WaitingFor | undefined;
     public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }>;
     public returnMark?: { nodeId: string } | undefined;
-    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
     public isCurrent: boolean;
     public renudgeAttempts: number;
     public lastRenudgeAt?: Date | undefined;
