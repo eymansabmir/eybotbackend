@@ -26,8 +26,11 @@ export class SessionMapper {
             variables: (prismaSession.variables as any) ?? {},
             history: (prismaSession.history as any) ?? [],
             waitingFor,
+            returnMark: (prismaSession.returnMark as any) ?? undefined,
             flowStack: (prismaSession.flowStack as any) ?? [],
             isCurrent: prismaSession.isCurrent,
+            renudgeAttempts: prismaSession.renudgeAttempts,
+            lastRenudgeAt: prismaSession.lastRenudgeAt ?? undefined,
             createdAt: prismaSession.createdAt,
             updatedAt: prismaSession.updatedAt,
         });
@@ -49,8 +52,11 @@ export class SessionMapper {
             variables: data.variables ?? {},
             history: data.history ?? [],
             waitingFor: data.waitingFor ?? null,
+            returnMark: data.returnMark ?? null,
             flowStack: data.flowStack ?? [],
             isCurrent: data.isCurrent,
+            renudgeAttempts: data.renudgeAttempts,
+            lastRenudgeAt: data.lastRenudgeAt ?? null,
         };
     }
 }

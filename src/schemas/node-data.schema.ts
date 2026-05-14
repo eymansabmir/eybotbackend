@@ -397,6 +397,26 @@ const MediaConditionalDataSchema = z.object({
   })),
 });
 
+const RedirectDataSchema = z.object({
+  url: z.string().min(1, 'URL is required'),
+  isNewTab: z.boolean().default(false),
+});
+
+const ScriptDataSchema = z.object({
+  name: z.string().optional(),
+  content: z.string().optional(),
+});
+
+const JumpDataSchema = z.object({
+  targetNodeId: z.string().optional(),
+}).passthrough();
+
+const ReturnDataSchema = z.object({}).passthrough();
+ 
+const WaitDataSchema = z.object({
+  secondsToWaitFor: z.number().min(1).default(5),
+}).passthrough();
+
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
   credentialId: z.string().min(1).optional(),
@@ -475,6 +495,11 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.DEEPSEEK) }).merge(DeepSeekDataSchema),
   z.object({ type: z.literal(NodeType.VARIABLE_MANAGER) }),
   z.object({ type: z.literal(NodeType.MEDIA_CONDITIONAL), ...MediaConditionalDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.REDIRECT), ...RedirectDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.SCRIPT), ...ScriptDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.JUMP), ...JumpDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.RETURN), ...ReturnDataSchema.shape }),
+  z.object({ type: z.literal(NodeType.WAIT), ...WaitDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

@@ -40,7 +40,7 @@ export interface StartFlowInput {
 
 export interface ResumeFlowInput {
   sessionId: string;
-  userInput: string;
+  userInput?: string;
 }
 
 export interface IEnginePlugin {

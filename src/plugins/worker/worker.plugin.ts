@@ -9,6 +9,7 @@ import { handleExecutionJob } from './consumers/execution.consumer';
 import { handleStatusUpdateJob } from './consumers/status.consumer';
 import { handleVoiceIngestJob } from './consumers/voice-ingest.consumer';
 import { handleVoiceCampaignJob } from './consumers/voice-campaign.consumer';
+import { handleRenudgeJob } from './consumers/renudge.consumer';
 
 export class WorkerPlugin implements IPlugin, IWorkerPlugin {
   readonly name = 'worker';
@@ -53,6 +54,10 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
         await this.broker.consume('wa.status.q', data => handleStatusUpdateJob(data, registry), 10);
       }
 
+      if (role === 'all' || role === 'renudge') {
+        await this.broker.consume('wa.renudge.q', data => handleRenudgeJob(data, registry), 10);
+      }
+
       logger.info({ role }, 'WorkerPlugin: consumers started');
     } catch (err) {
       logger.error({ err }, 'WorkerPlugin: RabbitMQ unavailable — workers disabled');
@@ -67,12 +72,12 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
     }
   }
 
-  async publish(exchange: ExchangeName, data: unknown, routingKey = ''): Promise<void> {
+  async publish(exchange: ExchangeName, data: unknown, routingKey = '', options?: any): Promise<void> {
     if (!this.broker) {
       logger.warn({ exchange }, 'WorkerPlugin: no broker — dropping publish');
       return;
     }
     logger.debug({ exchange, routingKey }, 'Publishing message to exchange');
-    await this.broker.publish(exchange, routingKey, data);
+    await this.broker.publish(exchange, routingKey, data, options);
   }
 }

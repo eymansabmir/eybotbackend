@@ -37,10 +37,17 @@ export interface NodeExecutionResult {
   httpRequest?: HttpRequestNodeRequest;
   googleSheetsRequest?: GoogleSheetsNodeRequest;
   nocoDBRequest?: NocoDBNodeRequest;
+  scriptRequest?: ScriptNodeRequest;
   waitForInput?: WaitingFor;
   historyStep: HistoryStep;
   isTerminal: boolean;
   languageChanged?: string;
+  returnMark?: { nodeId: string };
+}
+
+export interface ScriptNodeRequest {
+  nodeId: string;
+  code: string;
   jumpToFlowId?: string;
   jumpToNodeId?: string;
   returnNodeId?: string;
@@ -191,6 +198,10 @@ const LOGIC_TYPES = new Set<NodeType>([
   NodeType.RANDOM_SPLIT,
   NodeType.START,
   NodeType.JUMP_TO_FLOW,
+  NodeType.REDIRECT,
+  NodeType.SCRIPT,
+  NodeType.JUMP,
+  NodeType.RETURN,
 ]);
 
 export class NodeExecutor {
@@ -325,12 +336,23 @@ export class NodeExecutor {
       case NodeType.RANDOM_SPLIT:
         return this.handleRandomSplit(currentNode, enteredAt, traverser);
 
+      case NodeType.REDIRECT:
+        return this.handleRedirect(currentNode, context, enteredAt, traverser);
+
+      case NodeType.SCRIPT:
+        return this.handleScript(currentNode, context, enteredAt, traverser);
+
       case NodeType.JUMP_TO_FLOW:
         return this.handleJumpToFlow(currentNode, enteredAt);
       case NodeType.BOT_NODE:
         return this.handleBotNode(currentNode, enteredAt, traverser);
       case NodeType.WAIT:
         return this.handleWaitNode(currentNode, enteredAt, traverser, userInput);
+
+      case NodeType.JUMP:
+        return this.handleJump(currentNode, enteredAt, traverser);
+      case NodeType.RETURN:
+        return this.handleReturn(currentNode, context, enteredAt, traverser);
 
       case NodeType.HUMAN_HANDOFF: {
         const msg = currentNode.data['message'] ? this.text(currentNode.data['message'] as string, context) : undefined;
@@ -797,6 +819,106 @@ export class NodeExecutor {
     };
   }
 
+  private handleRedirect(
+    node: Node,
+    ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const url = node.data['url'] as string;
+    const isNewTab = node.data['isNewTab'] as boolean;
+
+    const resolvedUrl = this.text(url, ctx);
+
+    return this.defaultResult(node, 'default', enteredAt, traverser, [
+      {
+        type: NodeType.REDIRECT,
+        payload: {
+          url: resolvedUrl,
+          isNewTab,
+        }
+      }
+    ]);
+  }
+
+  private handleScript(
+    node: Node,
+    _ctx: VariableContext,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const code = node.data['content'] as string | undefined;
+    if (!code || code.trim() === '') {
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    return {
+      ...this.defaultResult(node, 'default', enteredAt, traverser),
+      scriptRequest: {
+        nodeId: node.id,
+        code,
+      },
+    };
+  }
+
+  private handleJump(
+    node: Node,
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const targetNodeId = node.data['targetNodeId'] as string;
+    // Support both 'default' and 'next' for backward compatibility during transition
+    const nextNodeAfterJump = traverser.getNextNode(node.id, 'default') || traverser.getNextNode(node.id, 'next');
+
+    console.log(`[NodeExecutor] JUMP node ${node.id} executing. Target: ${targetNodeId}, Return point: ${nextNodeAfterJump?.id}`);
+
+    return {
+      nextNodeId: targetNodeId || null,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      returnMark: nextNodeAfterJump ? { nodeId: nextNodeAfterJump.id } : undefined,
+      historyStep: {
+        nodeId: node.id,
+        nodeType: node.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: targetNodeId
+      },
+    };
+  }
+
+  private handleReturn(
+    node: Node,
+    ctx: { session: { returnMark?: { nodeId: string } } },
+    enteredAt: Date,
+    traverser: GraphTraverser,
+  ): NodeExecutionResult {
+    const returnPoint = ctx.session.returnMark;
+
+    console.log(`[NodeExecutor] RETURN node ${node.id} executing. Return point from session: ${returnPoint?.nodeId}`);
+
+    if (!returnPoint) {
+      console.warn(`[NodeExecutor] RETURN node ${node.id} called but no returnMark found in session.`);
+      // If no return point, just go to default next node of Return block
+      return this.defaultResult(node, 'default', enteredAt, traverser);
+    }
+
+    return {
+      nextNodeId: returnPoint.nodeId,
+      outboundMessages: [],
+      variableMutations: [],
+      isTerminal: false,
+      historyStep: {
+        nodeId: node.id,
+        nodeType: node.type,
+        enteredAt,
+        exitedAt: new Date(),
+        branchTaken: 'return'
+      },
+    };
+  }
+
   private handleNocoDB(
     node: Node,
     ctx: VariableContext,
@@ -856,7 +978,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
 
       const options = items.flatMap((item: any) =>
         (item.buttons ?? []).map((b: any) => ({ id: b.id, label: b.text, branchKey: b.branchKey }))
@@ -925,7 +1047,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       return {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
@@ -948,7 +1070,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
@@ -973,7 +1095,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
 
       // NPS is effectively a choice node with 0-10
       const length = node.data['length'] ?? 10;
@@ -1013,7 +1135,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, label: b.label, branchKey: b.id })) ?? [];
       return {
         nextNodeId: node.id,
@@ -1029,15 +1151,15 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
-      
+
       if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: valueToSave 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: valueToSave
         });
         logger.info(
           { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
@@ -1072,7 +1194,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, label: r.title, branchKey: r.id }))) ?? [];
       return {
         nextNodeId: node.id,
@@ -1088,15 +1210,15 @@ export class NodeExecutor {
       const selected = (options as any[]).find((o: any) => o.id === userInput);
       const branchKey = selected?.branchKey ?? interaction.input?.defaultBranchKey ?? 'default';
       const mutations: VariableMutation[] = [];
-      
+
       if (interaction.input?.variableName) {
         // Save the label/title if available, otherwise fallback to the ID/userInput
         const valueToSave = selected?.label ?? userInput;
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: valueToSave 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: valueToSave
         });
         logger.info(
           { nodeId: node.id, variableName: interaction.input.variableName, scope, value: valueToSave },
@@ -1145,7 +1267,7 @@ export class NodeExecutor {
 
     if (hasQuickReplies && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? 3600) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 3600) as number) * 1000);
 
       const options = interaction?.input?.options ?? cards?.flatMap((card: any) =>
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
@@ -1185,10 +1307,10 @@ export class NodeExecutor {
       const mutations: VariableMutation[] = [];
       if (interaction?.input?.variableName) {
         const scope = (interaction.input.variableScope || 'session') as 'session' | 'contact';
-        mutations.push({ 
-          scope, 
-          key: interaction.input.variableName as string, 
-          value: userInput 
+        mutations.push({
+          scope,
+          key: interaction.input.variableName as string,
+          value: userInput
         });
       }
       const result = this.defaultResult(node, branchKey, enteredAt, traverser, [], mutations);
@@ -1259,7 +1381,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
 
       return {
         nextNodeId: node.id,
@@ -1302,14 +1424,14 @@ export class NodeExecutor {
   ): NodeExecutionResult {
     const assignments = (node.data['assignments'] ?? []) as any[];
     const mutations: VariableMutation[] = assignments.map(a => {
-        const strategy = (MUTATION_STRATEGIES[a.type] || MUTATION_STRATEGIES.value) as MutationStrategy;
-        const value = strategy(a.value, a.systemVariable, ctx, this.resolver);
+      const strategy = (MUTATION_STRATEGIES[a.type] || MUTATION_STRATEGIES.value) as MutationStrategy;
+      const value = strategy(a.value, a.systemVariable, ctx, this.resolver);
 
-        return {
-            scope: a.scope || 'session',
-            key: a.variable,
-            value: value,
-        };
+      return {
+        scope: a.scope || 'session',
+        key: a.variable,
+        value: value,
+      };
     });
     return this.defaultResult(node, 'default', enteredAt, traverser, [], mutations);
   }
@@ -1334,7 +1456,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + 300 * 1000); // 5 minutes default
+      const timeoutAt = new Date(since.getTime() + (ctx.flow.settings.timeoutSeconds ?? 300) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
@@ -1383,7 +1505,7 @@ export class NodeExecutor {
     // Initial trip through the node: show prompt and wait
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedMessage } }],
@@ -1427,7 +1549,7 @@ export class NodeExecutor {
     } else {
       // INVALID INPUT: Stay on the same node, send invalid message, and wait again
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedInvalidMessage } }],

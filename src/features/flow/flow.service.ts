@@ -47,6 +47,7 @@ export class FlowService implements IFlowService {
         maxConsecutiveLogicSteps: 10,
         fallbackMessage: 'Sorry, something went wrong.',
       },
+      renudgeConfig: data.renudgeConfig,
     });
     this.normalizeNodeUrls(entity);
     this.validateGraph(entity);
@@ -62,7 +63,7 @@ export class FlowService implements IFlowService {
       isConfigured: false,
       name: data.name || 'Imported Bot',
     };
-    
+
     // Remove database-specific fields if present
     delete importData.id;
     delete (importData as any).createdAt;
@@ -87,7 +88,7 @@ export class FlowService implements IFlowService {
   async updateFlow(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity> {
     const existing = await this.flowRepo.findByIdOrFail(id);
     if (existing.status === 'published') {
-      const allowedPublishedUpdateKeys = new Set(['settings', 'triggerConfig', 'isConfigured']);
+      const allowedPublishedUpdateKeys = new Set(['settings', 'triggerConfig', 'isConfigured', 'renudgeConfig']);
       const hasUnsupportedUpdate = Object.keys(updates).some((key) => !allowedPublishedUpdateKeys.has(key));
 
       if (hasUnsupportedUpdate) {
@@ -135,7 +136,7 @@ export class FlowService implements IFlowService {
       status: 'published',
       publishedAt: new Date()
     };
-    
+
     // Validation and prep. Must pass class instance.
     const validationClone = flow.clone();
     Object.assign(validationClone, updates);
@@ -143,7 +144,7 @@ export class FlowService implements IFlowService {
     if (updates.triggerConfig) {
       await this.validateTriggerUniqueness(flow.orgId, updates.triggerConfig, id);
     }
-    
+
     return this.flowRepo.update(id, updates);
   }
 
@@ -225,9 +226,9 @@ export class FlowService implements IFlowService {
         if (sourceNode.type === NodeType.SEND_CARDS) {
           const items = (sourceNode.data['items'] as any[]) ?? [];
           items.forEach((item: any) => {
-            (item.buttons ?? []).forEach((b: any) => { 
-                if (b.branchKey) branchKeys.add(b.branchKey);
-                if (b.id) branchKeys.add(b.id); 
+            (item.buttons ?? []).forEach((b: any) => {
+              if (b.branchKey) branchKeys.add(b.branchKey);
+              if (b.id) branchKeys.add(b.id);
             });
           });
           branchKeys.add('default');
@@ -240,6 +241,8 @@ export class FlowService implements IFlowService {
           const sections = (sourceNode.data['sections'] as any[]) ?? [];
           sections.forEach((s: any) => (s.rows ?? []).forEach((r: any) => { if (r.id) branchKeys.add(r.id); }));
           branchKeys.add('timeout');
+        } else if (sourceNode.type === NodeType.JUMP || sourceNode.type === NodeType.RETURN) {
+          branchKeys.add('default');
         }
 
         if (!branchKeys.has(edge.sourceBranchKey)) {
@@ -414,7 +417,7 @@ export class FlowService implements IFlowService {
           // 2. Ambiguity check: Same operator type + Containment/Overlap
           // We block cases where one condition is a subset of another, leading to scoring ties or shadowing.
           const isContains = (op: string) => op === 'CONTAINS' || op === 'KEYWORD';
-          
+
           let conflict = false;
           if (isContains(op1) && isContains(op2)) {
             if (v1.includes(v2) || v2.includes(v1)) conflict = true;

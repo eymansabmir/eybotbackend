@@ -20,6 +20,17 @@ export class FlowMapper {
             updatedAt: prismaFlow.updatedAt,
             executions: prismaFlow.executions ?? 0,
             successfulExecutions: prismaFlow.successfulExecutions ?? 0,
+            renudgeConfig: prismaFlow.renudgeConfig ? {
+                id: prismaFlow.renudgeConfig.id,
+                flowId: prismaFlow.renudgeConfig.flowId,
+                enabled: prismaFlow.renudgeConfig.enabled,
+                durationMinutes: prismaFlow.renudgeConfig.durationMinutes,
+                maxAttempts: prismaFlow.renudgeConfig.maxAttempts,
+                message: prismaFlow.renudgeConfig.message,
+                buttons: prismaFlow.renudgeConfig.buttons,
+                createdAt: prismaFlow.renudgeConfig.createdAt,
+                updatedAt: prismaFlow.renudgeConfig.updatedAt,
+            } : undefined,
         });
     }
 
@@ -40,6 +51,26 @@ export class FlowMapper {
             edges: data.edges as any,
             settings: data.settings as any,
             publishedAt: data.publishedAt ?? null,
+            ...(data.renudgeConfig ? {
+                renudgeConfig: {
+                    upsert: {
+                        create: {
+                            enabled: data.renudgeConfig.enabled,
+                            durationMinutes: data.renudgeConfig.durationMinutes,
+                            maxAttempts: data.renudgeConfig.maxAttempts,
+                            message: data.renudgeConfig.message,
+                            buttons: data.renudgeConfig.buttons as any,
+                        },
+                        update: {
+                            enabled: data.renudgeConfig.enabled,
+                            durationMinutes: data.renudgeConfig.durationMinutes,
+                            maxAttempts: data.renudgeConfig.maxAttempts,
+                            message: data.renudgeConfig.message,
+                            buttons: data.renudgeConfig.buttons as any,
+                        }
+                    }
+                }
+            } : {})
         };
     }
 }

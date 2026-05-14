@@ -60,6 +60,11 @@ export interface RecipientJob {
   orgId: string;
 }
 
+export interface RenudgeJob {
+  sessionId: string;
+  attempt: number;
+}
+
 export interface VoiceIngestJob {
   jobId: string;
   tenantId: string;
