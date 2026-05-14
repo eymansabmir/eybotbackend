@@ -8,6 +8,7 @@ export interface CampaignProperties {
   scheduleTime: Date | null;
   status: CampaignStatus;
   activeVersionId: string | null;
+  fieldMapping: any | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 }
@@ -20,6 +21,7 @@ export class CampaignEntity {
   public readonly scheduleTime: Date | null;
   public readonly status: CampaignStatus;
   public readonly activeVersionId: string | null;
+  public readonly fieldMapping: any | null;
   public readonly createdAt: Date | null;
   public readonly updatedAt: Date | null;
 
@@ -31,6 +33,7 @@ export class CampaignEntity {
     this.scheduleTime = props.scheduleTime ?? null;
     this.status = props.status;
     this.activeVersionId = props.activeVersionId ?? null;
+    this.fieldMapping = props.fieldMapping ?? null;
     this.createdAt = props.createdAt ?? null;
     this.updatedAt = props.updatedAt ?? null;
   }
@@ -50,6 +53,7 @@ export class CampaignEntity {
       scheduleTime: props.scheduleTime ?? null,
       status: props.status ?? CampaignStatus.draft,
       activeVersionId: null,
+      fieldMapping: null,
       createdAt: null,
       updatedAt: null,
     });
@@ -64,6 +68,7 @@ export class CampaignEntity {
       scheduleTime: this.scheduleTime,
       status: this.status,
       activeVersionId: this.activeVersionId,
+      fieldMapping: this.fieldMapping,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

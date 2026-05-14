@@ -19,6 +19,7 @@ model Flow {
   nodes    Json
   edges    Json
   settings Json
+  variables Json?
 
   publishedAt DateTime?
 
@@ -63,26 +64,15 @@ model ChatSession {
   createdAt        DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
   returnMark       Json?
-  waId             String  @default("")
-  waBusinessNumber String  @default("")
-
-  status SessionStatus @default(active)
-
-  currentNodeId String @default("")
-
-  variables Json?
-  history   Json?
+  
   flowStack Json?
 
   waitingFor Json?
 
-  isCurrent Boolean @default(true)
 
   renudgeAttempts Int     @default(0)
   lastRenudgeAt   DateTime? @db.Timestamptz(3)
 
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([waId, status])
   @@index([flowId, status])
@@ -160,6 +150,7 @@ model Campaign {
   scheduleTime    DateTime?
   status          CampaignStatus    @default(draft)
   activeVersionId String?
+  fieldMapping    Json?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   flow            Flow              @relation(fields: [flowId], references: [id])

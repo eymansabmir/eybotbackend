@@ -413,9 +413,6 @@ const JumpDataSchema = z.object({
 
 const ReturnDataSchema = z.object({}).passthrough();
  
-const WaitDataSchema = z.object({
-  secondsToWaitFor: z.number().min(1).default(5),
-}).passthrough();
 
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),
@@ -499,7 +496,6 @@ export const NodeDataSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal(NodeType.SCRIPT), ...ScriptDataSchema.shape }),
   z.object({ type: z.literal(NodeType.JUMP), ...JumpDataSchema.shape }),
   z.object({ type: z.literal(NodeType.RETURN), ...ReturnDataSchema.shape }),
-  z.object({ type: z.literal(NodeType.WAIT), ...WaitDataSchema.shape }),
 ]);
 
 export type NodeData = z.infer<typeof NodeDataSchema>;

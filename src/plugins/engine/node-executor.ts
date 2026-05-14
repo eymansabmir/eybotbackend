@@ -43,6 +43,9 @@ export interface NodeExecutionResult {
   isTerminal: boolean;
   languageChanged?: string;
   returnMark?: { nodeId: string };
+  jumpToFlowId?: string;
+  jumpToNodeId?: string;
+  returnNodeId?: string;
 }
 
 export interface ScriptNodeRequest {

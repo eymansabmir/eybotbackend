@@ -11,6 +11,7 @@ export class CampaignMapper {
       scheduleTime: prismaCampaign.scheduleTime,
       status: prismaCampaign.status as CampaignStatus,
       activeVersionId: prismaCampaign.activeVersionId,
+      fieldMapping: prismaCampaign.fieldMapping,
       createdAt: prismaCampaign.createdAt,
       updatedAt: prismaCampaign.updatedAt,
     });
@@ -26,6 +27,7 @@ export class CampaignMapper {
       flow: { connect: { id: entity.flowId } },
       ...(entity.scheduleTime != null && { scheduleTime: entity.scheduleTime }),
       ...(entity.activeVersionId != null && { activeVersionId: entity.activeVersionId }),
+      ...(entity.fieldMapping != null && { fieldMapping: entity.fieldMapping }),
     };
 
     // Only include id for upsert / explicit-id scenarios; omit on new records

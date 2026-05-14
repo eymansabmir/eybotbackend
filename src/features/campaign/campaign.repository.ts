@@ -157,6 +157,22 @@ export class PrismaCampaignRepository implements ICampaignRepository {
   }
 
   async delete(id: string): Promise<void> {
+    // 1. Delete Recipients linked to versions of this campaign
+    await this.prisma.campaignRecipient.deleteMany({
+      where: { version: { campaignId: id } }
+    });
+    
+    // 2. Delete Versions
+    await this.prisma.campaignVersion.deleteMany({
+      where: { campaignId: id }
+    });
+    
+    // 3. Delete Stats
+    await this.prisma.campaignStats.deleteMany({
+      where: { campaignId: id }
+    });
+    
+    // 4. Finally delete the campaign
     await this.prisma.campaign.delete({ where: { id } });
   }
 
