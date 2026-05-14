@@ -35,6 +35,8 @@ export interface SessionProperties {
     returnMark?: { nodeId: string } | undefined;
     flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
     isCurrent?: boolean | undefined;
+    renudgeAttempts?: number | undefined;
+    lastRenudgeAt?: Date | undefined;
     createdAt?: Date | undefined;
     updatedAt?: Date | undefined;
 }
@@ -55,6 +57,8 @@ export class SessionEntity {
     public returnMark?: { nodeId: string } | undefined;
     public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
     public isCurrent: boolean;
+    public renudgeAttempts: number;
+    public lastRenudgeAt?: Date | undefined;
     public readonly createdAt?: Date | undefined;
     public readonly updatedAt?: Date | undefined;
 
@@ -73,6 +77,8 @@ export class SessionEntity {
         this.returnMark = props.returnMark;
         this.flowStack = props.flowStack || [];
         this.isCurrent = props.isCurrent ?? true;
+        this.renudgeAttempts = props.renudgeAttempts ?? 0;
+        this.lastRenudgeAt = props.lastRenudgeAt;
         this.createdAt = props.createdAt;
         this.updatedAt = props.updatedAt;
     }
@@ -133,6 +139,8 @@ export class SessionEntity {
             returnMark: this.returnMark,
             flowStack: this.flowStack,
             isCurrent: this.isCurrent,
+            renudgeAttempts: this.renudgeAttempts,
+            lastRenudgeAt: this.lastRenudgeAt,
             createdAt: this.createdAt,
             updatedAt: this.updatedAt,
         };

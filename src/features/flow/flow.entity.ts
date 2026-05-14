@@ -20,6 +20,19 @@ export interface FlowProperties {
     updatedAt?: Date | undefined;
     executions?: number;
     successfulExecutions?: number;
+    renudgeConfig?: RenudgeConfigProperties;
+}
+
+export interface RenudgeConfigProperties {
+    id?: string;
+    flowId?: string;
+    enabled: boolean;
+    durationMinutes: number;
+    maxAttempts: number;
+    message: string;
+    buttons?: any;
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 export class FlowEntity {
@@ -40,6 +53,7 @@ export class FlowEntity {
     public readonly updatedAt?: Date | undefined;
     public executions: number;
     public successfulExecutions: number;
+    public renudgeConfig?: RenudgeConfigProperties;
 
     constructor(props: FlowProperties) {
         this.id = props.id;
@@ -59,6 +73,7 @@ export class FlowEntity {
         this.updatedAt = props.updatedAt;
         this.executions = props.executions ?? 0;
         this.successfulExecutions = props.successfulExecutions ?? 0;
+        this.renudgeConfig = props.renudgeConfig;
     }
 
     public publish(): void {
@@ -96,6 +111,7 @@ export class FlowEntity {
             updatedAt: this.updatedAt,
             executions: this.executions,
             successfulExecutions: this.successfulExecutions,
+            renudgeConfig: this.renudgeConfig,
         };
     }
 

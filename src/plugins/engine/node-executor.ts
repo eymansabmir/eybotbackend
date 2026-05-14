@@ -977,7 +977,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
 
       const options = items.flatMap((item: any) =>
         (item.buttons ?? []).map((b: any) => ({ id: b.id, label: b.text, branchKey: b.branchKey }))
@@ -1046,7 +1046,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       return {
         nextNodeId: node.id, outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
         variableMutations: [], isTerminal: false,
@@ -1069,7 +1069,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
@@ -1094,7 +1094,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
 
       // NPS is effectively a choice node with 0-10
       const length = node.data['length'] ?? 10;
@@ -1134,7 +1134,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       const options = interaction.input?.options ?? (node.data['buttons'] as any[])?.map((b: any) => ({ id: b.id, label: b.label, branchKey: b.id })) ?? [];
       return {
         nextNodeId: node.id,
@@ -1193,7 +1193,7 @@ export class NodeExecutor {
 
     if (interaction?.mode === 'input' && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? 300) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 300) as number) * 1000);
       const options = interaction.input?.options ?? (node.data['sections'] as any[])?.flatMap((s: any) => s.rows?.map((r: any) => ({ id: r.id, label: r.title, branchKey: r.id }))) ?? [];
       return {
         nextNodeId: node.id,
@@ -1266,7 +1266,7 @@ export class NodeExecutor {
 
     if (hasQuickReplies && userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? 3600) as number) * 1000);
+      const timeoutAt = new Date(since.getTime() + ((interaction?.input?.timeoutSeconds ?? ctx.flow.settings.timeoutSeconds ?? 3600) as number) * 1000);
 
       const options = interaction?.input?.options ?? cards?.flatMap((card: any) =>
         card.buttonType === 'quick_reply' ? (card.quickReplyButtons || []).map((btn: any) => ({
@@ -1380,7 +1380,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
 
       return {
         nextNodeId: node.id,
@@ -1455,7 +1455,7 @@ export class NodeExecutor {
 
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + 300 * 1000); // 5 minutes default
+      const timeoutAt = new Date(since.getTime() + (ctx.flow.settings.timeoutSeconds ?? 300) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: node.type, payload: { message: resolvedMessage } }],
@@ -1504,7 +1504,7 @@ export class NodeExecutor {
     // Initial trip through the node: show prompt and wait
     if (userInput === undefined) {
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedMessage } }],
@@ -1548,7 +1548,7 @@ export class NodeExecutor {
     } else {
       // INVALID INPUT: Stay on the same node, send invalid message, and wait again
       const since = new Date();
-      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || 3600) * 1000);
+      const timeoutAt = new Date(since.getTime() + (data.timeoutSeconds || ctx.flow.settings.timeoutSeconds || 3600) * 1000);
       return {
         nextNodeId: node.id,
         outboundMessages: [{ type: NodeType.SEND_TEXT, payload: { message: resolvedInvalidMessage } }],

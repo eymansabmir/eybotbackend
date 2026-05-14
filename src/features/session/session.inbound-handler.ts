@@ -13,6 +13,7 @@ import type { FlowEntity } from '../flow/flow.entity';
 import { selectFlowByTrigger } from './trigger-selector';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
 import { simplifyTriggerText } from './trigger-normalization';
+import { IRenudgeService } from '../renudge/renudge.service';
 
 type RedisLockClient = {
   set(key: string, value: string, ex: 'EX', ttl: number, nx: 'NX'): Promise<string | null>;
@@ -32,6 +33,7 @@ export class SessionInboundHandler implements IInboundHandler {
     private readonly storagePlugin: IStoragePlugin,
     private readonly whatsappPlugin: IWhatsAppPlugin,
     private readonly credentialRepo: ICredentialRepository,
+    private readonly renudgeService: IRenudgeService,
   ) {}
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
@@ -97,24 +99,64 @@ export class SessionInboundHandler implements IInboundHandler {
 
         const invalidInputMessage = flow.settings.invalidInputMessage || 'Invalid input. Please try again using the options provided.';
 
-        let userInput = text;
+        let userInput: string = text || '';
+
+        // Check if this is a Renudge "Continue" action
+        const renudgeConfig = flow.renudgeConfig;
+        const continueBtnId = (renudgeConfig?.buttons as any)?.find((b: any) => b.id === 'continue' || b.title?.toLowerCase() === 'continue')?.id || 'continue';
+        const isContinueAction = message.interactiveOptionId === continueBtnId || (message.type === 'text' && text?.toLowerCase() === 'continue');
+
+        if (isContinueAction) {
+          logger.info({ sessionId: activeSession.id }, 'SessionInboundHandler: User clicked Continue nudge, resending previous node');
+          const result = await this.enginePlugin.resumeFlow(
+            { sessionId: activeSession.id!, userInput: undefined }, // Passing undefined triggers re-execution of current node
+            flow,
+            contact,
+            activeSession,
+            async (lang: string) => {
+              return this.getTranslationWithLazySync(flow.id!, lang);
+            }
+          );
+
+          await this.sessionRepo.update(activeSession.id!, {
+            status: result.session.status,
+            currentNodeId: result.session.currentNodeId,
+            variables: result.session.variables,
+            history: result.session.history,
+            waitingFor: result.session.waitingFor,
+            isCurrent: result.session.isCurrent,
+            renudgeAttempts: 0,
+          });
+
+          return result.outboundMessages.map(m => ({
+            waId, waBusinessNumber, orgId, sessionId: activeSession.id,
+            messageType: m.type,
+            payload: m.payload,
+          }));
+        }
+
+        // Reset renudge tracking on user interaction
+        activeSession.renudgeAttempts = 0;
+        activeSession.lastRenudgeAt = undefined;
 
         // General type validation before processing
         const expectedType = activeSession.waitingFor?.type;
         const actualType = message.type;
+
+        console.log(`[SessionInboundHandler] Processing engagement for session ${activeSession.id}. Expected type: ${expectedType}, User Input: '${userInput}', isContinueAction: ${isContinueAction}`);
 
         if (expectedType === 'choice') {
           const options = activeSession.waitingFor?.options || [];
           const isButtonOrList = actualType === 'button' || actualType === 'interactive';
           
           if (message.interactiveOptionId) {
-            userInput = message.interactiveOptionId;
+            userInput = message.interactiveOptionId || '';
           } else if (actualType === 'text') {
             // Normalize for comparison
             const inputLower = simplifyTriggerText(text || '');
             const matchedOption = options.find(o => 
               simplifyTriggerText(o.label || '') === inputLower || 
-              o.id === text
+              o.id === (text || '')
             );
 
             if (matchedOption) {
@@ -147,7 +189,7 @@ export class SessionInboundHandler implements IInboundHandler {
           }
         } else if (expectedType === 'file') {
           const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
-          const textFallback = (text ?? '').trim();
+          const textFallback = (text || '').trim();
 
           if (!hasMediaInput) {
             if (textFallback.length > 0) {
@@ -280,7 +322,15 @@ export class SessionInboundHandler implements IInboundHandler {
             returnMark: result.session.returnMark,
             flowStack: result.session.flowStack,
             isCurrent: result.session.isCurrent,
+            renudgeAttempts: 0, // Explicitly reset on new step
+            lastRenudgeAt: undefined,
           });
+
+          console.log(`[SessionInboundHandler] Session status after execution: ${result.session.status}`);
+          if (result.session.status === 'waiting') {
+            console.log(`[SessionInboundHandler] Triggering scheduleFirstNudge for session ${result.session.id}`);
+            await this.renudgeService.scheduleFirstNudge(result.session.id!, flow);
+          }
 
           outboundMessages.push(...result.outboundMessages);
           sessionId = result.session.id!;
@@ -449,6 +499,11 @@ export class SessionInboundHandler implements IInboundHandler {
         flowStack: result.session.flowStack,
         isCurrent: result.session.isCurrent,
       });
+
+      // Trigger renudge if session is waiting
+      if (result.session.status === 'waiting') {
+        await this.renudgeService.scheduleFirstNudge(sessionId, matchedFlow);
+      }
 
       logger.info({ sessionId, flowId: matchedFlow.id }, 'SessionInboundHandler: new session started');
       return { outboundMessages: result.outboundMessages, sessionId };

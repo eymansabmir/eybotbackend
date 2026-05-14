@@ -61,7 +61,6 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
           expiresIn: 300,
           allowedAttempts: 5,
           sendVerificationOTP: async ({ email, otp, type }) => {
-
             if (!isProduction) {
               logger.info(
                 { email, type },

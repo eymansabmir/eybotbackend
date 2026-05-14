@@ -34,12 +34,16 @@ export class RabbitMQBroker {
     }
   }
 
-  async publish(exchange: string, routingKey: string, data: unknown): Promise<void> {
+  async publish(exchange: string, routingKey: string, data: unknown, options?: amqp.Options.Publish): Promise<void> {
     if (!this.publishChannel) {
       throw new Error('[RabbitMQBroker] Not connected — cannot publish');
     }
     const buffer = Buffer.from(JSON.stringify(data));
-    this.publishChannel.publish(exchange, routingKey, buffer, { persistent: true, contentType: 'application/json' });
+    this.publishChannel.publish(exchange, routingKey, buffer, { 
+      persistent: true, 
+      contentType: 'application/json',
+      ...options 
+    });
   }
 
   /**
@@ -95,6 +99,8 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN_RETRY, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN_DLQ, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.RE_NUDGE, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.RE_NUDGE_RETRY, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -155,6 +161,19 @@ export class RabbitMQBroker {
 
     await ch.assertQueue('voice.campaign.dlq.q', { durable: true });
     await ch.bindQueue('voice.campaign.dlq.q', EXCHANGES.VOICE_CAMPAIGN_DLQ, '');
+
+    // Renudge System (Bot-level followups)
+    await ch.assertQueue('wa.renudge.q', { durable: true });
+    await ch.bindQueue('wa.renudge.q', EXCHANGES.RE_NUDGE, '');
+
+    // Renudge Retry/Wait queue (Delayed parking lot)
+    await ch.assertQueue('wa.renudge.retry.q', {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': EXCHANGES.RE_NUDGE,
+      },
+    });
+    await ch.bindQueue('wa.renudge.retry.q', EXCHANGES.RE_NUDGE_RETRY, '');
 
     // Campaign: per-instance exclusive queue bound to fanout exchange.
     // Each running instance gets its own queue → every instance receives
