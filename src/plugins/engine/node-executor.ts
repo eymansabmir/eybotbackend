@@ -43,6 +43,10 @@ export interface NodeExecutionResult {
   isTerminal: boolean;
   languageChanged?: string;
   returnMark?: { nodeId: string };
+  jumpToFlowId?: string;
+  jumpToNodeId?: string;
+  returnNodeId?: string;
+  outputMappings?: Array<{ parentKey: string; childKey: string }>;
 }
 
 export interface ScriptNodeRequest {

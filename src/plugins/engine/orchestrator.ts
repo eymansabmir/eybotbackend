@@ -445,7 +445,7 @@ export class FlowOrchestrator {
         );
 
         for (const mutation of output.mutations) {
-          this.applyMutation(mutation, session, contact, allContactMutations);
+          this.applyMutation(mutation, session, contact, allContactMutations, currentFlow);
         }
       }
 
