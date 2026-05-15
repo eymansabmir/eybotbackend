@@ -144,6 +144,7 @@ model Campaign {
   flow            Flow              @relation(fields: [flowId], references: [id])
   stats           CampaignStats?
   versions        CampaignVersion[]
+  syncJobs        SyncJob[]
 
   @@index([orgId, status])
 }
@@ -258,10 +259,59 @@ model Credential {
   createdAt      DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
   voiceProviders VoiceProvider[]
+  dataSources    DataSource[]
 
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
   @@map("credentials")
+}
+
+model DataSource {
+  id           String   @id @default(uuid())
+  orgId        String
+  name         String
+  type         DbProvider
+  credentialId String
+  config       Json     // { host, port, database, schema }
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  syncJobs     SyncJob[]
+  credential   Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("data_sources")
+}
+
+model SyncJob {
+  id           String   @id @default(uuid())
+  dataSourceId String
+  campaignId   String?
+  botId        String?
+  name         String
+  sqlQuery     String
+  cursorField  String?  // e.g., 'updated_at' or 'id'
+  lastCursor   String?  // High Watermark value
+  cronSchedule String?  @default("0 * * * *") // Hourly default
+  isActive     Boolean  @default(true)
+  status       SyncStatus @default(IDLE)
+  lastError    String?
+  lastSyncAt   DateTime?
+  nextSyncAt   DateTime?
+  totalRecordsProcessed Int @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  campaign     Campaign?  @relation(fields: [campaignId], references: [id])
+
+  @@index([dataSourceId, isActive])
+  @@map("sync_jobs")
+}
+
+enum SyncStatus {
+  IDLE
+  RUNNING
+  FAILED
+  SUCCESS
 }
 
 model EntityType {
@@ -441,6 +491,14 @@ enum CredentialType {
   EXOTEL
   SARVAM
   VAPI
+  DATABASE_CONNECTOR
+}
+
+enum DbProvider {
+  POSTGRES
+  MYSQL
+  SQL_SERVER
+  ORACLE
 }
 
 enum RoutingType {

@@ -18,6 +18,7 @@ import { ANTHROPIC_PLUGIN, type IAnthropicPlugin } from './plugins/anthropic';
 import { DEEPSEEK_PLUGIN, type IDeepSeekPlugin } from './plugins/deepseek';
 import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from './plugins/http-request';
 
+import { DATABASE_PLUGIN, type IDatabasePlugin } from './plugins/database';
 import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
@@ -46,6 +47,7 @@ import { EntityQueryService } from './features/voice-tech/services/entity-query.
 import { IngestionService } from './features/voice-tech/services/ingestion.service';
 import { VoiceRoutingService } from './features/voice-tech/services/voice-routing.service';
 import { VoiceCampaignService } from './features/voice-tech/services/voice-campaign.service';
+import { SyncService } from './features/campaign/sync.service';
 import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
@@ -71,6 +73,8 @@ import { VoiceRoutingController } from './features/voice-tech/routing.controller
 import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
 import { TriggerController } from './features/api-trigger/trigger.controller';
+import { DataSourceController } from './features/api-trigger/data-source.controller';
+import { SyncJobController } from './features/api-trigger/sync-job.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -94,6 +98,7 @@ import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
 import { createTriggerRouter } from './features/api-trigger/trigger.route';
+import { createConnectorRouter } from './features/api-trigger/connector.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -124,16 +129,7 @@ export function createApp(registry: IPluginRegistry): Application {
       });
       
       if (session) {
-        logger.info({ userId: session.user?.id, sessionId: session.session?.id }, 'Auth Success: session resolved');
         (req as any).auth = session;
-      } else {
-        // Log details if session resolution failed
-        logger.info({ 
-          url: req.url,
-          host: req.headers.host,
-          hasAuth: !!req.headers.authorization,
-          hasCookie: !!req.headers.cookie 
-        }, 'Auth Failure: getSession returned null');
       }
     } catch (err) {
       logger.error({ err }, 'Auth middleware: failed to get session');
@@ -205,12 +201,16 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
   const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
+  const prisma = registry.get<IDatabasePlugin>(DATABASE_PLUGIN).prisma;
+  const syncService = new SyncService(prisma, credentialService, campaignService);
 
   // Register services in registry for workers to access
   registry.registerValue(CAMPAIGN_SERVICE, campaignService);
 
-  // Start background scheduler
+  // Start background schedulers
   campaignService.startScheduler();
+  syncService.runDueSyncJobs(); // Initial run
+  setInterval(() => syncService.runDueSyncJobs(), 60000); // Check every minute
 
   // ── Controllers ────────────────────────────────────────────────────────────
   const flowController = new FlowController(flowService);
@@ -246,6 +246,8 @@ export function createApp(registry: IPluginRegistry): Application {
   const voiceProviderController = new VoiceProviderController(voiceRoutingRepo);
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
   const triggerController = new TriggerController(registry);
+  const dataSourceController = new DataSourceController(prisma);
+  const syncJobController = new SyncJobController(prisma, syncService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -264,6 +266,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
   app.use('/api/v1/trigger', createTriggerRouter(triggerController));
+  app.use('/api/v1/connectors', createConnectorRouter(dataSourceController, syncJobController));
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));

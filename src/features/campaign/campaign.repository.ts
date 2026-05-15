@@ -254,7 +254,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
           campaignId: campaign.id,
           versionNumber: 1,
           filePath: 'api-trigger',
-          status: CampaignVersionStatus.active,
+          status: CampaignVersionStatus.ready,
         }
       });
     }

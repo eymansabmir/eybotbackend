@@ -20,7 +20,6 @@ export class TriggerController {
 
   trigger = async (req: Request, res: Response): Promise<void> => {
     const auth = (req as any).auth;
-    logger.info({ hasAuth: !!auth }, 'TriggerController: check auth');
     const orgId = auth?.session?.user?.orgId || '68b08633907a113536238290';
     
     if (!auth) {
