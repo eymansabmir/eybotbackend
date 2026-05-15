@@ -18,7 +18,7 @@ export class SyncJobController {
     private readonly syncService: SyncService
   ) {}
 
-  create = async (req: Request, res: Response) => {
+  create = async (req: Request, res: Response): Promise<any> => {
     const validation = syncJobSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: 'Invalid data', details: validation.error.format() });
@@ -30,31 +30,31 @@ export class SyncJobController {
       }
     });
 
-    res.status(201).json(job);
+    return res.status(201).json(job);
   }
 
-  list = async (req: Request, res: Response) => {
+  list = async (req: Request, res: Response): Promise<any> => {
     const { dataSourceId } = req.query;
     const jobs = await this.prisma.syncJob.findMany({
       where: dataSourceId ? { dataSourceId: String(dataSourceId) } : {},
       include: { dataSource: { select: { name: true } } }
     });
-    res.json(jobs);
+    return res.json(jobs);
   }
 
-  runNow = async (req: Request, res: Response) => {
+  runNow = async (req: Request, res: Response): Promise<any> => {
     const { id } = req.params;
     try {
-      await this.syncService.runSyncJob(id);
-      res.json({ message: 'Sync started successfully' });
+      await this.syncService.runSyncJob(id as string);
+      return res.json({ message: 'Sync started successfully' });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: err.message });
     }
   }
 
-  delete = async (req: Request, res: Response) => {
+  delete = async (req: Request, res: Response): Promise<any> => {
     const { id } = req.params;
-    await this.prisma.syncJob.delete({ where: { id } });
-    res.status(204).send();
+    await this.prisma.syncJob.delete({ where: { id: id as string } });
+    return res.status(204).send();
   }
 }

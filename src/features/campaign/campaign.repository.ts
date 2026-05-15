@@ -19,7 +19,7 @@ export interface ICampaignRepository {
   updateStatus(id: string, status: CampaignStatus): Promise<CampaignEntity>;
   createVersion(data: {
     campaignId: string;
-    filePath: string;
+    filePath?: string | null;
     versionNumber: number;
   }): Promise<any>;
   updateVersionStatus(id: string, status: CampaignVersionStatus): Promise<any>;
@@ -37,7 +37,7 @@ export interface ICampaignRepository {
     total?: number;
   }): Promise<void>;
   createStats(campaignId: string, total: number): Promise<void>;
-  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName?: string, status?: CampaignStatus): Promise<{ campaignId: string, versionId: string }>;
+  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName: string, status?: CampaignStatus, scheduleTime?: Date): Promise<{ campaignId: string, versionId: string }>;
 }
 
 export class PrismaCampaignRepository implements ICampaignRepository {

@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { z } from 'zod';
 import { ApiAuthService } from './api-auth.service';
 
@@ -14,7 +14,7 @@ export class AuthController {
    * POST /v1/auth/token
    * Generates a temporary access token for the client.
    */
-  generateToken = async (req: Request, res: Response, next: NextFunction) => {
+  generateToken = async (req: Request, res: Response): Promise<any> => {
     try {
       // 1. Validate Input
       const validation = tokenRequestSchema.safeParse(req.body);

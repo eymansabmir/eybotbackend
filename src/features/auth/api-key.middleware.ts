@@ -11,6 +11,10 @@ export const createApiKeyMiddleware = (authService: ApiAuthService) => {
     }
 
     const token = authHeader.split(' ')[1];
+    if (!token) {
+      res.status(401).json({ error: 'Invalid Authorization header format. Use Bearer <token>' });
+      return;
+    }
 
     try {
       // 2. Verify Token

@@ -3,7 +3,7 @@ import { ICredentialService } from '../credentials/credentials.service';
 import { DbConnectorFactory } from '../../plugins/db-connectors/connector.factory';
 import { DbConnectionConfig } from '../../plugins/db-connectors/db-connector.interface';
 import { CampaignService } from './campaign.service';
-import { TriggerJob } from '../../plugins/worker/jobs';
+ 
 
 export class SyncService {
   constructor(
@@ -109,7 +109,7 @@ export class SyncService {
             orgId: dataSource.orgId,
             botId: job.botId || '',
             data: [{ to, variables }],
-            autoStart: true,
+            executionMode: 'NOW',
             campaignName: `Sync: ${job.name} (${new Date().toLocaleDateString()})`
           });
           processedCount++;
