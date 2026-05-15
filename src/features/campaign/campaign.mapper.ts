@@ -11,6 +11,8 @@ export class CampaignMapper {
       scheduleTime: prismaCampaign.scheduleTime,
       status: prismaCampaign.status as CampaignStatus,
       activeVersionId: prismaCampaign.activeVersionId,
+      dataSourceId: (prismaCampaign as any).dataSourceId,
+      tableName: (prismaCampaign as any).tableName,
       fieldMapping: prismaCampaign.fieldMapping,
       createdAt: prismaCampaign.createdAt,
       updatedAt: prismaCampaign.updatedAt,
@@ -27,6 +29,8 @@ export class CampaignMapper {
       flow: { connect: { id: entity.flowId } },
       ...(entity.scheduleTime != null && { scheduleTime: entity.scheduleTime }),
       ...(entity.activeVersionId != null && { activeVersionId: entity.activeVersionId }),
+      ...(entity.dataSourceId != null && { dataSourceId: entity.dataSourceId }),
+      ...(entity.tableName != null && { tableName: entity.tableName }),
       ...(entity.fieldMapping != null && { fieldMapping: entity.fieldMapping }),
     };
 

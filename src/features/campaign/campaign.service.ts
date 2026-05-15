@@ -13,18 +13,21 @@ export class CampaignService {
   ) {}
 
   async processApiTrigger(job: TriggerJob): Promise<void> {
-    logger.info({ botId: job.botId, count: job.data.length, campaignName: job.campaignName }, 'CampaignService: processing API trigger');
+    logger.info({ botId: job.botId, count: job.data.length, campaignName: job.campaignName, mode: job.executionMode }, 'CampaignService: processing API trigger');
 
-    // 1. Resolve or Create the Campaign
-    const targetStatus = job.autoStart === false ? CampaignStatus.draft : CampaignStatus.running;
+    // 1. Resolve or Create the Campaign with Smart Defaults
+    const targetStatus = job.executionMode === 'SCHEDULED' ? CampaignStatus.scheduled : CampaignStatus.running;
+    const executeAt = job.executeAt ? new Date(job.executeAt) : undefined;
+
     const { campaignId, versionId } = await this.campaignRepo.findOrCreateSystemCampaign(
       job.orgId, 
       job.botId, 
       job.campaignName, 
-      targetStatus
+      targetStatus,
+      executeAt
     );
 
-    // 2. Prepare Batch Insert
+    // 2. Prepare Batch Insert (Cleaning phone numbers)
     const recipientsToCreate = job.data.map(item => ({
       waId: item.to.replace(/\D/g, ''),
       variables: item.variables,
@@ -39,10 +42,11 @@ export class CampaignService {
       pending: createdRecipients.length 
     });
 
-    // 5. Check if we should dispatch (Only if campaign is NOT in draft)
+    // 5. Check if we should dispatch immediately
+    // If the campaign is RUNNING (either already was, or we just set it so via executionMode: NOW)
     const campaign = await this.campaignRepo.findById(campaignId);
     if (campaign?.status === CampaignStatus.running) {
-      // Dispatch individual execution jobs
+      // Dispatch only the recipients from THIS specific batch (versionId)
       for (const recipient of createdRecipients) {
         const execJob: RecipientJob = {
           campaignId,
@@ -54,9 +58,9 @@ export class CampaignService {
         };
         await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_DISPATCH, execJob);
       }
-      logger.info({ campaignId, count: createdRecipients.length }, 'CampaignService: recipients dispatched');
+      logger.info({ campaignId, batchVersion: versionId, count: createdRecipients.length }, 'CampaignService: API batch dispatched');
     } else {
-      logger.info({ campaignId, count: createdRecipients.length }, 'CampaignService: recipients added to DRAFT');
+      logger.info({ campaignId, batchVersion: versionId, count: createdRecipients.length, status: campaign?.status }, 'CampaignService: API batch added to PENDING campaign');
     }
   }
 
@@ -64,7 +68,9 @@ export class CampaignService {
     orgId: string;
     name: string;
     flowId: string;
-    filePath: string;
+    filePath?: string;
+    dataSourceId?: string;
+    tableName?: string;
     scheduleTime?: Date;
   }) {
     const isImmediate = !data.scheduleTime;
@@ -77,6 +83,8 @@ export class CampaignService {
       flowId: data.flowId,
       scheduleTime: data.scheduleTime,
       status: initialStatus,
+      dataSourceId: data.dataSourceId,
+      tableName: data.tableName
     });
 
     logger.info({ orgId: data.orgId, name: data.name, flowId: data.flowId, isImmediate }, 'Creating new campaign');
@@ -89,24 +97,36 @@ export class CampaignService {
     // 2. Create Initial Version and set it as active immediately
     const version = await this.campaignRepo.createVersion({
       campaignId: campaign.id,
-      filePath: data.filePath,
+      filePath: data.filePath || null,
       versionNumber: 1,
     });
     await this.campaignRepo.update(campaign.id, { activeVersionId: version.id });
 
     // 3. Trigger Import Job
-    // autoStart=true tells the import consumer to enqueue CAMPAIGN_START once recipients are loaded.
-    // For scheduled campaigns the poller handles dispatch instead.
-    const importJob: ImportJob = {
-      campaignId: campaign.id,
-      campaignVersionId: version.id,
-      filePath: data.filePath,
-      orgId: data.orgId,
-      autoStart: isImmediate,
-    };
+    if (data.filePath) {
+      const importJob: ImportJob = {
+        campaignId: campaign.id,
+        campaignVersionId: version.id,
+        filePath: data.filePath,
+        orgId: data.orgId,
+        autoStart: isImmediate,
+      };
+      await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
+    } else if (data.dataSourceId) {
+       // [NEW] Trigger Database Ingestion Job
+       const dbIngestionJob = {
+         campaignId: campaign.id,
+         campaignVersionId: version.id,
+         dataSourceId: data.dataSourceId,
+         tableName: data.tableName,
+         orgId: data.orgId,
+         autoStart: isImmediate,
+       };
+       // We reuse the IMPORT exchange but the consumer will detect the dataSourceId
+       await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, dbIngestionJob);
+    }
 
-    await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
-    logger.info({ campaignId: campaign.id, versionId: version.id, autoStart: isImmediate }, 'Campaign created and import job published');
+    logger.info({ campaignId: campaign.id, versionId: version.id, autoStart: isImmediate }, 'Campaign created and ingestion job published');
 
     return { campaign, version };
   }

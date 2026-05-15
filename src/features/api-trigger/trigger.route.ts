@@ -10,6 +10,7 @@ export function createTriggerRouter(controller: TriggerController): Router {
    * @access Authenticated (Org)
    */
   router.post('/', controller.trigger);
+  router.post('/initiate', controller.initiate);
   
   return router;
 }

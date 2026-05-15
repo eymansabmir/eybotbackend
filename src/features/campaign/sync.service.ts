@@ -86,23 +86,35 @@ export class SyncService {
       }
 
       // 5. Transform and Pipe to Bot Engine
-      const data = rows.map(row => {
-        const { wa_id, ...variables } = row;
-        return {
-          to: String(wa_id || ''),
-          variables
-        };
-      }).filter(item => item.to.length > 0);
+      let processedCount = 0;
+      for (const row of rows) {
+        const variables: Record<string, any> = {};
+        let to: string | undefined;
 
-      const triggerJob: TriggerJob = {
-        orgId: dataSource.orgId,
-        botId: job.botId || '', 
-        campaignName: `${job.name} - Sync`,
-        autoStart: true, // AUTO-LAUNCH IS ENABLED HERE
-        data
-      };
+        // Greedy Mapping: Map every column as a variable
+        Object.keys(row).forEach(key => {
+          const normalizedKey = key.toLowerCase();
+          
+          // Identify phone number column (Recipient ID)
+          if (['wa_id', 'phone', 'mobile', 'recipient'].includes(normalizedKey)) {
+            to = String(row[key]);
+          }
+          
+          // All columns are passed as variables to the bot
+          variables[normalizedKey] = row[key];
+        });
 
-      await this.campaignService.processApiTrigger(triggerJob);
+        if (to) {
+          await this.campaignService.processApiTrigger({
+            orgId: dataSource.orgId,
+            botId: job.botId || '',
+            data: [{ to, variables }],
+            autoStart: true,
+            campaignName: `Sync: ${job.name} (${new Date().toLocaleDateString()})`
+          });
+          processedCount++;
+        }
+      }
 
       // 6. Finalize Success and Update Cursor
       let nextCursor = job.lastCursor;

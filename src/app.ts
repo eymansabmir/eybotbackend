@@ -75,6 +75,9 @@ import { ExotelCallbackController } from './features/voice-tech/exotel-callback.
 import { TriggerController } from './features/api-trigger/trigger.controller';
 import { DataSourceController } from './features/api-trigger/data-source.controller';
 import { SyncJobController } from './features/api-trigger/sync-job.controller';
+import { ApiAuthService } from './features/auth/api-auth.service';
+import { AuthController } from './features/auth/auth.controller';
+import { createApiKeyMiddleware } from './features/auth/api-key.middleware';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -188,6 +191,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
+  const prisma = registry.get<IDatabasePlugin>(DATABASE_PLUGIN).prisma;
   const flowService = new FlowService(flowRepo);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
   const campaignService = new CampaignService(campaignRepo, campaignRecipientRepo, workerPlugin);
@@ -201,8 +205,8 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
   const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
-  const prisma = registry.get<IDatabasePlugin>(DATABASE_PLUGIN).prisma;
   const syncService = new SyncService(prisma, credentialService, campaignService);
+  const apiAuthService = new ApiAuthService(prisma);
 
   // Register services in registry for workers to access
   registry.registerValue(CAMPAIGN_SERVICE, campaignService);
@@ -246,8 +250,12 @@ export function createApp(registry: IPluginRegistry): Application {
   const voiceProviderController = new VoiceProviderController(voiceRoutingRepo);
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
   const triggerController = new TriggerController(registry);
-  const dataSourceController = new DataSourceController(prisma);
+  const dataSourceController = new DataSourceController(prisma, credentialService);
   const syncJobController = new SyncJobController(prisma, syncService);
+  const authController = new AuthController(apiAuthService);
+
+  // ── Middleware ─────────────────────────────────────────────────────────────
+  const apiKeyMiddleware = createApiKeyMiddleware(apiAuthService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -265,8 +273,13 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
-  app.use('/api/v1/trigger', createTriggerRouter(triggerController));
-  app.use('/api/v1/connectors', createConnectorRouter(dataSourceController, syncJobController));
+  
+  // Public Auth Route for API Consumers
+  app.post('/api/v1/auth/token', authController.generateToken);
+
+  // Protected V1 Routes (Requires Bearer Token)
+  app.use('/api/v1/trigger', apiKeyMiddleware, createTriggerRouter(triggerController));
+  app.use('/api/v1/connectors', apiKeyMiddleware, createConnectorRouter(dataSourceController, syncJobController));
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));

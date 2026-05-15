@@ -87,9 +87,9 @@ export interface VoiceCampaignJob {
 export interface TriggerJob {
   orgId: string;
   botId: string;
-  batchId?: string;
-  campaignName?: string;
-  autoStart?: boolean;
+  campaignName: string;
+  executionMode: 'NOW' | 'SCHEDULED';
+  executeAt?: string;
   data: Array<{
     to: string;
     variables: Record<string, unknown>;

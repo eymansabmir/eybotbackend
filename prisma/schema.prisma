@@ -138,6 +138,8 @@ model Campaign {
   scheduleTime    DateTime?
   status          CampaignStatus    @default(draft)
   activeVersionId String?
+  dataSourceId    String?           // [NEW] Linked DB Connection
+  tableName       String?           // [NEW] Selected View/Table
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   fieldMapping    Json?
@@ -152,7 +154,7 @@ model Campaign {
 model CampaignVersion {
   id            String                @id @default(uuid())
   campaignId    String
-  filePath      String
+  filePath      String?               // [MODIFIED] Optional for DB sync
   versionNumber Int
   status        CampaignVersionStatus @default(draft)
   createdAt     DateTime              @default(now())
@@ -264,6 +266,20 @@ model Credential {
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
   @@map("credentials")
+}
+
+model ApiKey {
+  id            String   @id @default(uuid())
+  orgId         String
+  name          String?  // e.g., "Daily Sync Script"
+  appId         String   @unique
+  appSecretHash String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orgId, appId])
+  @@map("api_keys")
 }
 
 model DataSource {

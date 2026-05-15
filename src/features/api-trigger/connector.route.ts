@@ -11,6 +11,8 @@ export function createConnectorRouter(
   // DataSources
   router.post('/data-sources', dsController.create);
   router.get('/data-sources', dsController.list);
+  router.get('/data-sources/:id/discover', dsController.discover);
+  router.get('/data-sources/:id/discover/:tableName/columns', dsController.discoverColumns);
   router.delete('/data-sources/:id', dsController.delete);
 
   // Sync Jobs

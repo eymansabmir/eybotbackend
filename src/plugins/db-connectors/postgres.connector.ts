@@ -24,6 +24,30 @@ export class PostgresConnector implements IDbConnector {
     return result.rows;
   }
 
+  async discoverTables(): Promise<{ name: string; type: 'BASE TABLE' | 'VIEW' }[]> {
+    if (!this.client) throw new Error('PostgresConnector: not connected');
+    const sql = `
+      SELECT table_name as name, table_type as type 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      ORDER BY table_name;
+    `;
+    const result = await this.client.query(sql);
+    return result.rows;
+  }
+
+  async discoverColumns(tableName: string): Promise<string[]> {
+    if (!this.client) throw new Error('PostgresConnector: not connected');
+    const sql = `
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = $1 
+      ORDER BY ordinal_position;
+    `;
+    const result = await this.client.query(sql, [tableName]);
+    return result.rows.map(r => r.column_name);
+  }
+
   async close(): Promise<void> {
     if (this.client) {
       await this.client.end();

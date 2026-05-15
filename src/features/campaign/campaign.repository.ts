@@ -86,6 +86,8 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     status: CampaignStatus;
     activeVersionId: string;
     scheduleTime: Date | null;
+    dataSourceId: string | null;
+    tableName: string | null;
   }>): Promise<CampaignEntity> {
     const updated = await this.prisma.campaign.update({
       where: { id },
@@ -104,7 +106,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
 
   async createVersion(data: {
     campaignId: string;
-    filePath: string;
+    filePath?: string | null;
     versionNumber: number;
   }): Promise<any> {
     return this.prisma.campaignVersion.create({
@@ -222,11 +224,16 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     });
   }
 
-  async findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName?: string, status: CampaignStatus = CampaignStatus.running): Promise<{ campaignId: string, versionId: string }> {
-    const today = new Date().toISOString().split('T')[0];
-    const name = campaignName || `API Triggers - ${today}`;
+  async findOrCreateSystemCampaign(
+    orgId: string, 
+    flowId: string, 
+    campaignName: string, 
+    status: CampaignStatus = CampaignStatus.running,
+    scheduleTime?: Date
+  ): Promise<{ campaignId: string, versionId: string }> {
+    const name = campaignName;
     
-    // 1. Find or Create the Campaign
+    // 1. Find or Create the Campaign (Triple Key: Org + Name + Flow)
     let campaign = await this.prisma.campaign.findFirst({
       where: { orgId, flowId, name },
     });
@@ -238,25 +245,54 @@ export class PrismaCampaignRepository implements ICampaignRepository {
           flowId,
           name,
           status,
+          scheduleTime
         }
       });
       await this.createStats(campaign.id, 0);
+    } else {
+      // [Product Edge Case] If campaign exists and is NOT yet running, we allow schedule overrides
+      if (campaign.status === CampaignStatus.draft || campaign.status === CampaignStatus.scheduled) {
+        campaign = await this.prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { 
+            status, 
+            scheduleTime: scheduleTime || campaign.scheduleTime 
+          }
+        });
+      }
     }
     
-    // 2. Find or Create a Version
-    let version = await this.prisma.campaignVersion.findFirst({
-      where: { campaignId: campaign.id },
-    });
+    // 2. Manage Versions (Batches)
+    // If the campaign is already RUNNING or COMPLETED, we treat this as a NEW batch (New Version)
+    const isReEntrant = campaign.status === CampaignStatus.running || campaign.status === CampaignStatus.completed;
     
-    if (!version) {
+    let version;
+    if (isReEntrant) {
+      const lastVersionNum = await this.getLatestVersionNumber(campaign.id);
       version = await this.prisma.campaignVersion.create({
         data: {
           campaignId: campaign.id,
-          versionNumber: 1,
-          filePath: 'api-trigger',
+          versionNumber: lastVersionNum + 1,
+          filePath: `api-batch-${Date.now()}`,
           status: CampaignVersionStatus.ready,
         }
       });
+    } else {
+      // For Draft/Scheduled, we append to the first version
+      version = await this.prisma.campaignVersion.findFirst({
+        where: { campaignId: campaign.id },
+      });
+      
+      if (!version) {
+        version = await this.prisma.campaignVersion.create({
+          data: {
+            campaignId: campaign.id,
+            versionNumber: 1,
+            filePath: 'api-trigger',
+            status: CampaignVersionStatus.ready,
+          }
+        });
+      }
     }
     
     return { campaignId: campaign.id, versionId: version.id };

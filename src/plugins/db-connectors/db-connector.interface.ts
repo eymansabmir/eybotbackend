@@ -10,5 +10,7 @@ export interface DbConnectionConfig {
 export interface IDbConnector {
   connect(config: DbConnectionConfig): Promise<void>;
   query<T = any>(sql: string, params?: any[]): Promise<T[]>;
+  discoverTables(): Promise<{ name: string; type: 'BASE TABLE' | 'VIEW' }[]>;
+  discoverColumns(tableName: string): Promise<string[]>;
   close(): Promise<void>;
 }
