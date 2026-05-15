@@ -7,7 +7,8 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-import ivm from 'isolated-vm';
+// Todo
+// import ivm from 'isolated-vm';
 import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,
@@ -871,11 +872,13 @@ export class FlowOrchestrator {
 
   private async executeScriptRequest(
     _flow: FlowEntity,
-    session: SessionEntity,
+    _session: SessionEntity,
     _contact: ContactInfo,
     request: ScriptNodeRequest,
     _runtime?: RuntimeIntegrations,
   ): Promise<{ mutations: VariableMutation[] }> {
+    /* 
+    // Temporarily disabled due to isolated-vm installation issues
     const isolate = new ivm.Isolate({ memoryLimit: 128 });
     const context = isolate.createContextSync();
     const global = context.global;
@@ -947,6 +950,9 @@ export class FlowOrchestrator {
       context.release();
       isolate.dispose();
     }
+    */
+    logger.warn({ nodeId: request.nodeId }, 'Script execution is temporarily disabled (isolated-vm bypassed)');
+    return { mutations: [] };
   }
 
   private async executeGoogleSheetsRequest(
