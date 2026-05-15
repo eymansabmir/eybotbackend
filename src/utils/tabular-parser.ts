@@ -14,12 +14,16 @@ function normalizeCellValue(value: ExcelJS.CellValue): unknown {
 }
 
 function toNormalizedHeader(value: unknown): string {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
+  // Use a simple, non-greedy replacement strategy to avoid catastrophic backtracking
+  let str = String(value ?? '').trim().toLowerCase();
+  
+  // Replace non-alphanumeric with underscore (safe)
+  str = str.replace(/[^a-z0-9]/g, '_');
+  
+  // Collapse multiple underscores using a non-recursive approach
+  str = str.split('_').filter(Boolean).join('_');
+  
+  return str;
 }
 
 

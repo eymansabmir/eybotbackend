@@ -17,6 +17,7 @@ export const EXCHANGES = {
   VOICE_CAMPAIGN_DLQ: 'voice.campaign.dlq',
   RE_NUDGE: 'wa.renudge',
   RE_NUDGE_RETRY: 'wa.renudge.retry',
+  BOT_TRIGGER: 'bot.trigger',
 } as const;
 
 export type ExchangeName = (typeof EXCHANGES)[keyof typeof EXCHANGES];

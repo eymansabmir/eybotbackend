@@ -1,14 +1,64 @@
 import { ICampaignRepository } from './campaign.repository';
+import { ICampaignRecipientRepository } from './campaign-recipient.repository';
 import { IWorkerPlugin, EXCHANGES } from '../../plugins/worker/worker.interface';
 import { CampaignEntity } from './campaign.entity';
-import { ImportJob, DispatchJob } from '../../plugins/worker/jobs';
+import { ImportJob, DispatchJob, TriggerJob, RecipientJob } from '../../plugins/worker/jobs';
 import { CampaignStatus } from '@prisma/client';
 
 export class CampaignService {
   constructor(
     private readonly campaignRepo: ICampaignRepository,
+    private readonly recipientRepo: ICampaignRecipientRepository,
     private readonly workerPlugin: IWorkerPlugin,
   ) {}
+
+  async processApiTrigger(job: TriggerJob): Promise<void> {
+    logger.info({ botId: job.botId, count: job.data.length, campaignName: job.campaignName }, 'CampaignService: processing API trigger');
+
+    // 1. Resolve or Create the Campaign
+    const targetStatus = job.autoStart === false ? CampaignStatus.draft : CampaignStatus.running;
+    const { campaignId, versionId } = await this.campaignRepo.findOrCreateSystemCampaign(
+      job.orgId, 
+      job.botId, 
+      job.campaignName, 
+      targetStatus
+    );
+
+    // 2. Prepare Batch Insert
+    const recipientsToCreate = job.data.map(item => ({
+      waId: item.to.replace(/\D/g, ''),
+      variables: item.variables,
+    }));
+
+    // 3. Persist to DB (Bulk)
+    const createdRecipients = await this.recipientRepo.batchCreate(versionId, recipientsToCreate);
+    
+    // 4. Update Stats (Increment pending/total)
+    await this.campaignRepo.updateStats(campaignId, { 
+      total: createdRecipients.length, 
+      pending: createdRecipients.length 
+    });
+
+    // 5. Check if we should dispatch (Only if campaign is NOT in draft)
+    const campaign = await this.campaignRepo.findById(campaignId);
+    if (campaign?.status === CampaignStatus.running) {
+      // Dispatch individual execution jobs
+      for (const recipient of createdRecipients) {
+        const execJob: RecipientJob = {
+          campaignId,
+          campaignVersionId: versionId,
+          recipientId: recipient.id,
+          waId: recipient.waId,
+          variables: recipient.variables as Record<string, any>,
+          orgId: job.orgId,
+        };
+        await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_DISPATCH, execJob);
+      }
+      logger.info({ campaignId, count: createdRecipients.length }, 'CampaignService: recipients dispatched');
+    } else {
+      logger.info({ campaignId, count: createdRecipients.length }, 'CampaignService: recipients added to DRAFT');
+    }
+  }
 
   async createCampaign(data: {
     orgId: string;

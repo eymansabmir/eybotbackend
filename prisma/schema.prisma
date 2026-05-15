@@ -15,20 +15,16 @@ model Flow {
   version       Int               @default(1)
   triggerType   String
   triggerConfig Json
-
-  nodes    Json
-  edges    Json
-  settings Json
-  variables Json?
-
-  publishedAt DateTime?
-
-  isConfigured Boolean @default(false)
-
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  campaigns    Campaign[]
-  translations FlowTranslation[]
+  nodes         Json
+  edges         Json
+  settings      Json
+  publishedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  isConfigured  Boolean           @default(false)
+  variables     Json?
+  campaigns     Campaign[]
+  translations  FlowTranslation[]
   renudgeConfig RenudgeConfig?
   renudgeLogs   RenudgeLog[]
 
@@ -60,19 +56,14 @@ model ChatSession {
   currentNodeId    String        @default("")
   variables        Json?
   history          Json?
+  waitingFor       Json?
   isCurrent        Boolean       @default(true)
   createdAt        DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  flowStack        Json?
+  lastRenudgeAt    DateTime?     @db.Timestamptz(3)
+  renudgeAttempts  Int           @default(0)
   returnMark       Json?
-  
-  flowStack Json?
-
-  waitingFor Json?
-
-
-  renudgeAttempts Int     @default(0)
-  lastRenudgeAt   DateTime? @db.Timestamptz(3)
-
 
   @@index([waId, status])
   @@index([flowId, status])
@@ -87,12 +78,10 @@ model RenudgeConfig {
   durationMinutes Int      @default(30)
   maxAttempts     Int      @default(1)
   message         String   @default("Are you still there? Would you like to continue?")
-  buttons         Json?    // Array of { id: string, title: string }
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  buttons         Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  flow            Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@map("renudge_configs")
 }
@@ -104,8 +93,7 @@ model RenudgeLog {
   sessionId String
   attempt   Int
   sentAt    DateTime @default(now())
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@index([flowId, waId])
   @@index([sessionId])
@@ -150,9 +138,9 @@ model Campaign {
   scheduleTime    DateTime?
   status          CampaignStatus    @default(draft)
   activeVersionId String?
-  fieldMapping    Json?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  fieldMapping    Json?
   flow            Flow              @relation(fields: [flowId], references: [id])
   stats           CampaignStats?
   versions        CampaignVersion[]

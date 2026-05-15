@@ -23,6 +23,7 @@ import {
   SESSION_REPOSITORY,
   CAMPAIGN_REPOSITORY,
   CAMPAIGN_RECIPIENT_REPOSITORY,
+  CAMPAIGN_SERVICE,
   CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
   VOICE_ENTITY_REPOSITORY,
@@ -69,6 +70,7 @@ import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
 import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
+import { TriggerController } from './features/api-trigger/trigger.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -91,12 +93,16 @@ import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
+import { createTriggerRouter } from './features/api-trigger/trigger.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
 
 export function createApp(registry: IPluginRegistry): Application {
   const app = express();
+
+  // Trust proxy for ngrok/LB support
+  app.set('trust proxy', true);
   const WEBHOOK_URL = process.env.WEBHOOK_URL;
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
   const authPlugin = registry.get<IAuthPlugin>(AUTH_PLUGIN);
@@ -108,8 +114,35 @@ export function createApp(registry: IPluginRegistry): Application {
     credentials: true,
   }));
   app.use('/api/auth', authHandler);
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  
+  // Auth Session Middleware
+  app.use(async (req, _res, next) => {
+    try {
+      const auth = authPlugin.auth as any;
+      const session = await auth.api.getSession({
+        headers: req.headers,
+      });
+      
+      if (session) {
+        logger.info({ userId: session.user?.id, sessionId: session.session?.id }, 'Auth Success: session resolved');
+        (req as any).auth = session;
+      } else {
+        // Log details if session resolution failed
+        logger.info({ 
+          url: req.url,
+          host: req.headers.host,
+          hasAuth: !!req.headers.authorization,
+          hasCookie: !!req.headers.cookie 
+        }, 'Auth Failure: getSession returned null');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Auth middleware: failed to get session');
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(pinoHttp({
     logger: global.logger,
     serializers: {
@@ -161,7 +194,7 @@ export function createApp(registry: IPluginRegistry): Application {
   // ── Services ───────────────────────────────────────────────────────────────
   const flowService = new FlowService(flowRepo);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
-  const campaignService = new CampaignService(campaignRepo, workerPlugin);
+  const campaignService = new CampaignService(campaignRepo, campaignRecipientRepo, workerPlugin);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
@@ -172,6 +205,9 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
   const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
+
+  // Register services in registry for workers to access
+  registry.registerValue(CAMPAIGN_SERVICE, campaignService);
 
   // Start background scheduler
   campaignService.startScheduler();
@@ -209,6 +245,7 @@ export function createApp(registry: IPluginRegistry): Application {
   );
   const voiceProviderController = new VoiceProviderController(voiceRoutingRepo);
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
+  const triggerController = new TriggerController(registry);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -226,6 +263,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
+  app.use('/api/v1/trigger', createTriggerRouter(triggerController));
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));

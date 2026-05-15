@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { emailOTP } from 'better-auth/plugins';
+import { emailOTP, bearer } from 'better-auth/plugins';
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import { DATABASE_PLUGIN, type IDatabasePlugin } from '../database';
@@ -50,12 +50,31 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
       });
     }
 
+    const trustedOrigins = env.TRUSTED_ORIGINS 
+      ? env.TRUSTED_ORIGINS.split(',').map((o: string) => o.trim())
+      : [env.FRONTEND_URL || 'http://localhost:5173'];
+
     this._auth = betterAuth({
       database: prismaAdapter(dbPlugin.prisma, {
         provider: 'postgresql',
       }),
-      trustedOrigins: [env.FRONTEND_URL || 'http://localhost:5173'],
+      trustedOrigins,
+      session: {
+        cookieCache: {
+          enabled: true,
+          maxAge: 5 * 60, // 5 minutes
+        },
+      },
+      cookies: {
+        sessionToken: {
+          options: {
+            secure: isProduction,
+            sameSite: isProduction ? 'lax' : 'none',
+          }
+        }
+      },
       plugins: [
+        bearer(),
         emailOTP({
           otpLength: 6,
           expiresIn: 300,

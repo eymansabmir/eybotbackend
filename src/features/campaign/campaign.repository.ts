@@ -37,6 +37,7 @@ export interface ICampaignRepository {
     total?: number;
   }): Promise<void>;
   createStats(campaignId: string, total: number): Promise<void>;
+  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName?: string, status?: CampaignStatus): Promise<{ campaignId: string, versionId: string }>;
 }
 
 export class PrismaCampaignRepository implements ICampaignRepository {
@@ -192,7 +193,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     if (updates.failed !== undefined) data.failed = { increment: updates.failed };
     if (updates.pending !== undefined) data.pending = { increment: updates.pending };
     if (updates.completed !== undefined) data.completed = { increment: updates.completed };
-    if (updates.total !== undefined) data.total = updates.total;
+    if (updates.total !== undefined) data.total = { increment: updates.total };
 
     await this.prisma.campaignStats.update({
       where: { campaignId },
@@ -219,5 +220,45 @@ export class PrismaCampaignRepository implements ICampaignRepository {
         completed: 0,
       },
     });
+  }
+
+  async findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName?: string, status: CampaignStatus = CampaignStatus.running): Promise<{ campaignId: string, versionId: string }> {
+    const today = new Date().toISOString().split('T')[0];
+    const name = campaignName || `API Triggers - ${today}`;
+    
+    // 1. Find or Create the Campaign
+    let campaign = await this.prisma.campaign.findFirst({
+      where: { orgId, flowId, name },
+    });
+    
+    if (!campaign) {
+      campaign = await this.prisma.campaign.create({
+        data: {
+          orgId,
+          flowId,
+          name,
+          status,
+        }
+      });
+      await this.createStats(campaign.id, 0);
+    }
+    
+    // 2. Find or Create a Version
+    let version = await this.prisma.campaignVersion.findFirst({
+      where: { campaignId: campaign.id },
+    });
+    
+    if (!version) {
+      version = await this.prisma.campaignVersion.create({
+        data: {
+          campaignId: campaign.id,
+          versionNumber: 1,
+          filePath: 'api-trigger',
+          status: CampaignVersionStatus.active,
+        }
+      });
+    }
+    
+    return { campaignId: campaign.id, versionId: version.id };
   }
 }

@@ -83,3 +83,15 @@ export interface VoiceCampaignJob {
   retryCount?: number;
   maxRetries?: number;
 }
+
+export interface TriggerJob {
+  orgId: string;
+  botId: string;
+  batchId?: string;
+  campaignName?: string;
+  autoStart?: boolean;
+  data: Array<{
+    to: string;
+    variables: Record<string, unknown>;
+  }>;
+}
