@@ -47,7 +47,6 @@ export enum NodeType {
   SCRIPT = 'script',
   JUMP = 'jump',
   RETURN = 'return',
-  WAIT = 'wait',
 }
 
 export const MESSAGING_NODE_TYPES = [
