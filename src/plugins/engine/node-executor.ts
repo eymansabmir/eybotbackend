@@ -51,6 +51,7 @@ export interface ScriptNodeRequest {
   jumpToFlowId?: string;
   jumpToNodeId?: string;
   returnNodeId?: string;
+  outputMappings?: Array<{ parentKey: string; childKey: string }>;
 }
 
 export interface NodeExecutionInput {
@@ -1579,14 +1580,27 @@ export class NodeExecutor {
 
   private handleBotNode(currentNode: Node, enteredAt: Date, traverser: GraphTraverser): NodeExecutionResult {
     const nextNodeId = traverser.getNextNodeId(currentNode.id, 'default');
+    const inputMappings = (currentNode.data['inputMappings'] ?? []) as Array<{ parentKey: string; childKey: string }>;
+    
+    // We don't have access to the full context variables here to "resolve", 
+    // but the engine will apply these mutations to the session variables.
+    const variableMutations: VariableMutation[] = inputMappings
+      .filter(m => m.parentKey && m.childKey)
+      .map(m => ({
+        scope: 'session',
+        key: m.childKey,
+        value: `{{session.${m.parentKey}}}`, // Use template syntax to let the engine resolve it later or handle it now
+      }));
+
     return {
       nextNodeId: null,
       outboundMessages: [],
-      variableMutations: [],
+      variableMutations,
       isTerminal: true,
       jumpToFlowId: currentNode.data['targetFlowId'] as string,
       jumpToNodeId: currentNode.data['targetNodeId'] as string,
       returnNodeId: nextNodeId || undefined,
+      outputMappings: (currentNode.data['outputMappings'] ?? []) as Array<{ parentKey: string; childKey: string }>,
       historyStep: {
         nodeId: currentNode.id,
         nodeType: currentNode.type,

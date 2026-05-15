@@ -501,7 +501,7 @@ export class OpenAIPlugin implements IPlugin, IOpenAIPlugin {
   }
 
   private buildUrl(credential: OpenAICredentialMaterial, path: string): string {
-    const base = (credential.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+    const base = (credential.baseUrl ?? 'https://api.openai.com/v1').replace(/\/{1,10}$/, '');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${base}${normalizedPath}`;
   }

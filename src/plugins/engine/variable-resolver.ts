@@ -9,7 +9,7 @@ export interface VariableContext {
 }
 
 export class VariableResolver {
-  private static readonly PATTERN = /\{\{([^}]+)\}\}/g;
+  private static readonly PATTERN = /\{\{([^}]{1,500})\}\}/g;
 
   resolve(template: string, context: VariableContext): string {
     return template.replace(VariableResolver.PATTERN, (_match, path: string) => {

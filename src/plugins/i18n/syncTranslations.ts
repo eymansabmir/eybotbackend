@@ -50,7 +50,7 @@ function normalizeForDiff(value: string): string {
   return value
     .normalize('NFKC')
     .toLowerCase()
-    .replace(/\s+/g, ' ')
+    .replace(/\s{1,100}/g, ' ')
     .trim();
 }
 
@@ -69,7 +69,7 @@ function hasMeaningfulTranslationChange(source: string[], translated: string[]):
  */
 const protectVariables = (text: string): { protectedText: string; variables: string[] } => {
   const variables: string[] = [];
-  const protectedText = text.replace(/\{\{[^}]+\}\}/g, (match) => {
+  const protectedText = text.replace(/\{\{[^}]{1,500\}\}/g, (match) => {
     variables.push(match);
     return `[#${variables.length - 1}]`;
   });
@@ -80,7 +80,7 @@ const protectVariables = (text: string): { protectedText: string; variables: str
  * Restores {{variables}} after translation
  */
 const restoreVariables = (text: string, variables: string[]): string => {
-  return text.replace(/\[\s*#\s*(\d+)\s*\]/g, (match, index) => {
+  return text.replace(/\[\s{0,10}#\s{0,10}(\d{1,10})\s{0,10}\]/g, (match, index) => {
     const varIndex = parseInt(index, 10);
     return variables[varIndex] || match;
   });
