@@ -1,6 +1,8 @@
 import { VariableContext } from './variable-resolver';
 import { VariableResolver } from './variable-resolver';
-const mexp = require('math-expression-evaluator');
+import Mexp from 'math-expression-evaluator';
+
+const mexp = new Mexp();
 
 export type MutationStrategy = (value: string, systemVariable: string | undefined, ctx: VariableContext, resolver: VariableResolver) => unknown;
 
@@ -49,11 +51,10 @@ export const MUTATION_STRATEGIES: Record<string, MutationStrategy> = {
     const expression = v || '';
     try {
       const resolvedExpr = resolver.resolve(expression, ctx);
-      // Dual-layer safety: 
-      // 1. Strict regex filtering to keep only math tokens
-      // 2. Safe parsing via math-expression-evaluator
-      const sanitized = resolvedExpr.replace(/[^0-9+\-*/().\s^%]/g, '');
-      return mexp.eval(sanitized);
+      const safeExpr = resolvedExpr.replace(/[^0-9+\-*/().\s^%]/g, '');
+      
+      const result = mexp.eval(safeExpr);
+      return Number.isNaN(result) ? expression : result;
     } catch (e) {
       console.warn(`[MutationStrategies] Failed to evaluate expression: ${v}`, e);
       return expression;

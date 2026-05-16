@@ -21,10 +21,10 @@ export class SarvamVoiceProviderAdapter implements VoiceProviderAdapter {
   private resolveBaseUrl(input: ExecuteVoiceProviderInput): string | undefined {
     const override = input.providerConfig?.['orchestratorBaseUrl'];
     if (typeof override === 'string' && override.trim().length > 0) {
-      return override.replace(/\/+$/, '');
+      return override.replace(/\/{1,10}$/, '');
     }
     if (typeof process.env.SARVAM_VOICE_ORCHESTRATOR_URL === 'string' && process.env.SARVAM_VOICE_ORCHESTRATOR_URL.trim().length > 0) {
-      return process.env.SARVAM_VOICE_ORCHESTRATOR_URL.replace(/\/+$/, '');
+      return process.env.SARVAM_VOICE_ORCHESTRATOR_URL.replace(/\/{1,10}$/, '');
     }
     return undefined;
   }

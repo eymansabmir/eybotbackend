@@ -32,8 +32,8 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
+    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }> | undefined;
     returnMark?: { nodeId: string } | undefined;
-    flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string }> | undefined;
     isCurrent?: boolean | undefined;
     renudgeAttempts?: number | undefined;
     lastRenudgeAt?: Date | undefined;
@@ -54,8 +54,8 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
+    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }>;
     public returnMark?: { nodeId: string } | undefined;
-    public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string }>;
     public isCurrent: boolean;
     public renudgeAttempts: number;
     public lastRenudgeAt?: Date | undefined;
@@ -115,11 +115,11 @@ export class SessionEntity {
         this.currentNodeId = startNodeId;
     }
 
-    public pushStack(flowId: string, version: number, returnNodeId: string): void {
-        this.flowStack.push({ flowId, flowVersion: version, returnNodeId });
+    public pushStack(flowId: string, version: number, returnNodeId: string, outputMappings?: Array<{ parentKey: string; childKey: string }>): void {
+        this.flowStack.push({ flowId, flowVersion: version, returnNodeId, outputMappings });
     }
 
-    public popStack(): { flowId: string; flowVersion: number; returnNodeId: string } | undefined {
+    public popStack(): { flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> } | undefined {
         return this.flowStack.pop();
     }
 

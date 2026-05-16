@@ -60,7 +60,7 @@ export class ExotelVoiceProviderAdapter implements VoiceProviderAdapter {
   private resolveBaseUrl(input: ExecuteVoiceProviderInput): string {
     const fromConfig = this.readSecretField(input.providerConfig, 'baseUrl');
     if (fromConfig) {
-      return fromConfig.replace(/\/+$/, '');
+      return fromConfig.replace(/\/{1,10}$/, '');
     }
     return 'https://api.exotel.com';
   }

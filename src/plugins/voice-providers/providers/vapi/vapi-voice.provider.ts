@@ -15,7 +15,7 @@ export class VapiVoiceProviderAdapter implements VoiceProviderAdapter {
   private resolveBaseUrl(input: ExecuteVoiceProviderInput): string {
     const override = input.providerConfig?.['baseUrl'];
     if (typeof override === 'string' && override.trim().length > 0) {
-      return override.replace(/\/+$/, '');
+      return override.replace(/\/{1,10}$/, '');
     }
     return 'https://api.vapi.ai';
   }

@@ -241,7 +241,7 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
   }
 
   private buildUrl(credential: ElevenLabsCredentialMaterial, path: string): string {
-    const base = this.normalizeBaseUrl(credential.baseUrl ?? 'https://api.elevenlabs.io/v1').replace(/\/+$/, '');
+    const base = this.normalizeBaseUrl(credential.baseUrl ?? 'https://api.elevenlabs.io/v1').replace(/\/{1,10}$/, '');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${base}${normalizedPath}`;
   }
@@ -252,7 +252,7 @@ export class ElevenLabsPlugin implements IPlugin, IElevenLabsPlugin {
     try {
       const url = new URL(trimmed);
       const host = url.hostname.toLowerCase();
-      const path = url.pathname.replace(/\/+$/, '');
+      const path = url.pathname.replace(/\/{1,10}$/, '');
 
       // ElevenLabs API endpoints are versioned under /v1.
       if (host === 'api.elevenlabs.io' && (!path || path === '/')) {

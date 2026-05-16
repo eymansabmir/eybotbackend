@@ -56,14 +56,14 @@ model ChatSession {
   currentNodeId    String        @default("")
   variables        Json?
   history          Json?
+  flowStack        Json?
   waitingFor       Json?
+  returnMark       Json?
   isCurrent        Boolean       @default(true)
+  renudgeAttempts  Int           @default(0)
+  lastRenudgeAt    DateTime?     @db.Timestamptz(3)
   createdAt        DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
-  flowStack        Json?
-  lastRenudgeAt    DateTime?     @db.Timestamptz(3)
-  renudgeAttempts  Int           @default(0)
-  returnMark       Json?
 
   @@index([waId, status])
   @@index([flowId, status])
