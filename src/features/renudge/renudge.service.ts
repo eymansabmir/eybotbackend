@@ -14,7 +14,7 @@ export class RenudgeService implements IRenudgeService {
         private readonly workerPlugin: IWorkerPlugin,
         private readonly dbPlugin: IDatabasePlugin
     ) {
-        logger.info('RenudgeService: initialized');
+        logger.info('RenudgeService: initialized and active');
     }
 
     async scheduleFirstNudge(sessionId: string, flow: FlowEntity): Promise<void> {
