@@ -54,6 +54,7 @@ const envSchema = z.object({
   GOOGLE_SHEETS_CLIENT_ID: z.string().optional(),
   GOOGLE_SHEETS_CLIENT_SECRET: z.string().optional(),
   ALLOWED_DOMAINS: z.string().optional(),
+  TRUSTED_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

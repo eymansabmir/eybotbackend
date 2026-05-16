@@ -19,7 +19,7 @@ export interface ICampaignRepository {
   updateStatus(id: string, status: CampaignStatus): Promise<CampaignEntity>;
   createVersion(data: {
     campaignId: string;
-    filePath: string;
+    filePath?: string | null;
     versionNumber: number;
   }): Promise<any>;
   updateVersionStatus(id: string, status: CampaignVersionStatus): Promise<any>;
@@ -37,6 +37,7 @@ export interface ICampaignRepository {
     total?: number;
   }): Promise<void>;
   createStats(campaignId: string, total: number): Promise<void>;
+  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName: string, status?: CampaignStatus, scheduleTime?: Date, isSystem?: boolean): Promise<{ campaignId: string, versionId: string }>;
 }
 
 export class PrismaCampaignRepository implements ICampaignRepository {
@@ -50,7 +51,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
 
   async findAll(orgId: string): Promise<CampaignEntity[]> {
     const campaigns = await this.prisma.campaign.findMany({
-      where: { orgId },
+      where: { orgId, isSystem: false },
       orderBy: { createdAt: 'desc' },
     });
     return campaigns.map(CampaignMapper.toEntity);
@@ -85,6 +86,8 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     status: CampaignStatus;
     activeVersionId: string;
     scheduleTime: Date | null;
+    dataSourceId: string | null;
+    tableName: string | null;
   }>): Promise<CampaignEntity> {
     const updated = await this.prisma.campaign.update({
       where: { id },
@@ -103,7 +106,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
 
   async createVersion(data: {
     campaignId: string;
-    filePath: string;
+    filePath?: string | null;
     versionNumber: number;
   }): Promise<any> {
     return this.prisma.campaignVersion.create({
@@ -157,6 +160,22 @@ export class PrismaCampaignRepository implements ICampaignRepository {
   }
 
   async delete(id: string): Promise<void> {
+    // 1. Delete Recipients linked to versions of this campaign
+    await this.prisma.campaignRecipient.deleteMany({
+      where: { version: { campaignId: id } }
+    });
+    
+    // 2. Delete Versions
+    await this.prisma.campaignVersion.deleteMany({
+      where: { campaignId: id }
+    });
+    
+    // 3. Delete Stats
+    await this.prisma.campaignStats.deleteMany({
+      where: { campaignId: id }
+    });
+    
+    // 4. Finally delete the campaign
     await this.prisma.campaign.delete({ where: { id } });
   }
 
@@ -176,7 +195,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     if (updates.failed !== undefined) data.failed = { increment: updates.failed };
     if (updates.pending !== undefined) data.pending = { increment: updates.pending };
     if (updates.completed !== undefined) data.completed = { increment: updates.completed };
-    if (updates.total !== undefined) data.total = updates.total;
+    if (updates.total !== undefined) data.total = { increment: updates.total };
 
     await this.prisma.campaignStats.update({
       where: { campaignId },
@@ -203,5 +222,82 @@ export class PrismaCampaignRepository implements ICampaignRepository {
         completed: 0,
       },
     });
+  }
+
+  async findOrCreateSystemCampaign(
+    orgId: string, 
+    flowId: string, 
+    campaignName: string, 
+    status: CampaignStatus = CampaignStatus.running,
+    scheduleTime?: Date,
+    isSystem: boolean = false
+  ): Promise<{ campaignId: string, versionId: string }> {
+    const name = campaignName;
+    
+    // 1. Find or Create the Campaign (Triple Key: Org + Name + Flow)
+    let campaign = await this.prisma.campaign.findFirst({
+      where: { orgId, flowId, name, isSystem },
+    });
+    
+    if (!campaign) {
+      campaign = await this.prisma.campaign.create({
+        data: {
+          orgId,
+          flowId,
+          name,
+          status,
+          scheduleTime,
+          isSystem
+        }
+      });
+      await this.createStats(campaign.id, 0);
+    } else {
+      // [Product Edge Case] If campaign exists and is NOT yet running, we allow schedule overrides
+      if (campaign.status === CampaignStatus.draft || campaign.status === CampaignStatus.scheduled) {
+        campaign = await this.prisma.campaign.update({
+          where: { id: campaign.id },
+          data: { 
+            status, 
+            scheduleTime: scheduleTime || campaign.scheduleTime,
+            isSystem
+          }
+        });
+      }
+    }
+    
+    // 2. Manage Versions (Batches)
+    // If the campaign is already RUNNING or COMPLETED, we treat this as a NEW batch (New Version)
+    const isReEntrant = campaign.status === CampaignStatus.running || campaign.status === CampaignStatus.completed;
+    
+    let version;
+    if (isReEntrant) {
+      const lastVersionNum = await this.getLatestVersionNumber(campaign.id);
+      version = await this.prisma.campaignVersion.create({
+        data: {
+          campaignId: campaign.id,
+          versionNumber: lastVersionNum + 1,
+          filePath: `api-batch-${Date.now()}`,
+          status: CampaignVersionStatus.ready,
+        }
+      });
+    } else {
+      // For Draft/Scheduled, we append to the first version
+      version = await this.prisma.campaignVersion.findFirst({
+        where: { campaignId: campaign.id },
+      });
+      
+      if (!version) {
+        version = await this.prisma.campaignVersion.create({
+          data: {
+            campaignId: campaign.id,
+            versionNumber: 1,
+            filePath: 'api-trigger',
+            status: CampaignVersionStatus.ready,
+          }
+        });
+      }
+    }
+    
+    return { campaignId: campaign.id, versionId: version.id };
   }
 }

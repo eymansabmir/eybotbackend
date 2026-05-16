@@ -23,4 +23,5 @@ export interface IStoragePlugin {
   getSignedUrl(filePath: string): Promise<string>;
   resolveUrl(filePath: string, bucket?: 'public' | 'private'): Promise<string>;
   downloadFile(filePath: string): Promise<Buffer>;
+  getReadStream(filePath: string): Promise<NodeJS.ReadableStream>;
 }

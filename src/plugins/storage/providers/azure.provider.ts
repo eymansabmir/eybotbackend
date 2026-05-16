@@ -87,4 +87,11 @@ export class AzureProvider implements IStorageProvider {
     const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
     return blockBlobClient.downloadToBuffer();
   }
+
+  async getReadStream(filePath: string): Promise<NodeJS.ReadableStream> {
+    const blobName = this.normalizePath(filePath);
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
+    const downloadResponse = await blockBlobClient.download(0);
+    return downloadResponse.readableStreamBody as NodeJS.ReadableStream;
+  }
 }

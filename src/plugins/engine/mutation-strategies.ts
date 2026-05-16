@@ -56,6 +56,7 @@ export const MUTATION_STRATEGIES: Record<string, MutationStrategy> = {
       const result = mexp.eval(safeExpr);
       return Number.isNaN(result) ? expression : result;
     } catch (e) {
+      console.warn(`[MutationStrategies] Failed to evaluate expression: ${v}`, e);
       return expression;
     }
   },

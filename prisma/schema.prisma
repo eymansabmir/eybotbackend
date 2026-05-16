@@ -85,12 +85,10 @@ model RenudgeConfig {
   durationMinutes Int      @default(30)
   maxAttempts     Int      @default(1)
   message         String   @default("Are you still there? Would you like to continue?")
-  buttons         Json?    // Array of { id: string, title: string }
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  buttons         Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  flow            Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@map("renudge_configs")
 }
@@ -102,8 +100,7 @@ model RenudgeLog {
   sessionId String
   attempt   Int
   sentAt    DateTime @default(now())
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@index([flowId, waId])
   @@index([sessionId])
@@ -150,9 +147,14 @@ model Campaign {
   activeVersionId String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  fieldMapping    Json?
+  dataSourceId    String?
+  tableName       String?
+  isSystem        Boolean           @default(false)
   flow            Flow              @relation(fields: [flowId], references: [id])
   stats           CampaignStats?
   versions        CampaignVersion[]
+  syncJobs        SyncJob[]
 
   @@index([orgId, status])
 }
@@ -160,7 +162,7 @@ model Campaign {
 model CampaignVersion {
   id            String                @id @default(uuid())
   campaignId    String
-  filePath      String
+  filePath      String?
   versionNumber Int
   status        CampaignVersionStatus @default(draft)
   createdAt     DateTime              @default(now())
@@ -267,11 +269,67 @@ model Credential {
   revokedAt      DateTime?
   createdAt      DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  dataSources    DataSource[]
   voiceProviders VoiceProvider[]
 
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
   @@map("credentials")
+}
+
+model ApiKey {
+  id            String   @id @default(uuid())
+  orgId         String
+  name          String?
+  appId         String   @unique
+  appSecretHash String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orgId, appId])
+  @@map("api_keys")
+}
+
+model DataSource {
+  id           String     @id @default(uuid())
+  orgId        String
+  name         String
+  type         DbProvider
+  credentialId String
+  config       Json
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  credential   Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  syncJobs     SyncJob[]
+
+  @@index([orgId])
+  @@map("data_sources")
+}
+
+model SyncJob {
+  id                    String     @id @default(uuid())
+  dataSourceId          String
+  campaignId            String?
+  botId                 String?
+  name                  String
+  sqlQuery              String
+  cursorField           String?
+  lastCursor            String?
+  cronSchedule          String?    @default("0 * * * *")
+  isActive              Boolean    @default(true)
+  status                SyncStatus @default(IDLE)
+  lastError             String?
+  lastSyncAt            DateTime?
+  nextSyncAt            DateTime?
+  totalRecordsProcessed Int        @default(0)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  campaign              Campaign?  @relation(fields: [campaignId], references: [id])
+  dataSource            DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@index([dataSourceId, isActive])
+  @@map("sync_jobs")
 }
 
 model EntityType {
@@ -399,6 +457,13 @@ model UserLanguagePreference {
   @@map("user_language_preferences")
 }
 
+enum SyncStatus {
+  IDLE
+  RUNNING
+  FAILED
+  SUCCESS
+}
+
 enum FlowStatus {
   draft
   published
@@ -451,6 +516,14 @@ enum CredentialType {
   EXOTEL
   SARVAM
   VAPI
+  DATABASE_CONNECTOR
+}
+
+enum DbProvider {
+  POSTGRES
+  MYSQL
+  SQL_SERVER
+  ORACLE
 }
 
 enum RoutingType {
