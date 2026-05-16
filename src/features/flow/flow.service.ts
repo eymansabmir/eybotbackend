@@ -52,6 +52,7 @@ export class FlowService implements IFlowService {
         maxConsecutiveLogicSteps: 10,
         fallbackMessage: 'Sorry, something went wrong.',
       },
+      creatorId: data.creatorId,
       renudgeConfig: data.renudgeConfig,
     });
     this.normalizeNodeUrls(entity);

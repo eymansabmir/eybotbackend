@@ -15,16 +15,23 @@ model Flow {
   version       Int               @default(1)
   triggerType   String
   triggerConfig Json
-  nodes         Json
-  edges         Json
-  settings      Json
-  publishedAt   DateTime?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  isConfigured  Boolean           @default(false)
-  variables     Json?
-  campaigns     Campaign[]
-  translations  FlowTranslation[]
+
+  nodes    Json
+  edges    Json
+  settings Json
+
+  publishedAt DateTime?
+
+  isConfigured Boolean @default(false)
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  
+  creatorId    String?
+  creator      User?             @relation("FlowCreator", fields: [creatorId], references: [id])
+
+  campaigns    Campaign[]
+  translations FlowTranslation[]
   renudgeConfig RenudgeConfig?
   renudgeLogs   RenudgeLog[]
 
@@ -210,6 +217,7 @@ model User {
   updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
   accounts      Account[]
   sessions      Session[]
+  createdFlows  Flow[]    @relation("FlowCreator")
 
   @@map("user")
 }

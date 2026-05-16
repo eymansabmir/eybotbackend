@@ -76,6 +76,11 @@ export const FlowSchema = z.object({
   renudgeConfig: RenudgeConfigSchema.optional(),
   isConfigured: z.boolean().default(false),
   publishedAt: z.coerce.date().optional(),
+  creatorId: z.string().optional(),
+  creator: z.object({
+    name: z.string(),
+    email: z.string(),
+  }).optional(),
   createdAt: z.coerce.date().optional(),
   updatedAt: z.coerce.date().optional(),
 });

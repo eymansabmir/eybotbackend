@@ -57,6 +57,7 @@ import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.servi
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
 import { HttpRequestIntegrationService } from './plugins/http-request';
 import { ActivityLogService } from './features/activity-log/application/activity-log.service';
+import { RequestContext } from './utils/request-context';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -130,6 +131,9 @@ export function createApp(registry: IPluginRegistry): Application {
     credentials: true,
   }));
   app.use('/api/auth', authHandler);
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   
   // Auth Session Middleware
   app.use(async (req, _res, next) => {
@@ -141,15 +145,17 @@ export function createApp(registry: IPluginRegistry): Application {
       
       if (session) {
         (req as any).auth = session;
+        return RequestContext.run({ 
+          userId: session.user.id, 
+          orgId: (req.query.orgId as string) || '68b08633907a113536238290' 
+        }, () => next());
       }
     } catch (err) {
-      logger.error({ err }, 'Auth middleware: failed to get session');
+      global.logger.error({ err }, 'Auth middleware: failed to get session');
     }
     next();
   });
 
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(pinoHttp({
     logger: global.logger,
     serializers: {

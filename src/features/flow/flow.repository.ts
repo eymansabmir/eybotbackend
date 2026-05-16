@@ -2,6 +2,7 @@ import { PrismaClient, FlowStatus as PrismaFlowStatus } from '@prisma/client';
 import { FlowEntity, FlowProperties } from './flow.entity';
 import { FlowMapper } from './flow.mapper';
 import { NotFoundError } from '../../utils/errors';
+import { RequestContext } from '../../utils/request-context';
 
 export interface IFlowRepository {
     create(flow: FlowEntity): Promise<FlowEntity>;
@@ -16,6 +17,11 @@ export interface IFlowRepository {
     saveTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
 }
 
+const FLOW_INCLUDE = {
+    renudgeConfig: true,
+    creator: { select: { name: true, email: true } }
+};
+
 export class PrismaFlowRepository implements IFlowRepository {
     constructor(private readonly prisma: PrismaClient) { }
 
@@ -24,10 +30,17 @@ export class PrismaFlowRepository implements IFlowRepository {
     }
 
     async create(flow: FlowEntity): Promise<FlowEntity> {
+        const userId = RequestContext.getUserId();
         const data = FlowMapper.toPrisma(flow);
+        
+        // Inject creatorId automatically if not present
+        if (userId && !data.creatorId) {
+            data.creatorId = userId;
+        }
+
         const created = await this.prisma.flow.create({ 
             data,
-            include: { renudgeConfig: true }
+            include: FLOW_INCLUDE
         });
         return FlowMapper.toEntity(created);
     }
@@ -35,7 +48,7 @@ export class PrismaFlowRepository implements IFlowRepository {
     async findById(id: string): Promise<FlowEntity | null> {
         const flow = await this.prisma.flow.findUnique({ 
             where: { id },
-            include: { renudgeConfig: true }
+            include: FLOW_INCLUDE
         });
         if (!flow) return null;
         const enriched = await this.enrichFlowsWithMetrics([flow]);
@@ -57,7 +70,7 @@ export class PrismaFlowRepository implements IFlowRepository {
         }
         const flows = await this.prisma.flow.findMany({
             where,
-            include: { renudgeConfig: true },
+            include: FLOW_INCLUDE,
             orderBy: { updatedAt: 'desc' },
         });
         const enriched = await this.enrichFlowsWithMetrics(flows);
@@ -68,26 +81,30 @@ export class PrismaFlowRepository implements IFlowRepository {
         if (flows.length === 0) return [];
         const flowIds = flows.map(f => f.id);
 
-        const [totalCounts, successCounts] = await Promise.all([
-            this.prisma.chatSession.groupBy({
-                by: ['flowId'],
-                _count: { _all: true },
-                where: { flowId: { in: flowIds } }
-            }),
-            this.prisma.chatSession.groupBy({
-                by: ['flowId'],
-                _count: { _all: true },
-                where: { 
-                    flowId: { in: flowIds },
-                    status: 'completed'
+        const campaignStats = await this.prisma.campaignStats.findMany({
+            where: {
+                campaign: {
+                    flowId: { in: flowIds }
                 }
-            })
-        ]);
+            },
+            select: {
+                total: true,
+                campaign: {
+                    select: { flowId: true }
+                }
+            }
+        });
+
+        const flowStats = campaignStats.reduce((acc, stat) => {
+            const fid = stat.campaign.flowId;
+            acc[fid] = (acc[fid] || 0) + stat.total;
+            return acc;
+        }, {} as Record<string, number>);
 
         return flows.map(flow => ({
             ...flow,
-            executions: totalCounts.find(c => c.flowId === flow.id)?._count._all || 0,
-            successfulExecutions: successCounts.find(c => c.flowId === flow.id)?._count._all || 0,
+            executions: flowStats[flow.id] || 0,
+            successfulExecutions: 0,
         }));
     }
 
@@ -125,7 +142,7 @@ export class PrismaFlowRepository implements IFlowRepository {
     async update(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity> {
         try {
             const data: any = { ...updates };
-            // Remove fields that shouldn't be mapped directly or need special handling
+            
             delete data.id;
             delete data.createdAt;
             delete data.updatedAt;
@@ -159,15 +176,11 @@ export class PrismaFlowRepository implements IFlowRepository {
                         }
                     } : {})
                 },
-                include: { renudgeConfig: true }
+                include: FLOW_INCLUDE
             });
-            
-            if (data.nodes) {
-                console.log(`[PrismaFlowRepository] Updated nodes for flow ${id}`);
-            }
+
             return FlowMapper.toEntity(updated);
         } catch (error: unknown) {
-            // Prisma P2025 is RecordNotFound
             if (this.isPrismaNotFound(error)) {
                 throw new NotFoundError('Flow', id);
             }
@@ -178,30 +191,17 @@ export class PrismaFlowRepository implements IFlowRepository {
     async delete(id: string): Promise<void> {
         try {
             await this.prisma.$transaction(async (tx) => {
-                // Manual cleanup of loose relations as per "current schema structure"
-                
-                // 1. Delete associated ChatSessions
                 await tx.chatSession.deleteMany({ where: { flowId: id } });
-
-                // 2. Resolve and delete associated Campaigns and their nested dependencies
                 const campaigns = await tx.campaign.findMany({ where: { flowId: id } });
                 for (const campaign of campaigns) {
                     const versions = await tx.campaignVersion.findMany({ where: { campaignId: campaign.id } });
-                    
                     for (const version of versions) {
-                        // Delete recipients for each version
                         await tx.campaignRecipient.deleteMany({ where: { campaignVersionId: version.id } });
                     }
-                    
-                    // Delete versions, stats, and then the campaign itself
                     await tx.campaignVersion.deleteMany({ where: { campaignId: campaign.id } });
-                    
-                    // stats is a 1:1 relation potentially, check existence if needed
                     await tx.campaignStats.deleteMany({ where: { campaignId: campaign.id } });
                 }
                 await tx.campaign.deleteMany({ where: { flowId: id } });
-
-                // 3. Delete the Flow itself (Translations will cascade via schema relation)
                 await tx.flow.delete({ where: { id } });
             });
         } catch (error: unknown) {
@@ -228,4 +228,3 @@ export class PrismaFlowRepository implements IFlowRepository {
         });
     }
 }
-
