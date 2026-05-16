@@ -101,6 +101,7 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.VOICE_CAMPAIGN_DLQ, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.RE_NUDGE, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.RE_NUDGE_RETRY, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.BOT_TRIGGER, 'direct', { durable: true });
 
     // ── Queues ───────────────────────────────────────────────────────────
     // Inbound: single durable queue — competing consumers process one at a time
@@ -127,6 +128,10 @@ export class RabbitMQBroker {
     // WhatsApp Status Updates (delivered/read callbacks from Meta)
     await ch.assertQueue('wa.status.q', { durable: true });
     await ch.bindQueue('wa.status.q', EXCHANGES.WA_STATUS, '');
+
+    // Bot Trigger Ingestion (API driven)
+    await ch.assertQueue('bot.trigger.q', { durable: true });
+    await ch.bindQueue('bot.trigger.q', EXCHANGES.BOT_TRIGGER, '');
 
     // Voice-tech Entity Ingestion
     await ch.assertQueue('voice.ingest.q', { durable: true });

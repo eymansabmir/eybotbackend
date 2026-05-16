@@ -1,7 +1,8 @@
 import { ICampaignRepository } from './campaign.repository';
+import { ICampaignRecipientRepository } from './campaign-recipient.repository';
 import { IWorkerPlugin, EXCHANGES } from '../../plugins/worker/worker.interface';
 import { CampaignEntity } from './campaign.entity';
-import { ImportJob, DispatchJob } from '../../plugins/worker/jobs';
+import { ImportJob, DispatchJob, TriggerJob, RecipientJob } from '../../plugins/worker/jobs';
 import { CampaignStatus } from '@prisma/client';
 import { ActivityLogService } from '../activity-log/application/activity-log.service';
 import { ActivityAction, ActivityEntityType } from '../activity-log/domain/activity-log.types';
@@ -9,15 +10,71 @@ import { ActivityAction, ActivityEntityType } from '../activity-log/domain/activ
 export class CampaignService {
   constructor(
     private readonly campaignRepo: ICampaignRepository,
+    private readonly recipientRepo: ICampaignRecipientRepository,
     private readonly workerPlugin: IWorkerPlugin,
     private readonly activityLogService?: ActivityLogService,
   ) {}
+
+  async processApiTrigger(job: TriggerJob): Promise<void> {
+    logger.info({ botId: job.botId, count: job.data.length, campaignName: job.campaignName, mode: job.executionMode }, 'CampaignService: processing API trigger');
+
+    // 1. Resolve or Create the Campaign with Smart Defaults
+    const targetStatus = job.executionMode === 'SCHEDULED' ? CampaignStatus.scheduled : CampaignStatus.running;
+    const executeAt = job.executeAt ? new Date(job.executeAt) : undefined;
+
+    const { campaignId, versionId } = await this.campaignRepo.findOrCreateSystemCampaign(
+      job.orgId, 
+      job.botId, 
+      job.campaignName, 
+      targetStatus,
+      executeAt,
+      job.isSystem
+    );
+
+    // 2. Prepare Batch Insert (Cleaning phone numbers)
+    const recipientsToCreate = job.data.map(item => ({
+      waId: item.to.replace(/\D/g, ''),
+      variables: item.variables,
+    }));
+
+    // 3. Persist to DB (Bulk)
+    const createdRecipients = await this.recipientRepo.batchCreate(versionId, recipientsToCreate);
+    
+    // 4. Update Stats (Increment pending/total)
+    await this.campaignRepo.updateStats(campaignId, { 
+      total: createdRecipients.length, 
+      pending: createdRecipients.length 
+    });
+
+    // 5. Check if we should dispatch immediately
+    // If the campaign is RUNNING (either already was, or we just set it so via executionMode: NOW)
+    const campaign = await this.campaignRepo.findById(campaignId);
+    if (campaign?.status === CampaignStatus.running) {
+      // Dispatch only the recipients from THIS specific batch (versionId)
+      for (const recipient of createdRecipients) {
+        const execJob: RecipientJob = {
+          campaignId,
+          campaignVersionId: versionId,
+          recipientId: recipient.id,
+          waId: recipient.waId,
+          variables: recipient.variables as Record<string, any>,
+          orgId: job.orgId,
+        };
+        await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_DISPATCH, execJob);
+      }
+      logger.info({ campaignId, batchVersion: versionId, count: createdRecipients.length }, 'CampaignService: API batch dispatched');
+    } else {
+      logger.info({ campaignId, batchVersion: versionId, count: createdRecipients.length, status: campaign?.status }, 'CampaignService: API batch added to PENDING campaign');
+    }
+  }
 
   async createCampaign(data: {
     orgId: string;
     name: string;
     flowId: string;
-    filePath: string;
+    filePath?: string;
+    dataSourceId?: string;
+    tableName?: string;
     scheduleTime?: Date;
   }) {
     const isImmediate = !data.scheduleTime;
@@ -30,6 +87,8 @@ export class CampaignService {
       flowId: data.flowId,
       scheduleTime: data.scheduleTime,
       status: initialStatus,
+      dataSourceId: data.dataSourceId,
+      tableName: data.tableName
     });
 
     logger.info({ orgId: data.orgId, name: data.name, flowId: data.flowId, isImmediate }, 'Creating new campaign');
@@ -42,24 +101,36 @@ export class CampaignService {
     // 2. Create Initial Version and set it as active immediately
     const version = await this.campaignRepo.createVersion({
       campaignId: campaign.id,
-      filePath: data.filePath,
+      filePath: data.filePath || null,
       versionNumber: 1,
     });
     await this.campaignRepo.update(campaign.id, { activeVersionId: version.id });
 
     // 3. Trigger Import Job
-    // autoStart=true tells the import consumer to enqueue CAMPAIGN_START once recipients are loaded.
-    // For scheduled campaigns the poller handles dispatch instead.
-    const importJob: ImportJob = {
-      campaignId: campaign.id,
-      campaignVersionId: version.id,
-      filePath: data.filePath,
-      orgId: data.orgId,
-      autoStart: isImmediate,
-    };
+    if (data.filePath) {
+      const importJob: ImportJob = {
+        campaignId: campaign.id,
+        campaignVersionId: version.id,
+        filePath: data.filePath,
+        orgId: data.orgId,
+        autoStart: isImmediate,
+      };
+      await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
+    } else if (data.dataSourceId) {
+       // [NEW] Trigger Database Ingestion Job
+       const dbIngestionJob = {
+         campaignId: campaign.id,
+         campaignVersionId: version.id,
+         dataSourceId: data.dataSourceId,
+         tableName: data.tableName,
+         orgId: data.orgId,
+         autoStart: isImmediate,
+       };
+       // We reuse the IMPORT exchange but the consumer will detect the dataSourceId
+       await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, dbIngestionJob);
+    }
 
-    await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
-    logger.info({ campaignId: campaign.id, versionId: version.id, autoStart: isImmediate }, 'Campaign created and import job published');
+    logger.info({ campaignId: campaign.id, versionId: version.id, autoStart: isImmediate }, 'Campaign created and ingestion job published');
 
     if (this.activityLogService && campaign.id) {
       await this.activityLogService.record({

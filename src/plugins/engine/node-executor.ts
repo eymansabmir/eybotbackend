@@ -218,7 +218,7 @@ export class NodeExecutor {
     return LOGIC_TYPES.has(type);
   }
 
-  execute(input: NodeExecutionInput, traverser: GraphTraverser): NodeExecutionResult {
+  async execute(input: NodeExecutionInput, traverser: GraphTraverser): Promise<NodeExecutionResult> {
     const { context, currentNode, userInput } = input;
     const enteredAt = new Date();
 
@@ -262,12 +262,15 @@ export class NodeExecutor {
         return this.defaultResult(currentNode, 'default', enteredAt, traverser, [{
           type: currentNode.type,
           payload: {
-            latitude: currentNode.data['latitude'],
-            longitude: currentNode.data['longitude'],
-            name: currentNode.data['name'],
-            address: currentNode.data['address'],
-          },
+            lat: parseFloat(this.text(currentNode.data['lat'] as string, context)),
+            lng: parseFloat(this.text(currentNode.data['lng'] as string, context)),
+            name: currentNode.data['name'] ? this.text(currentNode.data['name'] as string, context) : undefined,
+            address: currentNode.data['address'] ? this.text(currentNode.data['address'] as string, context) : undefined,
+          }
         }]);
+
+      case NodeType.WAIT:
+        return this.handleWaitNode(currentNode, enteredAt, traverser, userInput);
 
       case NodeType.SEND_BUTTONS:
         return this.handleButtons(currentNode, context, enteredAt, traverser, userInput);
@@ -1412,12 +1415,12 @@ export class NodeExecutor {
     return { ...result, historyStep: { ...result.historyStep, userInput }, languageChanged: userInput };
   }
 
-  private handleCondition(
+  private async handleCondition(
     node: Node, ctx: VariableContext, enteredAt: Date, traverser: GraphTraverser,
-  ): NodeExecutionResult {
+  ): Promise<NodeExecutionResult> {
     const expression = node.data['expression'];
     if (!expression) throw new FlowExecutionError('Condition node missing expression', node.id);
-    const passed = this.evaluator.evaluate(expression as any, ctx);
+    const passed = await this.evaluator.evaluate(expression as any, ctx);
     return this.defaultResult(node, passed ? 'yes' : 'no', enteredAt, traverser);
   }
 

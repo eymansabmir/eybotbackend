@@ -83,3 +83,16 @@ export interface VoiceCampaignJob {
   retryCount?: number;
   maxRetries?: number;
 }
+
+export interface TriggerJob {
+  orgId: string;
+  botId: string;
+  campaignName: string;
+  executionMode: 'NOW' | 'SCHEDULED';
+  executeAt?: string;
+  isSystem?: boolean;
+  data: Array<{
+    to: string;
+    variables: Record<string, unknown>;
+  }>;
+}

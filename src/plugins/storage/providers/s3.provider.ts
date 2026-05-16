@@ -96,4 +96,12 @@ export class S3Provider implements IStorageProvider {
     }
     return Buffer.concat(chunks);
   }
+
+  async getReadStream(filePath: string): Promise<NodeJS.ReadableStream> {
+    const key = this.normalizePath(filePath);
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    return response.Body as NodeJS.ReadableStream;
+  }
 }

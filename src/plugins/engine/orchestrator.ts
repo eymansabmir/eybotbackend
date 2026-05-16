@@ -246,7 +246,7 @@ export class FlowOrchestrator {
 
           // Execute skip
           const skipInput = { context: { session, contact, flow }, currentNode, userInput: preferenceInDB };
-          const skipResult = this.executor.execute(skipInput, traverser);
+          const skipResult = await this.executor.execute(skipInput, traverser);
 
           stepCount++;
           session.addToHistory(skipResult.historyStep);
@@ -266,7 +266,7 @@ export class FlowOrchestrator {
 
       console.log(`[Orchestrator] Step ${stepCount}: Executing ${currentNode.type} (${currentNode.id}). Input: '${(execInput as any).userInput ?? 'undefined'}'`);
 
-      const stepResult = this.executor.execute(execInput, traverser);
+      const stepResult = await this.executor.execute(execInput, traverser);
 
       console.log(`[Orchestrator] Step ${stepCount}: Execution finished. Branch taken: '${stepResult.historyStep.branchTaken}', Next Node: ${stepResult.nextNodeId}`);
 
@@ -905,70 +905,51 @@ export class FlowOrchestrator {
     global.setSync('global', global.derefInto());
 
     const variableMutations: VariableMutation[] = [];
-    const variablesObj = { ...session.variables };
-    global.setSync('variables', new ivm.Reference(variablesObj));
+    
+    // Create a proxy to track changes to the variables object
+    const variablesProxy = new Proxy({ ...session.variables }, {
+      set: (target: any, prop: string, value: any) => {
+        target[prop] = value;
+        variableMutations.push({
+          scope: 'session',
+          key: prop,
+          value,
+        });
+        return true;
+      }
+    });
 
-    context.evalClosureSync(
-      `globalThis.variables = new Proxy($0.copySync(), {
-        set: function(target, prop, value) {
-          target[prop] = value;
-          $1.applySync(undefined, [prop, value]);
-          return true;
-        }
-      });`,
-      [
-        new ivm.Reference(variablesObj),
-        new ivm.Reference((key: string, value: any) => {
-          variableMutations.push({
-            scope: 'session',
-            key,
-            value,
-          });
-        })
-      ]
-    );
-
-    context.evalClosureSync(
-      `globalThis.fetch = async (...args) => {
-        const result = await $0.apply(undefined, args, { arguments: { copy: true }, promise: true, result: { copy: true, promise: true } });
+    // Setup the sandbox environment
+    const sandbox = {
+      variables: variablesProxy,
+      fetch: async (url: string, options?: any) => {
+        const response = await fetch(url, options);
+        const text = await response.text();
         return {
-          ok: result.ok,
-          status: result.status,
-          statusText: result.statusText,
-          text: async () => result.text,
-          json: async () => JSON.parse(result.text),
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          text: async () => text,
+          json: async () => JSON.parse(text),
         };
-      }`,
-      [
-        new ivm.Reference(async (...args: any[]) => {
-          const response = await fetch(args[0], args[1]);
-          const text = await response.text();
-          return {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            text,
-          };
-        }),
-      ]
-    );
+      },
+      console: console,
+      setTimeout,
+      clearTimeout,
+    };
 
     try {
-      await context.evalClosure(
-        `return (async function() {
-          const AsyncFunction = async function () {}.constructor;
-          return new AsyncFunction($0)();
-        }())`,
-        [request.code],
-        { result: { copy: true, promise: true }, timeout: 5000 }
-      );
+      // Wrap the user code in an async IIFE to support top-level await and async execution
+      const scriptCode = `(async () => { ${request.code} })()`;
+      const script = new vm.Script(scriptCode);
+      const context = vm.createContext(sandbox);
+      
+      await script.runInContext(context, { timeout: 5000 });
+      
       return { mutations: variableMutations };
     } catch (err) {
       console.error(`[Orchestrator] Error executing script in node ${request.nodeId}:`, err);
       return { mutations: variableMutations };
-    } finally {
-      context.release();
-      isolate.dispose();
     }
     */
     logger.warn({ nodeId: request.nodeId }, 'Script execution is temporarily disabled (isolated-vm bypassed)');
