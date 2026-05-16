@@ -7,8 +7,6 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-// Todo
-// import ivm from 'isolated-vm';
 import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,

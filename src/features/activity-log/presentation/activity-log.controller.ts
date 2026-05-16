@@ -27,7 +27,7 @@ export class ActivityLogController {
       return res.json(result);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors[0].message });
+        return res.status(400).json({ error: error.errors[0]?.message || 'Validation error' });
       }
       global.logger.error({ error, query: req.query }, 'Failed to fetch activity logs');
       return res.status(500).json({ error: 'Internal server error' });
