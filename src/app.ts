@@ -39,6 +39,8 @@ import { PrismaVoiceRoutingRepository } from './features/voice-tech/data/routing
 import type { CredentialService } from './features/credentials';
 import type { ICredentialRepository } from './features/credentials/credentials.repository.interface';
 import type { ICampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
+import { PrismaApiKeyRepository } from './features/auth/api-key.repository';
+import { PrismaSyncJobRepository } from './features/campaign/sync-job.repository';
 
 import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
@@ -102,6 +104,8 @@ import { createVoiceProviderRouter } from './features/voice-tech/provider.route'
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
 import { createTriggerRouter } from './features/api-trigger/trigger.route';
 import { createConnectorRouter } from './features/api-trigger/connector.route';
+import { createApiKeyManagementRouter } from './features/auth/api-key.route';
+import { ApiKeyController } from './features/auth/api-key.controller';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -205,8 +209,11 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
   const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
-  const syncService = new SyncService(prisma, credentialService, campaignService);
-  const apiAuthService = new ApiAuthService(prisma);
+    const apiKeyRepo = new PrismaApiKeyRepository(prisma);
+    const syncJobRepo = new PrismaSyncJobRepository(prisma);
+
+    const apiAuthService = new ApiAuthService(apiKeyRepo);
+    const syncService = new SyncService(syncJobRepo, credentialService, campaignService);
 
   // Register services in registry for workers to access
   registry.registerValue(CAMPAIGN_SERVICE, campaignService);
@@ -253,6 +260,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const dataSourceController = new DataSourceController(prisma, credentialService);
   const syncJobController = new SyncJobController(prisma, syncService);
   const authController = new AuthController(apiAuthService);
+  const apiKeyController = new ApiKeyController(apiKeyRepo);
 
   // ── Middleware ─────────────────────────────────────────────────────────────
   const apiKeyMiddleware = createApiKeyMiddleware(apiAuthService);
@@ -263,6 +271,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/node-types', createNodeTypesRouter(nodeTypesController));
   app.use('/api/storage', createStorageRouter(storageController));
   app.use('/api/campaigns', createCampaignRouter(campaignController));
+  app.use('/api/settings/keys', createApiKeyManagementRouter(apiKeyController));
   app.use('/api/whatsapp', createWhatsAppRouter(whatsappController));
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));

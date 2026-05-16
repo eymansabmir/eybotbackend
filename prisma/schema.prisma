@@ -138,11 +138,12 @@ model Campaign {
   scheduleTime    DateTime?
   status          CampaignStatus    @default(draft)
   activeVersionId String?
-  dataSourceId    String?           // [NEW] Linked DB Connection
-  tableName       String?           // [NEW] Selected View/Table
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   fieldMapping    Json?
+  dataSourceId    String?
+  tableName       String?
+  isSystem        Boolean           @default(false)
   flow            Flow              @relation(fields: [flowId], references: [id])
   stats           CampaignStats?
   versions        CampaignVersion[]
@@ -154,7 +155,7 @@ model Campaign {
 model CampaignVersion {
   id            String                @id @default(uuid())
   campaignId    String
-  filePath      String?               // [MODIFIED] Optional for DB sync
+  filePath      String?
   versionNumber Int
   status        CampaignVersionStatus @default(draft)
   createdAt     DateTime              @default(now())
@@ -260,8 +261,8 @@ model Credential {
   revokedAt      DateTime?
   createdAt      DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
-  voiceProviders VoiceProvider[]
   dataSources    DataSource[]
+  voiceProviders VoiceProvider[]
 
   @@unique([orgId, type, name])
   @@index([orgId, type, isActive])
@@ -271,7 +272,7 @@ model Credential {
 model ApiKey {
   id            String   @id @default(uuid())
   orgId         String
-  name          String?  // e.g., "Daily Sync Script"
+  name          String?
   appId         String   @unique
   appSecretHash String
   isActive      Boolean  @default(true)
@@ -283,51 +284,44 @@ model ApiKey {
 }
 
 model DataSource {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   orgId        String
   name         String
   type         DbProvider
   credentialId String
-  config       Json     // { host, port, database, schema }
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  syncJobs     SyncJob[]
+  config       Json
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   credential   Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  syncJobs     SyncJob[]
 
   @@index([orgId])
   @@map("data_sources")
 }
 
 model SyncJob {
-  id           String   @id @default(uuid())
-  dataSourceId String
-  campaignId   String?
-  botId        String?
-  name         String
-  sqlQuery     String
-  cursorField  String?  // e.g., 'updated_at' or 'id'
-  lastCursor   String?  // High Watermark value
-  cronSchedule String?  @default("0 * * * *") // Hourly default
-  isActive     Boolean  @default(true)
-  status       SyncStatus @default(IDLE)
-  lastError    String?
-  lastSyncAt   DateTime?
-  nextSyncAt   DateTime?
-  totalRecordsProcessed Int @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
-  campaign     Campaign?  @relation(fields: [campaignId], references: [id])
+  id                    String     @id @default(uuid())
+  dataSourceId          String
+  campaignId            String?
+  botId                 String?
+  name                  String
+  sqlQuery              String
+  cursorField           String?
+  lastCursor            String?
+  cronSchedule          String?    @default("0 * * * *")
+  isActive              Boolean    @default(true)
+  status                SyncStatus @default(IDLE)
+  lastError             String?
+  lastSyncAt            DateTime?
+  nextSyncAt            DateTime?
+  totalRecordsProcessed Int        @default(0)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  campaign              Campaign?  @relation(fields: [campaignId], references: [id])
+  dataSource            DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
 
   @@index([dataSourceId, isActive])
   @@map("sync_jobs")
-}
-
-enum SyncStatus {
-  IDLE
-  RUNNING
-  FAILED
-  SUCCESS
 }
 
 model EntityType {
@@ -453,6 +447,13 @@ model UserLanguagePreference {
   @@unique([botId, waId])
   @@index([botId, waId])
   @@map("user_language_preferences")
+}
+
+enum SyncStatus {
+  IDLE
+  RUNNING
+  FAILED
+  SUCCESS
 }
 
 enum FlowStatus {

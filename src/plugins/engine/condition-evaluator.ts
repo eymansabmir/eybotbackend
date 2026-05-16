@@ -1,16 +1,27 @@
 import type { ConditionExpression, LeafRule, Comparator } from '../../schemas/condition.schema';
 import type { VariableContext } from './variable-resolver';
 import { VariableResolver } from './variable-resolver';
+import { SafeRegex } from '../../utils/safe-regex';
 
 export class ConditionEvaluator {
   constructor(private readonly resolver: VariableResolver) {}
 
-  evaluate(expression: ConditionExpression, context: VariableContext): boolean {
+  async evaluate(expression: ConditionExpression, context: VariableContext): Promise<boolean> {
     if (this.isLeaf(expression)) return this.evaluateLeaf(expression, context);
 
     const { operator, rules } = expression;
-    if (operator === 'AND') return rules.every(r => this.evaluate(r, context));
-    if (operator === 'OR') return rules.some(r => this.evaluate(r, context));
+    if (operator === 'AND') {
+      for (const r of rules) {
+        if (!(await this.evaluate(r, context))) return false;
+      }
+      return true;
+    }
+    if (operator === 'OR') {
+      for (const r of rules) {
+        if (await this.evaluate(r, context)) return true;
+      }
+      return false;
+    }
     return false;
   }
 
@@ -18,12 +29,12 @@ export class ConditionEvaluator {
     return 'variable' in expr && 'comparator' in expr;
   }
 
-  private evaluateLeaf(rule: LeafRule, context: VariableContext): boolean {
+  private async evaluateLeaf(rule: LeafRule, context: VariableContext): Promise<boolean> {
     const actual = this.resolver.resolveExpression(rule.variable, context);
     return this.compare(actual, rule.comparator, rule.value);
   }
 
-  private compare(actual: unknown, comparator: Comparator, expected: unknown): boolean {
+  private async compare(actual: unknown, comparator: Comparator, expected: unknown): Promise<boolean> {
     switch (comparator) {
       case 'eq': return actual == expected;
       case 'neq': return actual != expected;
@@ -36,10 +47,16 @@ export class ConditionEvaluator {
       case 'exists': return actual !== undefined && actual !== null && actual !== '';
       case 'not_exists': return actual === undefined || actual === null || actual === '';
       case 'regex': {
-        try { return new RegExp(String(expected)).test(String(actual)); }
-        catch { return false; }
+        try { 
+          return await SafeRegex.test(String(expected), String(actual)); 
+        } catch (err: any) { 
+          // Log the error but return false to prevent flow crash
+          console.warn(`[ConditionEvaluator] Regex check failed: ${err.message}`);
+          return false; 
+        }
       }
       default: return false;
     }
   }
 }
+

@@ -24,7 +24,8 @@ export class CampaignService {
       job.botId, 
       job.campaignName, 
       targetStatus,
-      executeAt
+      executeAt,
+      job.isSystem
     );
 
     // 2. Prepare Batch Insert (Cleaning phone numbers)

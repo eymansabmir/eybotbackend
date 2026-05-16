@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import { PrismaClient } from '@prisma/client';
+import { IApiKeyRepository } from './api-key.repository';
 
 export interface TokenResponse {
   accessToken: string;
@@ -9,19 +9,30 @@ export interface TokenResponse {
 }
 
 export class ApiAuthService {
-  private readonly JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+  private readonly JWT_SECRET: string;
   private readonly TOKEN_EXPIRY = '1h'; // 1 hour
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly repository: IApiKeyRepository) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      // In production, we MUST fail if the secret is missing.
+      // This is a critical security safeguard.
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('FATAL: JWT_SECRET environment variable is not set');
+      }
+      // In dev, we can log a warning but still force a crash or use a placeholder if explicit.
+      // Better to just throw always for security consistency.
+      throw new Error('JWT_SECRET environment variable is missing');
+    }
+    this.JWT_SECRET = secret;
+  }
 
   /**
    * Generates a new access token for valid appId/appSecret pair.
    */
   async generateToken(appId: string, appSecret: string): Promise<TokenResponse> {
-    // 1. Find the API Key record
-    const apiKey = await this.prisma.apiKey.findUnique({
-      where: { appId, isActive: true }
-    });
+    // 1. Find the API Key record via repository
+    const apiKey = await this.repository.findByAppId(appId);
 
     if (!apiKey) {
       throw new Error('Invalid App ID or inactive account');
@@ -62,9 +73,10 @@ export class ApiAuthService {
   }
 
   /**
-   * Helper to hash an app secret (for when you create new keys)
+   * Helper to hash an app secret
    */
   async hashSecret(secret: string): Promise<string> {
     return bcrypt.hash(secret, 10);
   }
 }
+

@@ -37,7 +37,7 @@ export interface ICampaignRepository {
     total?: number;
   }): Promise<void>;
   createStats(campaignId: string, total: number): Promise<void>;
-  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName: string, status?: CampaignStatus, scheduleTime?: Date): Promise<{ campaignId: string, versionId: string }>;
+  findOrCreateSystemCampaign(orgId: string, flowId: string, campaignName: string, status?: CampaignStatus, scheduleTime?: Date, isSystem?: boolean): Promise<{ campaignId: string, versionId: string }>;
 }
 
 export class PrismaCampaignRepository implements ICampaignRepository {
@@ -51,7 +51,7 @@ export class PrismaCampaignRepository implements ICampaignRepository {
 
   async findAll(orgId: string): Promise<CampaignEntity[]> {
     const campaigns = await this.prisma.campaign.findMany({
-      where: { orgId },
+      where: { orgId, isSystem: false },
       orderBy: { createdAt: 'desc' },
     });
     return campaigns.map(CampaignMapper.toEntity);
@@ -229,13 +229,14 @@ export class PrismaCampaignRepository implements ICampaignRepository {
     flowId: string, 
     campaignName: string, 
     status: CampaignStatus = CampaignStatus.running,
-    scheduleTime?: Date
+    scheduleTime?: Date,
+    isSystem: boolean = false
   ): Promise<{ campaignId: string, versionId: string }> {
     const name = campaignName;
     
     // 1. Find or Create the Campaign (Triple Key: Org + Name + Flow)
     let campaign = await this.prisma.campaign.findFirst({
-      where: { orgId, flowId, name },
+      where: { orgId, flowId, name, isSystem },
     });
     
     if (!campaign) {
@@ -245,7 +246,8 @@ export class PrismaCampaignRepository implements ICampaignRepository {
           flowId,
           name,
           status,
-          scheduleTime
+          scheduleTime,
+          isSystem
         }
       });
       await this.createStats(campaign.id, 0);
@@ -256,7 +258,8 @@ export class PrismaCampaignRepository implements ICampaignRepository {
           where: { id: campaign.id },
           data: { 
             status, 
-            scheduleTime: scheduleTime || campaign.scheduleTime 
+            scheduleTime: scheduleTime || campaign.scheduleTime,
+            isSystem
           }
         });
       }

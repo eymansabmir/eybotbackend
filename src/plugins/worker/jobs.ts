@@ -90,6 +90,7 @@ export interface TriggerJob {
   campaignName: string;
   executionMode: 'NOW' | 'SCHEDULED';
   executeAt?: string;
+  isSystem?: boolean;
   data: Array<{
     to: string;
     variables: Record<string, unknown>;

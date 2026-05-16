@@ -1,26 +1,22 @@
-import { PrismaClient } from '@prisma/client';
 import { ICredentialService } from '../credentials/credentials.service';
 import { DbConnectorFactory } from '../../plugins/db-connectors/connector.factory';
 import { DbConnectionConfig } from '../../plugins/db-connectors/db-connector.interface';
 import { CampaignService } from './campaign.service';
- 
+import { ISyncJobRepository } from './sync-job.repository';
+import { logger } from '../../utils/logger';
 
 export class SyncService {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly repository: ISyncJobRepository,
     private readonly credentialService: ICredentialService,
     private readonly campaignService: CampaignService
   ) {}
 
   /**
    * Wake up and run a specific sync job.
-   * This is typically called by a Cron worker or a manual "Sync Now" button.
    */
   async runSyncJob(jobId: string): Promise<void> {
-    const job = await this.prisma.syncJob.findUnique({
-      where: { id: jobId },
-      include: { dataSource: true }
-    });
+    const job = await this.repository.findById(jobId);
 
     if (!job || !job.isActive) {
       logger.warn({ jobId }, 'SyncService: job not found or inactive');
@@ -31,10 +27,7 @@ export class SyncService {
     logger.info({ jobId, dataSource: dataSource.name }, 'SyncService: starting execution');
 
     // 1. Mark as Running
-    await this.prisma.syncJob.update({
-      where: { id: jobId },
-      data: { status: 'RUNNING', lastError: null }
-    });
+    await this.repository.updateStatus(jobId, { status: 'RUNNING' });
 
     const connector = DbConnectorFactory.getConnector(dataSource.type);
     
@@ -62,6 +55,12 @@ export class SyncService {
       const params: any[] = [];
       
       if (job.cursorField && job.lastCursor) {
+        // SECURITY: Validate cursorField to prevent structural SQL injection
+        // Only allow alphanumeric and underscores
+        if (!/^[a-zA-Z0-9_]+$/.test(job.cursorField)) {
+          throw new Error(`Invalid cursor field: ${job.cursorField}`);
+        }
+
         const cursorClause = `${job.cursorField} > $1`;
         if (sql.toLowerCase().includes('where')) {
            sql = `${sql} AND ${cursorClause}`;
@@ -77,10 +76,7 @@ export class SyncService {
       // 4. Fetch Records
       const rows = await connector.query(sql, params);
       if (rows.length === 0) {
-        await this.prisma.syncJob.update({
-          where: { id: jobId },
-          data: { status: 'SUCCESS', lastSyncAt: new Date() }
-        });
+        await this.repository.updateStatus(jobId, { status: 'SUCCESS', lastSyncAt: new Date() });
         logger.info({ jobId }, 'SyncService: no new records found');
         return;
       }
@@ -91,16 +87,11 @@ export class SyncService {
         const variables: Record<string, any> = {};
         let to: string | undefined;
 
-        // Greedy Mapping: Map every column as a variable
         Object.keys(row).forEach(key => {
           const normalizedKey = key.toLowerCase();
-          
-          // Identify phone number column (Recipient ID)
           if (['wa_id', 'phone', 'mobile', 'recipient'].includes(normalizedKey)) {
             to = String(row[key]);
           }
-          
-          // All columns are passed as variables to the bot
           variables[normalizedKey] = row[key];
         });
 
@@ -123,14 +114,10 @@ export class SyncService {
         nextCursor = String(lastRow[job.cursorField]);
       }
 
-      await this.prisma.syncJob.update({
-        where: { id: job.id },
-        data: { 
-          status: 'SUCCESS',
-          lastCursor: nextCursor,
-          lastSyncAt: new Date(),
-          totalRecordsProcessed: { increment: rows.length }
-        }
+      await this.repository.updateCursorAndStats(jobId, {
+        lastCursor: nextCursor,
+        lastSyncAt: new Date(),
+        incrementProcessed: rows.length
       });
 
       logger.info({ jobId, processed: rows.length }, 'SyncService: sync completed successfully');
@@ -139,13 +126,9 @@ export class SyncService {
       const errorMessage = err.message || 'Unknown database error';
       logger.error({ jobId, err }, 'SyncService: execution failed');
       
-      // Record failure for UI visibility
-      await this.prisma.syncJob.update({
-        where: { id: jobId },
-        data: { 
-          status: 'FAILED', 
-          lastError: errorMessage 
-        }
+      await this.repository.updateStatus(jobId, { 
+        status: 'FAILED', 
+        lastError: errorMessage 
       });
 
       throw err;
@@ -156,36 +139,19 @@ export class SyncService {
 
   /**
    * Background task to find and run due sync jobs.
-   * This would be triggered by a top-level cron/scheduler.
    */
   async runDueSyncJobs(): Promise<void> {
-    // Find jobs where nextSyncAt <= now or lastSyncAt is null
     const now = new Date();
-    const dueJobs = await this.prisma.syncJob.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { nextSyncAt: { lte: now } },
-          { lastSyncAt: null }
-        ]
-      },
-      select: { id: true }
-    });
+    const dueJobs = await this.repository.findDueJobs(now);
 
     for (const job of dueJobs) {
-      // In a real high-scale env, we'd push these to RabbitMQ
-      // For now, we process them sequentially or in small parallel batches
       await this.runSyncJob(job.id).catch(err => {
         logger.error({ jobId: job.id, err }, 'SyncService: due job execution failed');
       });
       
-      // Calculate next run time based on cron (simplified here to hourly)
-      await this.prisma.syncJob.update({
-        where: { id: job.id },
-        data: {
-          nextSyncAt: new Date(Date.now() + 60 * 60 * 1000) // Default +1 hour
-        }
-      });
+      // Calculate next run time (simplified to hourly)
+      await this.repository.updateNextSync(job.id, new Date(Date.now() + 60 * 60 * 1000));
     }
   }
 }
+

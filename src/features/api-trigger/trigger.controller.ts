@@ -48,6 +48,7 @@ export class TriggerController {
         botId: validation.data.botId,
         campaignName: 'Direct API Initiation', // Grouped internally
         executionMode: 'NOW',
+        isSystem: true,
         data: validation.data.data
       };
 

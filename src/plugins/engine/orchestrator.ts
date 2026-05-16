@@ -247,7 +247,7 @@ export class FlowOrchestrator {
 
           // Execute skip
           const skipInput = { context: { session, contact, flow }, currentNode, userInput: preferenceInDB };
-          const skipResult = this.executor.execute(skipInput, traverser);
+          const skipResult = await this.executor.execute(skipInput, traverser);
 
           stepCount++;
           session.addToHistory(skipResult.historyStep);
@@ -267,7 +267,7 @@ export class FlowOrchestrator {
 
       console.log(`[Orchestrator] Step ${stepCount}: Executing ${currentNode.type} (${currentNode.id}). Input: '${(execInput as any).userInput ?? 'undefined'}'`);
 
-      const stepResult = this.executor.execute(execInput, traverser);
+      const stepResult = await this.executor.execute(execInput, traverser);
 
       console.log(`[Orchestrator] Step ${stepCount}: Execution finished. Branch taken: '${stepResult.historyStep.branchTaken}', Next Node: ${stepResult.nextNodeId}`);
 
