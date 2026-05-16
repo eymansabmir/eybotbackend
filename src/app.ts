@@ -50,6 +50,7 @@ import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
 import { HttpRequestIntegrationService } from './plugins/http-request';
+import { RequestContext } from './utils/request-context';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -110,6 +111,28 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/auth', authHandler);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  
+  // Session Middleware
+  app.use(async (req, _res, next) => {
+    try {
+      const auth = authPlugin.auth as any;
+      const session = await auth.api.getSession({
+        headers: req.headers,
+      });
+      
+      if (session) {
+        (req as any).auth = session;
+        return RequestContext.run({ 
+          userId: session.user.id, 
+          orgId: (req.query.orgId as string) || '68b08633907a113536238290' 
+        }, () => next());
+      }
+      next();
+    } catch (err) {
+      next();
+    }
+  });
+
   app.use(pinoHttp({
     logger: global.logger,
     serializers: {

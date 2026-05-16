@@ -26,6 +26,10 @@ model Flow {
 
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  
+  creatorId    String?
+  creator      User?             @relation("FlowCreator", fields: [creatorId], references: [id])
+
   campaigns    Campaign[]
   translations FlowTranslation[]
   renudgeConfig RenudgeConfig?
@@ -211,6 +215,7 @@ model User {
   updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
   accounts      Account[]
   sessions      Session[]
+  createdFlows  Flow[]    @relation("FlowCreator")
 
   @@map("user")
 }

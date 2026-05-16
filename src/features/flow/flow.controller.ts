@@ -18,9 +18,7 @@ export class FlowController {
   createFlow = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const data = FlowSchema.parse(req.body);
-      logger.info({ orgId: data.orgId, name: data.name }, 'Creating flow');
       const flow = await this.flowService.createFlow(data);
-      logger.info({ flowId: flow.id }, 'Flow created');
       res.status(201).json(flow);
     } catch (err) { next(err); }
   };

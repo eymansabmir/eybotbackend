@@ -20,6 +20,11 @@ export class FlowMapper {
             updatedAt: prismaFlow.updatedAt,
             executions: prismaFlow.executions ?? 0,
             successfulExecutions: prismaFlow.successfulExecutions ?? 0,
+            creatorId: prismaFlow.creatorId,
+            creator: prismaFlow.creator ? {
+                name: prismaFlow.creator.name,
+                email: prismaFlow.creator.email,
+            } : undefined,
             renudgeConfig: prismaFlow.renudgeConfig ? {
                 id: prismaFlow.renudgeConfig.id,
                 flowId: prismaFlow.renudgeConfig.flowId,
@@ -41,6 +46,7 @@ export class FlowMapper {
         return {
             ...(id ? { id } : {}),
             orgId: data.orgId,
+            creatorId: data.creatorId ?? null,
             name: data.name,
             description: data.description ?? null,
             status: data.status as PrismaFlowStatus,
