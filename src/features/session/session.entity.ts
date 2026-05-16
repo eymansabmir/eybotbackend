@@ -32,8 +32,8 @@ export interface SessionProperties {
     variables?: Record<string, any> | undefined;
     history?: SessionHistoryStep[] | undefined;
     waitingFor?: WaitingFor | undefined;
-    returnMark?: { nodeId: string } | undefined;
     flowStack?: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }> | undefined;
+    returnMark?: { nodeId: string } | undefined;
     isCurrent?: boolean | undefined;
     renudgeAttempts?: number | undefined;
     lastRenudgeAt?: Date | undefined;
@@ -54,8 +54,8 @@ export class SessionEntity {
     public variables: Record<string, any>;
     public history: SessionHistoryStep[];
     public waitingFor?: WaitingFor | undefined;
-    public returnMark?: { nodeId: string } | undefined;
     public flowStack: Array<{ flowId: string; flowVersion: number; returnNodeId: string; outputMappings?: Array<{ parentKey: string; childKey: string }> }>;
+    public returnMark?: { nodeId: string } | undefined;
     public isCurrent: boolean;
     public renudgeAttempts: number;
     public lastRenudgeAt?: Date | undefined;

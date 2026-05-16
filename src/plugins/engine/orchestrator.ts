@@ -7,7 +7,6 @@ import { GraphTraverser } from './graph-traverser';
 import { VariableResolver } from './variable-resolver';
 import { ConditionEvaluator } from './condition-evaluator';
 import { NodeExecutor } from './node-executor';
-import * as vm from 'vm';
 import type {
   ElevenLabsNodeRequest,
   HttpRequestNodeRequest,
@@ -238,7 +237,7 @@ export class FlowOrchestrator {
             scope: varScope as any,
             key: varName,
             value: preferenceInDB
-          }, session, contact, allContactMutations);
+          }, session, contact, allContactMutations, flow);
 
           if (runtime?.getTranslation && preferenceInDB !== detectedLang) {
             const translations = await runtime.getTranslation(preferenceInDB);
@@ -277,7 +276,7 @@ export class FlowOrchestrator {
       allMessages.push(...stepResult.outboundMessages);
 
       for (const m of stepResult.variableMutations) {
-        this.applyMutation(m, session, contact, allContactMutations);
+        this.applyMutation(m, session, contact, allContactMutations, currentFlow);
         logger.debug({ scope: m.scope, key: m.key, value: m.value }, '[Orchestrator] Applied variable mutation');
       }
       if (stepResult.variableMutations.length > 0) {
@@ -313,7 +312,7 @@ export class FlowOrchestrator {
           scope: stepResult.openAIRequest.resultScope,
           key: stepResult.openAIRequest.resultVariable,
           value: openAIOutput.value,
-        }, session, contact, allContactMutations);
+        }, session, contact, allContactMutations, currentFlow);
 
         if (
           stepResult.openAIRequest.mode === 'assistant' &&
@@ -324,7 +323,7 @@ export class FlowOrchestrator {
             scope: stepResult.openAIRequest.threadIdStorage.scope,
             key: stepResult.openAIRequest.threadIdStorage.key,
             value: openAIOutput.threadId,
-          }, session, contact, allContactMutations);
+          }, session, contact, allContactMutations, currentFlow);
         }
 
         if (stepResult.openAIRequest.sendResponseToUser) {
@@ -345,7 +344,7 @@ export class FlowOrchestrator {
           scope: stepResult.anthropicRequest.resultScope,
           key: stepResult.anthropicRequest.resultVariable,
           value: anthropicOutput.value,
-        }, session, contact, allContactMutations);
+        }, session, contact, allContactMutations, currentFlow);
 
         if (stepResult.anthropicRequest.sendResponseToUser) {
           allMessages.push(anthropicOutput.message);
@@ -365,7 +364,7 @@ export class FlowOrchestrator {
           scope: stepResult.deepSeekRequest.resultScope,
           key: stepResult.deepSeekRequest.resultVariable,
           value: deepSeekOutput.value,
-        }, session, contact, allContactMutations);
+        }, session, contact, allContactMutations, currentFlow);
 
         if (stepResult.deepSeekRequest.sendResponseToUser) {
           allMessages.push(deepSeekOutput.message);
@@ -385,7 +384,7 @@ export class FlowOrchestrator {
           scope: stepResult.elevenLabsRequest.resultScope,
           key: stepResult.elevenLabsRequest.resultVariable,
           value: elevenLabsOutput.value,
-        }, session, contact, allContactMutations);
+        }, session, contact, allContactMutations, currentFlow);
 
         if (stepResult.elevenLabsRequest.sendResponseToUser) {
           allMessages.push(elevenLabsOutput.message);
@@ -402,7 +401,7 @@ export class FlowOrchestrator {
         );
 
         for (const mutation of httpRequestOutput.mutations) {
-          this.applyMutation(mutation, session, contact, allContactMutations);
+          this.applyMutation(mutation, session, contact, allContactMutations, currentFlow);
         }
       }
 
@@ -416,7 +415,7 @@ export class FlowOrchestrator {
         );
 
         for (const mutation of output.mutations) {
-          this.applyMutation(mutation, session, contact, allContactMutations);
+          this.applyMutation(mutation, session, contact, allContactMutations, currentFlow);
         }
       }
 
@@ -430,7 +429,7 @@ export class FlowOrchestrator {
         );
 
         for (const mutation of output.mutations) {
-          this.applyMutation(mutation, session, contact, allContactMutations);
+          this.applyMutation(mutation, session, contact, allContactMutations, currentFlow);
         }
       }
 
@@ -444,7 +443,7 @@ export class FlowOrchestrator {
         );
 
         for (const mutation of output.mutations) {
-          this.applyMutation(mutation, session, contact, allContactMutations);
+          this.applyMutation(mutation, session, contact, allContactMutations, currentFlow);
         }
       }
 
@@ -505,6 +504,20 @@ export class FlowOrchestrator {
         const returnPoint = session.popStack();
         if (returnPoint && runtime?.getFlowById) {
           console.log(`[Orchestrator] Returning to parent flow: ${returnPoint.flowId} at node: ${returnPoint.returnNodeId}`);
+          
+          // Apply output mappings from child back to parent
+          if (returnPoint.outputMappings) {
+            for (const mapping of returnPoint.outputMappings) {
+              if (mapping.parentKey && mapping.childKey) {
+                this.applyMutation({
+                  scope: 'session',
+                  key: mapping.parentKey,
+                  value: `{{session.${mapping.childKey}}}`, // This will now be auto-resolved by applyMutation!
+                }, session, contact, allContactMutations, currentFlow);
+              }
+            }
+          }
+
           const parentFlow = await runtime.getFlowById(returnPoint.flowId);
           if (parentFlow) {
             currentFlow = parentFlow;
@@ -619,12 +632,20 @@ export class FlowOrchestrator {
     session: SessionEntity,
     contact: ContactInfo,
     contactMutations: Record<string, unknown>,
+    flow: FlowEntity,
   ): void {
+    let value = mutation.value;
+    
+    // If the value is a template string, resolve it first
+    if (typeof value === 'string' && value.includes('{{') && value.includes('}}')) {
+      value = this.resolver.resolve(value, { session, contact, flow });
+    }
+
     if (mutation.scope === 'session') {
-      session.setVariable(mutation.key, mutation.value);
+      session.setVariable(mutation.key, value);
     } else {
-      contact.customFields[mutation.key] = mutation.value;
-      contactMutations[mutation.key] = mutation.value;
+      contact.customFields[mutation.key] = value;
+      contactMutations[mutation.key] = value;
     }
   }
 
@@ -871,11 +892,18 @@ export class FlowOrchestrator {
 
   private async executeScriptRequest(
     _flow: FlowEntity,
-    session: SessionEntity,
+    _session: SessionEntity,
     _contact: ContactInfo,
     request: ScriptNodeRequest,
     _runtime?: RuntimeIntegrations,
   ): Promise<{ mutations: VariableMutation[] }> {
+    /* 
+    // Temporarily disabled due to isolated-vm installation issues
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+    const context = isolate.createContextSync();
+    const global = context.global;
+    global.setSync('global', global.derefInto());
+
     const variableMutations: VariableMutation[] = [];
     
     // Create a proxy to track changes to the variables object
@@ -923,6 +951,9 @@ export class FlowOrchestrator {
       console.error(`[Orchestrator] Error executing script in node ${request.nodeId}:`, err);
       return { mutations: variableMutations };
     }
+    */
+    logger.warn({ nodeId: request.nodeId }, 'Script execution is temporarily disabled (isolated-vm bypassed)');
+    return { mutations: [] };
   }
 
   private async executeGoogleSheetsRequest(
