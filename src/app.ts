@@ -109,10 +109,11 @@ export function createApp(registry: IPluginRegistry): Application {
     credentials: true,
   }));
   app.use('/api/auth', authHandler);
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   
-  // Session Middleware
+  // Auth Session Middleware
   app.use(async (req, _res, next) => {
     try {
       const auth = authPlugin.auth as any;
@@ -127,10 +128,10 @@ export function createApp(registry: IPluginRegistry): Application {
           orgId: (req.query.orgId as string) || '68b08633907a113536238290' 
         }, () => next());
       }
-      next();
     } catch (err) {
-      next();
+      global.logger.error({ err }, 'Auth middleware: failed to get session');
     }
+    next();
   });
 
   app.use(pinoHttp({
