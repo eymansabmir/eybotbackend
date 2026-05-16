@@ -18,7 +18,7 @@ export interface CampaignRecipientWithCampaign {
 }
 
 export interface ICampaignRecipientRepository {
-  batchCreate(versionId: string, recipients: Array<{ waId: string; variables: any }>): Promise<void>;
+  batchCreate(versionId: string, recipients: Array<{ waId: string; variables: any }>): Promise<any[]>;
   findPendingByVersion(versionId: string, limit?: number, cursorId?: string): Promise<any[]>;
   updateStatus(id: string, status: RecipientStatus, sentAt?: Date): Promise<void>;
   updateStatusWithStats(id: string, campaignId: string, status: RecipientStatus): Promise<void>;
@@ -37,8 +37,8 @@ export interface ICampaignRecipientRepository {
 export class PrismaCampaignRecipientRepository implements ICampaignRecipientRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async batchCreate(versionId: string, recipients: Array<{ waId: string; variables: any }>): Promise<void> {
-    await this.prisma.campaignRecipient.createMany({
+  async batchCreate(versionId: string, recipients: Array<{ waId: string; variables: any }>): Promise<any[]> {
+    return this.prisma.campaignRecipient.createManyAndReturn({
       data: recipients.map(r => ({
         campaignVersionId: versionId,
         waId: r.waId,

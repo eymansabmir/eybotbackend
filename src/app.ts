@@ -18,11 +18,13 @@ import { ANTHROPIC_PLUGIN, type IAnthropicPlugin } from './plugins/anthropic';
 import { DEEPSEEK_PLUGIN, type IDeepSeekPlugin } from './plugins/deepseek';
 import { HTTP_REQUEST_PLUGIN, type IHttpRequestPlugin } from './plugins/http-request';
 
+import { DATABASE_PLUGIN, type IDatabasePlugin } from './plugins/database';
 import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
   CAMPAIGN_REPOSITORY,
   CAMPAIGN_RECIPIENT_REPOSITORY,
+  CAMPAIGN_SERVICE,
   CREDENTIAL_REPOSITORY,
   CREDENTIAL_SERVICE,
   VOICE_ENTITY_REPOSITORY,
@@ -37,6 +39,8 @@ import { PrismaVoiceRoutingRepository } from './features/voice-tech/data/routing
 import type { CredentialService } from './features/credentials';
 import type { ICredentialRepository } from './features/credentials/credentials.repository.interface';
 import type { ICampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
+import { PrismaApiKeyRepository } from './features/auth/api-key.repository';
+import { PrismaSyncJobRepository } from './features/campaign/sync-job.repository';
 
 import { FlowService } from './features/flow/flow.service';
 import { SessionService } from './features/session/session.service';
@@ -45,6 +49,7 @@ import { EntityQueryService } from './features/voice-tech/services/entity-query.
 import { IngestionService } from './features/voice-tech/services/ingestion.service';
 import { VoiceRoutingService } from './features/voice-tech/services/voice-routing.service';
 import { VoiceCampaignService } from './features/voice-tech/services/voice-campaign.service';
+import { SyncService } from './features/campaign/sync.service';
 import { OpenAIIntegrationService } from './plugins/openai';
 import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
@@ -69,6 +74,12 @@ import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
 import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
+import { TriggerController } from './features/api-trigger/trigger.controller';
+import { DataSourceController } from './features/api-trigger/data-source.controller';
+import { SyncJobController } from './features/api-trigger/sync-job.controller';
+import { ApiAuthService } from './features/auth/api-auth.service';
+import { AuthController } from './features/auth/auth.controller';
+import { createApiKeyMiddleware } from './features/auth/api-key.middleware';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -91,12 +102,19 @@ import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
+import { createTriggerRouter } from './features/api-trigger/trigger.route';
+import { createConnectorRouter } from './features/api-trigger/connector.route';
+import { createApiKeyManagementRouter } from './features/auth/api-key.route';
+import { ApiKeyController } from './features/auth/api-key.controller';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
 
 export function createApp(registry: IPluginRegistry): Application {
   const app = express();
+
+  // Trust proxy for ngrok/LB support
+  app.set('trust proxy', true);
   const WEBHOOK_URL = process.env.WEBHOOK_URL;
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
   const authPlugin = registry.get<IAuthPlugin>(AUTH_PLUGIN);
@@ -108,8 +126,26 @@ export function createApp(registry: IPluginRegistry): Application {
     credentials: true,
   }));
   app.use('/api/auth', authHandler);
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  
+  // Auth Session Middleware
+  app.use(async (req, _res, next) => {
+    try {
+      const auth = authPlugin.auth as any;
+      const session = await auth.api.getSession({
+        headers: req.headers,
+      });
+      
+      if (session) {
+        (req as any).auth = session;
+      }
+    } catch (err) {
+      logger.error({ err }, 'Auth middleware: failed to get session');
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(pinoHttp({
     logger: global.logger,
     serializers: {
@@ -159,9 +195,10 @@ export function createApp(registry: IPluginRegistry): Application {
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
+  const prisma = registry.get<IDatabasePlugin>(DATABASE_PLUGIN).prisma;
   const flowService = new FlowService(flowRepo);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
-  const campaignService = new CampaignService(campaignRepo, workerPlugin);
+  const campaignService = new CampaignService(campaignRepo, campaignRecipientRepo, workerPlugin);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
@@ -172,9 +209,19 @@ export function createApp(registry: IPluginRegistry): Application {
   const deepSeekService = new DeepSeekIntegrationService(deepSeekPlugin, credentialService);
   const googleSheetsService = new GoogleSheetsIntegrationService(credentialService, registry);
   const httpRequestService = new HttpRequestIntegrationService(credentialService, httpRequestPlugin);
+    const apiKeyRepo = new PrismaApiKeyRepository(prisma);
+    const syncJobRepo = new PrismaSyncJobRepository(prisma);
 
-  // Start background scheduler
+    const apiAuthService = new ApiAuthService(apiKeyRepo);
+    const syncService = new SyncService(syncJobRepo, credentialService, campaignService);
+
+  // Register services in registry for workers to access
+  registry.registerValue(CAMPAIGN_SERVICE, campaignService);
+
+  // Start background schedulers
   campaignService.startScheduler();
+  syncService.runDueSyncJobs(); // Initial run
+  setInterval(() => syncService.runDueSyncJobs(), 60000); // Check every minute
 
   // ── Controllers ────────────────────────────────────────────────────────────
   const flowController = new FlowController(flowService);
@@ -209,6 +256,14 @@ export function createApp(registry: IPluginRegistry): Application {
   );
   const voiceProviderController = new VoiceProviderController(voiceRoutingRepo);
   const exotelCallbackController = new ExotelCallbackController(campaignRecipientRepo);
+  const triggerController = new TriggerController(registry);
+  const dataSourceController = new DataSourceController(prisma, credentialService);
+  const syncJobController = new SyncJobController(prisma, syncService);
+  const authController = new AuthController(apiAuthService);
+  const apiKeyController = new ApiKeyController(apiKeyRepo);
+
+  // ── Middleware ─────────────────────────────────────────────────────────────
+  const apiKeyMiddleware = createApiKeyMiddleware(apiAuthService);
 
   // ── Routes ─────────────────────────────────────────────────────────────────
   app.use('/api/flows', createFlowRouter(flowController));
@@ -216,6 +271,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/node-types', createNodeTypesRouter(nodeTypesController));
   app.use('/api/storage', createStorageRouter(storageController));
   app.use('/api/campaigns', createCampaignRouter(campaignController));
+  app.use('/api/settings/keys', createApiKeyManagementRouter(apiKeyController));
   app.use('/api/whatsapp', createWhatsAppRouter(whatsappController));
   app.use('/api/integrations/credentials', createCredentialRouter(credentialController));
   app.use('/api/integrations/openai', createOpenAIRouter(openAIController));
@@ -226,6 +282,13 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/integrations/nocodb', createNocoDBRouter(nocodbController));
   app.use('/api/integrations/http-request', createHttpRequestRouter(httpRequestController));
   app.use('/api/integrations/whatsapp', createWhatsAppIntegrationRouter());
+  
+  // Public Auth Route for API Consumers
+  app.post('/api/v1/auth/token', authController.generateToken);
+
+  // Protected V1 Routes (Requires Bearer Token)
+  app.use('/api/v1/trigger', apiKeyMiddleware, createTriggerRouter(triggerController));
+  app.use('/api/v1/connectors', apiKeyMiddleware, createConnectorRouter(dataSourceController, syncJobController));
   app.use('/api/voice-tech/entities', createVoiceEntityRouter(voiceEntityController));
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));

@@ -413,7 +413,6 @@ const JumpDataSchema = z.object({
 
 const ReturnDataSchema = z.object({}).passthrough();
  
- 
 
 const AnthropicDataSchema = z.object({
   mode: z.enum(['chat_completion', 'generate_variables', '']).optional(),

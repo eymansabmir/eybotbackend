@@ -81,4 +81,9 @@ export class GcsProvider implements IStorageProvider {
     const [buffer] = await this.bucket.file(normalizedPath).download();
     return buffer;
   }
+
+  async getReadStream(filePath: string): Promise<NodeJS.ReadableStream> {
+    const normalizedPath = this.normalizePath(filePath);
+    return this.bucket.file(normalizedPath).createReadStream();
+  }
 }

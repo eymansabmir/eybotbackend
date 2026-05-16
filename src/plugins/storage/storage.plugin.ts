@@ -69,4 +69,8 @@ export class StoragePlugin implements IPlugin, IStoragePlugin {
   async downloadFile(filePath: string): Promise<Buffer> {
     return this._provider.download(filePath);
   }
+
+  async getReadStream(filePath: string): Promise<NodeJS.ReadableStream> {
+    return this._provider.getReadStream(filePath);
+  }
 }

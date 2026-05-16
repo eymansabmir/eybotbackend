@@ -19,7 +19,7 @@ export class CampaignController {
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = '68b08633907a113536238290'; // TODO: derive from JWT
-      const { name, flowId, filePath, scheduleTime } = req.body;
+      const { name, flowId, filePath, dataSourceId, tableName, scheduleTime } = req.body;
 
       logger.info({ orgId, name, flowId }, 'Campaign create request received');
 
@@ -28,6 +28,8 @@ export class CampaignController {
         name,
         flowId,
         filePath,
+        dataSourceId,
+        tableName
       };
 
       if (scheduleTime && scheduleTime !== 'null') {

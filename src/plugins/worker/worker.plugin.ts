@@ -10,6 +10,7 @@ import { handleStatusUpdateJob } from './consumers/status.consumer';
 import { handleVoiceIngestJob } from './consumers/voice-ingest.consumer';
 import { handleVoiceCampaignJob } from './consumers/voice-campaign.consumer';
 import { handleRenudgeJob } from './consumers/renudge.consumer';
+import { handleTriggerJob } from './consumers/trigger.consumer';
 
 export class WorkerPlugin implements IPlugin, IWorkerPlugin {
   readonly name = 'worker';
@@ -56,6 +57,10 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
 
       if (role === 'all' || role === 'renudge') {
         await this.broker.consume('wa.renudge.q', data => handleRenudgeJob(data, registry), 10);
+      }
+
+      if (role === 'all' || role === 'trigger') {
+        await this.broker.consume('bot.trigger.q', data => handleTriggerJob(data, registry), 10);
       }
 
       logger.info({ role }, 'WorkerPlugin: consumers started');

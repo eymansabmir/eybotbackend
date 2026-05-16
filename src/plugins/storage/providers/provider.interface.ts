@@ -20,4 +20,5 @@ export interface IStorageProvider {
     contentType: string,
   ): Promise<{ uploadUrl: string; fileUrl: string }>;
   download(filePath: string): Promise<Buffer>;
+  getReadStream(filePath: string): Promise<NodeJS.ReadableStream>;
 }
