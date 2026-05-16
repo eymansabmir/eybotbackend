@@ -27,6 +27,7 @@ import {
   CREDENTIAL_SERVICE,
   VOICE_ENTITY_REPOSITORY,
   VOICE_ROUTING_REPOSITORY,
+  ACTIVITY_LOG_SERVICE,
 } from './features/repositories.interface';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
@@ -50,6 +51,7 @@ import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
 import { HttpRequestIntegrationService } from './plugins/http-request';
+import { ActivityLogService } from './features/activity-log/application/activity-log.service';
 
 import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
@@ -69,6 +71,7 @@ import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
 import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
+import { ActivityLogController } from './features/activity-log/presentation/activity-log.controller';
 
 import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
@@ -91,6 +94,7 @@ import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
+import { createActivityLogRouter } from './features/activity-log/presentation/activity-log.route';
 
 import { errorHandler } from './middleware/error.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
@@ -157,11 +161,12 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignRecipientRepo = registry.get<ICampaignRecipientRepository>(CAMPAIGN_RECIPIENT_REPOSITORY);
   const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
+  const activityLogService = registry.get<ActivityLogService>(ACTIVITY_LOG_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
-  const flowService = new FlowService(flowRepo);
+  const flowService = new FlowService(flowRepo, activityLogService);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
-  const campaignService = new CampaignService(campaignRepo, workerPlugin);
+  const campaignService = new CampaignService(campaignRepo, workerPlugin, activityLogService);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
@@ -177,6 +182,7 @@ export function createApp(registry: IPluginRegistry): Application {
   campaignService.startScheduler();
 
   // ── Controllers ────────────────────────────────────────────────────────────
+  const activityLogController = new ActivityLogController(activityLogService);
   const flowController = new FlowController(flowService);
   const sessionController = new SessionController(sessionService);
   const nodeTypesController = new NodeTypesController();
@@ -230,6 +236,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));
   app.use('/api/voice-tech/providers/exotel', createExotelCallbackRouter(exotelCallbackController));
+  app.use('/api/activity-logs', createActivityLogRouter(activityLogController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));

@@ -38,7 +38,11 @@ import {
   VOICE_ENTITY_REPOSITORY,
   VOICE_ROUTING_REPOSITORY,
   RENUDGE_SERVICE,
+  ACTIVITY_LOG_REPOSITORY,
+  ACTIVITY_LOG_SERVICE,
 } from './features/repositories.interface';
+import { PrismaActivityLogRepository } from './features/activity-log/infrastructure/prisma-activity-log.repository';
+import { ActivityLogService } from './features/activity-log/application/activity-log.service';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
@@ -93,8 +97,10 @@ async function startServer(): Promise<void> {
   const sessionRepo = new PrismaSessionRepository(dbPlugin.prisma);
   const campaignRepo = new PrismaCampaignRepository(dbPlugin.prisma);
   const recipientRepo = new PrismaCampaignRecipientRepository(dbPlugin.prisma);
+  const activityLogRepo = new PrismaActivityLogRepository(dbPlugin.prisma);
+  const activityLogService = new ActivityLogService(activityLogRepo);
   const credentialRepo = new PrismaCredentialRepository(dbPlugin.prisma);
-  const credentialService = new CredentialService(credentialRepo);
+  const credentialService = new CredentialService(credentialRepo, undefined, activityLogService);
   const voiceEntityRepo = new PrismaEntityRepository(dbPlugin.prisma, redisPlugin.client);
   const voiceRoutingRepo = new PrismaVoiceRoutingRepository(dbPlugin.prisma, redisPlugin.client);
   const renudgeService = new RenudgeService(workerPlugin, dbPlugin);
@@ -108,6 +114,8 @@ async function startServer(): Promise<void> {
   registry.registerValue(VOICE_ENTITY_REPOSITORY, voiceEntityRepo);
   registry.registerValue(VOICE_ROUTING_REPOSITORY, voiceRoutingRepo);
   registry.registerValue(RENUDGE_SERVICE, renudgeService);
+  registry.registerValue(ACTIVITY_LOG_REPOSITORY, activityLogRepo);
+  registry.registerValue(ACTIVITY_LOG_SERVICE, activityLogService);
 
   const inboundHandler = new SessionInboundHandler(
     flowRepo,

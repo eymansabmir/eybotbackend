@@ -3,11 +3,14 @@ import { IWorkerPlugin, EXCHANGES } from '../../plugins/worker/worker.interface'
 import { CampaignEntity } from './campaign.entity';
 import { ImportJob, DispatchJob } from '../../plugins/worker/jobs';
 import { CampaignStatus } from '@prisma/client';
+import { ActivityLogService } from '../activity-log/application/activity-log.service';
+import { ActivityAction, ActivityEntityType } from '../activity-log/domain/activity-log.types';
 
 export class CampaignService {
   constructor(
     private readonly campaignRepo: ICampaignRepository,
     private readonly workerPlugin: IWorkerPlugin,
+    private readonly activityLogService?: ActivityLogService,
   ) {}
 
   async createCampaign(data: {
@@ -58,6 +61,16 @@ export class CampaignService {
     await this.workerPlugin.publish(EXCHANGES.CAMPAIGN_IMPORT, importJob);
     logger.info({ campaignId: campaign.id, versionId: version.id, autoStart: isImmediate }, 'Campaign created and import job published');
 
+    if (this.activityLogService && campaign.id) {
+      await this.activityLogService.record({
+        orgId: data.orgId,
+        action: ActivityAction.CAMPAIGN_CREATED,
+        entityType: ActivityEntityType.CAMPAIGN,
+        entityId: campaign.id,
+        metadata: { name: data.name, flowId: data.flowId },
+      });
+    }
+
     return { campaign, version };
   }
 
@@ -101,6 +114,16 @@ export class CampaignService {
       throw new Error('Unauthorized');
     }
     await this.campaignRepo.delete(id);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId,
+        action: ActivityAction.CAMPAIGN_DELETED,
+        entityType: ActivityEntityType.CAMPAIGN,
+        entityId: id,
+        metadata: { name: campaign.name },
+      });
+    }
   }
 
   async cancelCampaign(id: string, orgId: string) {
@@ -115,7 +138,18 @@ export class CampaignService {
     if (campaign.status === CampaignStatus.completed || campaign.status === CampaignStatus.cancelled) {
       throw new Error('Campaign cannot be cancelled');
     }
-    return this.campaignRepo.updateStatus(id, CampaignStatus.cancelled);
+    const updated = await this.campaignRepo.updateStatus(id, CampaignStatus.cancelled);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId,
+        action: ActivityAction.CAMPAIGN_CANCELLED,
+        entityType: ActivityEntityType.CAMPAIGN,
+        entityId: id,
+      });
+    }
+
+    return updated;
   }
 
   async updateCampaign(id: string, data: {
@@ -189,8 +223,16 @@ export class CampaignService {
 
     await this.campaignRepo.updateStatus(id, newStatus);
     
-    // update activeVersionId
     await this.campaignRepo.update(id, { activeVersionId: version.id });
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId,
+        action: ActivityAction.CAMPAIGN_STARTED,
+        entityType: ActivityEntityType.CAMPAIGN,
+        entityId: id,
+      });
+    }
 
     const job: DispatchJob = {
       campaignId: id,

@@ -11,3 +11,6 @@ export const VOICE_ENTITY_REPOSITORY = 'VoiceEntityRepository' as const;
 export const VOICE_ROUTING_REPOSITORY = 'VoiceRoutingRepository' as const;
 
 export const RENUDGE_SERVICE = 'RenudgeService' as const;
+
+export const ACTIVITY_LOG_REPOSITORY = 'ActivityLogRepository' as const;
+export const ACTIVITY_LOG_SERVICE = 'ActivityLogService' as const;

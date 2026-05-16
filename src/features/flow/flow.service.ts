@@ -1,5 +1,7 @@
 import { FlowEntity, FlowProperties } from './flow.entity';
 import { IFlowRepository } from './flow.repository';
+import { ActivityLogService } from '../activity-log/application/activity-log.service';
+import { ActivityAction, ActivityEntityType } from '../activity-log/domain/activity-log.types';
 import { NodeType } from '../../schemas/node-types.enum';
 import { ValidationError } from '../../utils/errors';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
@@ -28,7 +30,10 @@ export interface ConfigureFlowPayload {
 }
 
 export class FlowService implements IFlowService {
-  constructor(private readonly flowRepo: IFlowRepository) { }
+  constructor(
+    private readonly flowRepo: IFlowRepository,
+    private readonly activityLogService?: ActivityLogService,
+  ) { }
 
   async createFlow(data: Partial<FlowProperties>): Promise<FlowEntity> {
     const entity = new FlowEntity({
@@ -52,7 +57,19 @@ export class FlowService implements IFlowService {
     this.normalizeNodeUrls(entity);
     this.validateGraph(entity);
     await this.validateTriggerUniqueness(entity.orgId, entity.triggerConfig);
-    return this.flowRepo.create(entity);
+    const flow = await this.flowRepo.create(entity);
+    
+    if (this.activityLogService && flow.id) {
+      await this.activityLogService.record({
+        orgId: flow.orgId,
+        action: ActivityAction.FLOW_CREATED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: flow.id,
+        metadata: { name: flow.name },
+      });
+    }
+
+    return flow;
   }
 
   async importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity> {
@@ -108,6 +125,17 @@ export class FlowService implements IFlowService {
 
     const updated = await this.flowRepo.update(id, updates);
     this.denormalizeNodeUrls(updated);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: updated.orgId,
+        action: ActivityAction.FLOW_UPDATED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: id,
+        metadata: { updates: Object.keys(updates) },
+      });
+    }
+
     return updated;
   }
 
@@ -117,7 +145,18 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Flow is already published');
     }
     this.validateGraph(flow);
-    return this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
+    const published = await this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: published.orgId,
+        action: ActivityAction.FLOW_PUBLISHED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: id,
+      });
+    }
+
+    return published;
   }
 
   async configureFlow(id: string, payload: ConfigureFlowPayload, credentials?: unknown): Promise<FlowEntity> {
@@ -145,7 +184,19 @@ export class FlowService implements IFlowService {
       await this.validateTriggerUniqueness(flow.orgId, updates.triggerConfig, id);
     }
 
-    return this.flowRepo.update(id, updates);
+    const updated = await this.flowRepo.update(id, updates);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: updated.orgId,
+        action: ActivityAction.FLOW_UPDATED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: id,
+        metadata: { updates: Object.keys(updates) },
+      });
+    }
+
+    return updated;
   }
 
   async syncTranslations(id: string, nodes?: any[]): Promise<void> {
@@ -177,7 +228,18 @@ export class FlowService implements IFlowService {
   }
 
   async archiveFlow(id: string): Promise<FlowEntity> {
-    return this.flowRepo.update(id, { status: 'archived' });
+    const archived = await this.flowRepo.update(id, { status: 'archived' });
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: archived.orgId,
+        action: ActivityAction.FLOW_ARCHIVED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: id,
+      });
+    }
+
+    return archived;
   }
 
   async deleteFlow(id: string): Promise<void> {
@@ -186,6 +248,16 @@ export class FlowService implements IFlowService {
       throw new ValidationError('Cannot delete a published flow. Archive it first.');
     }
     await this.flowRepo.delete(id);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: flow.orgId,
+        action: ActivityAction.FLOW_DELETED,
+        entityType: ActivityEntityType.FLOW,
+        entityId: id,
+        metadata: { name: flow.name },
+      });
+    }
   }
 
   async getFlowTranslation(flowId: string, language: string): Promise<any> {

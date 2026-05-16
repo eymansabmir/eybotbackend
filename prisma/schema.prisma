@@ -458,3 +458,21 @@ enum ConfigStatus {
   DRAFT
   PAUSED
 }
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  orgId      String
+  userId     String?
+  action     String   // e.g. "FLOW_CREATED", "CREDENTIAL_UPDATED"
+  entityType String   // e.g. "FLOW", "CAMPAIGN", "CREDENTIAL"
+  entityId   String
+  metadata   Json?    // Stores before/after or additional details
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
