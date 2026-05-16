@@ -485,7 +485,7 @@ export class FlowOrchestrator {
           if (nextFlow) {
             // If this is a returnable jump (Bot Node), push current state to stack
             if (stepResult.returnNodeId) {
-              session.pushStack(session.flowId, session.flowVersion, stepResult.returnNodeId);
+              session.pushStack(session.flowId, session.flowVersion, stepResult.returnNodeId, stepResult.outputMappings);
             }
 
             currentFlow = nextFlow;

@@ -46,6 +46,7 @@ export interface NodeExecutionResult {
   jumpToFlowId?: string;
   jumpToNodeId?: string;
   returnNodeId?: string;
+  outputMappings?: Array<{ parentKey: string; childKey: string }>;
 }
 
 export interface ScriptNodeRequest {
