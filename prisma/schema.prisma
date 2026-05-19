@@ -34,9 +34,32 @@ model Flow {
   translations FlowTranslation[]
   renudgeConfig RenudgeConfig?
   renudgeLogs   RenudgeLog[]
+  revisions     FlowRevision[]
 
   @@index([orgId, status])
 }
+
+model FlowRevision {
+  id            String   @id @default(uuid())
+  flowId        String
+  version       Int      // Sequential revision number (1, 2, 3...)
+  name          String
+  description   String?
+  triggerType   String
+  triggerConfig Json
+  nodes         Json
+  edges         Json
+  settings      Json
+  isPublished   Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  flow          Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@unique([flowId, version])
+  @@index([flowId])
+  @@map("flow_revisions")
+}
+
 
 model FlowTranslation {
   id             String   @id @default(uuid())
