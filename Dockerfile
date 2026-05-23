@@ -31,6 +31,7 @@ ENV NODE_ENV=production
 # Re-install only production dependencies
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node prisma ./prisma/
+COPY --chown=node:node prisma.config.ts ./
 RUN npm install --omit=dev && npm cache clean --force
 
 # Copy build output, prisma client, and prisma CLI from builder
