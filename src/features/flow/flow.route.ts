@@ -15,5 +15,7 @@ export function createFlowRouter(controller: FlowController): Router {
   router.put('/:id/translations/:language', controller.updateFlowTranslation);
   router.post('/:id/archive', controller.archiveFlow);
   router.delete('/:id', controller.deleteFlow);
+  router.get('/:id/revisions', controller.getRevisions);
+  router.post('/:id/revisions/:revisionId/rollback', controller.rollback);
   return router;
 }
