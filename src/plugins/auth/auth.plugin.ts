@@ -82,14 +82,14 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
           sendVerificationOTP: async ({ email, otp, type }) => {
             if (!isProduction) {
               logger.info(
-                { email, type },
+                { email, type, otp },
                 'AuthPlugin: OTP generated (development)',
               );
             }
 
             if (!this.smtpTransporter) {
               if (devFallbackEnabled) {
-                logger.info({ type, email }, 'AuthPlugin: OTP generated (dev fallback enabled)');
+                logger.info({ type, email, otp }, `AuthPlugin: OTP generated (dev fallback enabled) ${otp}`);
                 return;
               }
               throw new Error('[AuthPlugin] SMTP transporter not available');

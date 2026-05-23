@@ -138,4 +138,23 @@ export class FlowController {
       res.status(201).json(flow);
     } catch (err) { next(err); }
   };
+
+  getRevisions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] as string;
+      logger.info({ flowId: id }, 'Fetching flow revisions');
+      const revisions = await this.flowService.getFlowRevisions(id);
+      res.json(revisions);
+    } catch (err) { next(err); }
+  };
+
+  rollback = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] as string;
+      const revisionId = req.params['revisionId'] as string;
+      logger.info({ flowId: id, revisionId }, 'Rolling back flow to revision');
+      const flow = await this.flowService.rollbackToRevision(id, revisionId);
+      res.json(flow);
+    } catch (err) { next(err); }
+  };
 }

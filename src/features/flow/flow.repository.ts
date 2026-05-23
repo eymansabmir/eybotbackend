@@ -15,6 +15,11 @@ export interface IFlowRepository {
     delete(id: string): Promise<void>;
     getTranslation(flowId: string, language: string): Promise<any>;
     saveTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
+    createRevision(flowId: string, version: number, flow: FlowEntity, isPublished?: boolean): Promise<any>;
+    getRevisions(flowId: string): Promise<any[]>;
+    findRevisionById(id: string): Promise<any | null>;
+    getLatestRevisionVersion(flowId: string): Promise<number>;
+    pruneOldRevisions(flowId: string): Promise<void>;
 }
 
 const FLOW_INCLUDE = {
@@ -225,6 +230,71 @@ export class PrismaFlowRepository implements IFlowRepository {
             where: { flowId_language: { flowId, language } },
             update: { translatedData },
             create: { flowId, language, translatedData },
+        });
+    }
+
+    async createRevision(flowId: string, version: number, flow: FlowEntity, isPublished = false): Promise<any> {
+        const data = FlowMapper.toPrisma(flow);
+        return this.prisma.$transaction(async (tx) => {
+            if (isPublished) {
+                await tx.flowRevision.updateMany({
+                    where: { flowId },
+                    data: { isPublished: false }
+                });
+            }
+            return tx.flowRevision.create({
+                data: {
+                    flowId,
+                    version,
+                    name: data.name,
+                    description: data.description,
+                    triggerType: data.triggerType,
+                    triggerConfig: data.triggerConfig as any,
+                    nodes: data.nodes as any,
+                    edges: data.edges as any,
+                    settings: data.settings as any,
+                    isPublished
+                }
+            });
+        });
+    }
+
+    async getRevisions(flowId: string): Promise<any[]> {
+        return this.prisma.flowRevision.findMany({
+            where: { flowId },
+            orderBy: { version: 'desc' }
+        });
+    }
+
+    async findRevisionById(id: string): Promise<any | null> {
+        return this.prisma.flowRevision.findUnique({
+            where: { id }
+        });
+    }
+
+    async getLatestRevisionVersion(flowId: string): Promise<number> {
+        const latest = await this.prisma.flowRevision.findFirst({
+            where: { flowId },
+            orderBy: { version: 'desc' },
+            select: { version: true }
+        });
+        return latest?.version ?? 0;
+    }
+
+    async pruneOldRevisions(flowId: string): Promise<void> {
+        const latestRevisions = await this.prisma.flowRevision.findMany({
+            where: { flowId },
+            orderBy: { version: 'desc' },
+            take: 30,
+            select: { id: true }
+        });
+        const latestIds = latestRevisions.map(r => r.id);
+
+        await this.prisma.flowRevision.deleteMany({
+            where: {
+                flowId,
+                id: { notIn: latestIds }
+            }
         });
     }
 }
