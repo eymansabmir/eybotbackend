@@ -253,10 +253,41 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
 
           if (input.filter) {
             let isMatch = true;
-            for (const [key, val] of Object.entries(input.filter)) {
-              if (row.get(key) !== val) {
-                isMatch = false;
-                break;
+            if (input.filter.comparisons && Array.isArray(input.filter.comparisons)) {
+              for (const comp of input.filter.comparisons) {
+                if (!comp || !comp.column) continue;
+                const cellValue = String(row.get(comp.column) ?? "");
+                const targetValue = String(comp.value ?? "");
+                const op = comp.comparisonOperator;
+
+                if (op === "Equal to") {
+                  if (cellValue !== targetValue) { isMatch = false; break; }
+                } else if (op === "Not equal") {
+                  if (cellValue === targetValue) { isMatch = false; break; }
+                } else if (op === "Contains") {
+                  if (!cellValue.includes(targetValue)) { isMatch = false; break; }
+                } else if (op === "Does not contain") {
+                  if (cellValue.includes(targetValue)) { isMatch = false; break; }
+                } else if (op === "Greater than") {
+                  if (!(Number(cellValue) > Number(targetValue))) { isMatch = false; break; }
+                } else if (op === "Greater or equal to") {
+                  if (!(Number(cellValue) >= Number(targetValue))) { isMatch = false; break; }
+                } else if (op === "Less than") {
+                  if (!(Number(cellValue) < Number(targetValue))) { isMatch = false; break; }
+                } else if (op === "Less or equal to") {
+                  if (!(Number(cellValue) <= Number(targetValue))) { isMatch = false; break; }
+                } else if (op === "Is set") {
+                  if (!cellValue) { isMatch = false; break; }
+                } else if (op === "Is empty") {
+                  if (cellValue) { isMatch = false; break; }
+                }
+              }
+            } else {
+              for (const [key, val] of Object.entries(input.filter)) {
+                if (row.get(key) !== val) {
+                  isMatch = false;
+                  break;
+                }
               }
             }
             if (!isMatch) continue;
@@ -272,9 +303,27 @@ export class GoogleSheetsPlugin implements IPlugin, IGoogleSheetsPlugin {
         if (batch.length < ROW_BATCH_SIZE) break;
       }
 
+      let finalRows = matchedRows;
+      if (input.filter && (input.filter as any).totalRowsToExtract) {
+        const mode = String((input.filter as any).totalRowsToExtract).toLowerCase();
+        if (mode === "first" && matchedRows.length > 0) {
+          finalRows = [matchedRows[0]!];
+        } else if (mode === "last" && matchedRows.length > 0) {
+          finalRows = [matchedRows[matchedRows.length - 1]!];
+        } else if (mode === "random" && matchedRows.length > 0) {
+          const randomIndex = Math.floor(Math.random() * matchedRows.length);
+          finalRows = [matchedRows[randomIndex]!];
+        } else if (mode === "all" && (input.filter as any).limit) {
+          const limit = Number((input.filter as any).limit);
+          if (limit > 0) {
+            finalRows = matchedRows.slice(0, limit);
+          }
+        }
+      }
+
       return {
         success: true,
-        rows: matchedRows,
+        rows: finalRows,
       };
     } catch (err: any) {
       throw new GoogleSheetsProviderError(err.message || 'Failed to get row');

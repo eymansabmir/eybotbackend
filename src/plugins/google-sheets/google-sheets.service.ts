@@ -330,6 +330,39 @@ function extractJsonPath(input: unknown, jsonPath: string): unknown {
     return input;
   }
 
+  if (path.includes('[*]') || path.includes('*')) {
+    const cleanPath = path.replace(/\[\*\]/g, '');
+    const parts = cleanPath.split('.').filter(Boolean);
+    
+    let current: any = input;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (Array.isArray(current)) {
+        const remainingParts = parts.slice(i);
+        const results = current.map(item => {
+          let sub: any = item;
+          for (const subPart of remainingParts) {
+            if (sub === null || sub === undefined) return undefined;
+            if (typeof sub === 'object') {
+              sub = sub[subPart];
+            } else {
+              return undefined;
+            }
+          }
+          return sub;
+        }).filter(val => val !== undefined && val !== null);
+        
+        return results.join('\n');
+      }
+      
+      if (current === null || current === undefined || typeof current !== 'object') {
+        return undefined;
+      }
+      current = current[part];
+    }
+    return current;
+  }
+
   const tokens = path
     .replace(/\[(\d+)\]/g, '.$1')
     .split('.')

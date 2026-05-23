@@ -64,7 +64,8 @@ export class GoogleSheetsController {
     try {
       const { orgId, credentialId } = GetAccessTokenQuerySchema.parse(req.query);
       const accessToken = await this.service.getAccessToken(orgId, credentialId);
-      res.json({ accessToken });
+      const apiKey = process.env.VITE_GOOGLE_SHEETS_API_KEY;
+      res.json({ accessToken, apiKey });
     } catch (err) {
       next(err);
     }
