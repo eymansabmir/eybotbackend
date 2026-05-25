@@ -8,6 +8,8 @@ import type {
   UpdateCredentialPayload,
 } from './credentials.types';
 import type { ICredentialRepository } from './credentials.repository.interface';
+import { ActivityLogService } from '../activity-log/application/activity-log.service';
+import { ActivityAction, ActivityEntityType } from '../activity-log/domain/activity-log.types';
 
 export interface ICredentialService {
   createCredential(input: CreateCredentialPayload): Promise<CredentialView>;
@@ -26,6 +28,7 @@ export class CredentialService implements ICredentialService {
   constructor(
     private readonly repo: ICredentialRepository,
     crypto?: CredentialSecretCrypto,
+    private readonly activityLogService?: ActivityLogService,
   ) {
     this._crypto = crypto;
   }
@@ -76,6 +79,16 @@ export class CredentialService implements ICredentialService {
       isActive: input.isActive ?? true,
     });
 
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: created.orgId,
+        action: ActivityAction.CREDENTIAL_CREATED,
+        entityType: ActivityEntityType.CREDENTIAL,
+        entityId: created.id,
+        metadata: { name: created.name, type: created.type },
+      });
+    }
+
     return this.toView(created);
   }
 
@@ -98,6 +111,17 @@ export class CredentialService implements ICredentialService {
     updates: UpdateCredentialPayload,
   ): Promise<CredentialView> {
     const updated = await this.repo.update(orgId, id, updates);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: updated.orgId,
+        action: ActivityAction.CREDENTIAL_UPDATED,
+        entityType: ActivityEntityType.CREDENTIAL,
+        entityId: id,
+        metadata: { name: updated.name, type: updated.type, updates: Object.keys(updates) },
+      });
+    }
+
     return this.toView(updated);
   }
 
@@ -106,15 +130,48 @@ export class CredentialService implements ICredentialService {
       isActive: false,
       revokedAt: new Date(),
     });
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId: revoked.orgId,
+        action: ActivityAction.CREDENTIAL_UPDATED,
+        entityType: ActivityEntityType.CREDENTIAL,
+        entityId: id,
+        metadata: { name: revoked.name, action: 'revoked' },
+      });
+    }
+
     return this.toView(revoked);
   }
 
   async deleteCredential(orgId: string, id: string): Promise<void> {
+    const credential = await this.repo.findByIdOrFail(orgId, id);
     await this.repo.hardDelete(orgId, id);
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId,
+        action: ActivityAction.CREDENTIAL_DELETED,
+        entityType: ActivityEntityType.CREDENTIAL,
+        entityId: id,
+        metadata: { name: credential.name, type: credential.type },
+      });
+    }
   }
 
   async markTested(orgId: string, id: string): Promise<CredentialView> {
     const updated = await this.repo.update(orgId, id, { lastTestedAt: new Date() });
+
+    if (this.activityLogService) {
+      await this.activityLogService.record({
+        orgId,
+        action: ActivityAction.CREDENTIAL_TESTED,
+        entityType: ActivityEntityType.CREDENTIAL,
+        entityId: id,
+        metadata: { name: updated.name, type: updated.type },
+      });
+    }
+
     return this.toView(updated);
   }
 

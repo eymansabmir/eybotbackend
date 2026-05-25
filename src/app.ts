@@ -29,6 +29,7 @@ import {
   CREDENTIAL_SERVICE,
   VOICE_ENTITY_REPOSITORY,
   VOICE_ROUTING_REPOSITORY,
+  ACTIVITY_LOG_SERVICE,
 } from './features/repositories.interface';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
@@ -55,6 +56,7 @@ import { ElevenLabsIntegrationService } from './plugins/elevenlabs';
 import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.service';
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
 import { HttpRequestIntegrationService } from './plugins/http-request';
+import { ActivityLogService } from './features/activity-log/application/activity-log.service';
 import { RequestContext } from './utils/request-context';
 
 import { FlowController } from './features/flow/flow.controller';
@@ -75,6 +77,7 @@ import { VoiceEntityController } from './features/voice-tech/entity.controller';
 import { VoiceRoutingController } from './features/voice-tech/routing.controller';
 import { VoiceProviderController } from './features/voice-tech/provider.controller';
 import { ExotelCallbackController } from './features/voice-tech/exotel-callback.controller';
+import { ActivityLogController } from './features/activity-log/presentation/activity-log.controller';
 import { TriggerController } from './features/api-trigger/trigger.controller';
 import { DataSourceController } from './features/api-trigger/data-source.controller';
 import { SyncJobController } from './features/api-trigger/sync-job.controller';
@@ -103,6 +106,7 @@ import { createVoiceEntityRouter } from './features/voice-tech/entity.route';
 import { createVoiceRoutingRouter } from './features/voice-tech/routing.route';
 import { createVoiceProviderRouter } from './features/voice-tech/provider.route';
 import { createExotelCallbackRouter } from './features/voice-tech/exotel-callback.route';
+import { createActivityLogRouter } from './features/activity-log/presentation/activity-log.route';
 import { createTriggerRouter } from './features/api-trigger/trigger.route';
 import { createConnectorRouter } from './features/api-trigger/connector.route';
 import { createApiKeyManagementRouter } from './features/auth/api-key.route';
@@ -199,12 +203,12 @@ export function createApp(registry: IPluginRegistry): Application {
   const campaignRecipientRepo = registry.get<ICampaignRecipientRepository>(CAMPAIGN_RECIPIENT_REPOSITORY);
   const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
+  const activityLogService = registry.get<ActivityLogService>(ACTIVITY_LOG_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
-  const prisma = registry.get<IDatabasePlugin>(DATABASE_PLUGIN).prisma;
-  const flowService = new FlowService(flowRepo);
+  const flowService = new FlowService(flowRepo, activityLogService);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
-  const campaignService = new CampaignService(campaignRepo, campaignRecipientRepo, workerPlugin);
+  const campaignService = new CampaignService(campaignRepo, workerPlugin, activityLogService);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
@@ -230,6 +234,7 @@ export function createApp(registry: IPluginRegistry): Application {
   setInterval(() => syncService.runDueSyncJobs(), 60000); // Check every minute
 
   // ── Controllers ────────────────────────────────────────────────────────────
+  const activityLogController = new ActivityLogController(activityLogService);
   const flowController = new FlowController(flowService);
   const sessionController = new SessionController(sessionService);
   const nodeTypesController = new NodeTypesController();
@@ -299,6 +304,7 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/voice-tech/routing', createVoiceRoutingRouter(voiceRoutingController));
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));
   app.use('/api/voice-tech/providers/exotel', createExotelCallbackRouter(exotelCallbackController));
+  app.use('/api/activity-logs', createActivityLogRouter(activityLogController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
