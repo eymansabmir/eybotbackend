@@ -195,6 +195,8 @@ export function createApp(registry: IPluginRegistry): Application {
   const httpRequestPlugin = registry.get<IHttpRequestPlugin>(HTTP_REQUEST_PLUGIN);
 
   // ── Repositories ───────────────────────────────────────────────────────────
+  const dbPlugin = registry.get<IDatabasePlugin>(DATABASE_PLUGIN);
+  const prisma = dbPlugin.prisma;
   const flowRepo = registry.get<PrismaFlowRepository>(FLOW_REPOSITORY);
   const sessionRepo = registry.get<PrismaSessionRepository>(SESSION_REPOSITORY);
   const campaignRepo = registry.get<PrismaCampaignRepository>(CAMPAIGN_REPOSITORY);
@@ -208,7 +210,7 @@ export function createApp(registry: IPluginRegistry): Application {
   // ── Services ───────────────────────────────────────────────────────────────
   const flowService = new FlowService(flowRepo, activityLogService);
   const sessionService = new SessionService(sessionRepo, flowRepo, enginePlugin, whatsappPlugin, workerPlugin);
-  const campaignService = new CampaignService(campaignRepo, workerPlugin, activityLogService);
+  const campaignService = new CampaignService(campaignRepo, campaignRecipientRepo, workerPlugin, activityLogService);
   const ingestionService = new IngestionService(voiceEntityRepo, storagePlugin);
   const entityQueryService = new EntityQueryService(voiceEntityRepo);
   const voiceRoutingService = new VoiceRoutingService(voiceRoutingRepo, voiceProvidersPlugin, credentialService);
