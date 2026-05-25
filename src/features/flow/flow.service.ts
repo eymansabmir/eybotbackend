@@ -22,6 +22,8 @@ export interface IFlowService {
   getFlowTranslation(flowId: string, language: string): Promise<any>;
   updateFlowTranslation(flowId: string, language: string, translatedData: any): Promise<void>;
   importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity>;
+  getFlowRevisions(flowId: string): Promise<any[]>;
+  rollbackToRevision(flowId: string, revisionId: string): Promise<FlowEntity>;
 }
 
 export interface ConfigureFlowPayload {
@@ -71,6 +73,11 @@ export class FlowService implements IFlowService {
     }
 
     return flow;
+    const createdFlow = await this.flowRepo.create(entity);
+    if (createdFlow.status === 'published') {
+      await this.createFlowRevisionSnapshot(createdFlow.id!, createdFlow, true);
+    }
+    return createdFlow;
   }
 
   async importFlow(data: Partial<FlowProperties>, orgId: string): Promise<FlowEntity> {
@@ -137,6 +144,9 @@ export class FlowService implements IFlowService {
       });
     }
 
+    if (updated.status === 'published') {
+      await this.createFlowRevisionSnapshot(id, updated, true);
+    }
     return updated;
   }
 
@@ -158,6 +168,9 @@ export class FlowService implements IFlowService {
     }
 
     return published;
+    const updated = await this.flowRepo.update(id, { status: 'published', publishedAt: new Date() });
+    await this.createFlowRevisionSnapshot(id, updated, true);
+    return updated;
   }
 
   async configureFlow(id: string, payload: ConfigureFlowPayload, credentials?: unknown): Promise<FlowEntity> {
@@ -197,6 +210,7 @@ export class FlowService implements IFlowService {
       });
     }
 
+    await this.createFlowRevisionSnapshot(id, updated, true);
     return updated;
   }
 
@@ -509,5 +523,82 @@ export class FlowService implements IFlowService {
         }
       }
     }
+  }
+
+  private async createFlowRevisionSnapshot(flowId: string, flowEntity: FlowEntity, isPublished = false): Promise<void> {
+    const revisions = await this.flowRepo.getRevisions(flowId);
+    const latestRevision = revisions[0];
+
+    if (latestRevision) {
+      const isDeepEqual = (a: any, b: any): boolean => {
+        if (a === b) return true;
+        if (typeof a !== typeof b) return false;
+        if (a && b && typeof a === 'object' && typeof b === 'object') {
+          if (Array.isArray(a) !== Array.isArray(b)) return false;
+          const keysA = Object.keys(a);
+          const keysB = Object.keys(b);
+          if (keysA.length !== keysB.length) return false;
+          for (const key of keysA) {
+            if (!keysB.includes(key)) return false;
+            if (!isDeepEqual(a[key], b[key])) return false;
+          }
+          return true;
+        }
+        return false;
+      };
+
+      const isNameEqual = flowEntity.name === latestRevision.name;
+      const isDescEqual = (flowEntity.description ?? '') === (latestRevision.description ?? '');
+      const isTriggerTypeEqual = flowEntity.triggerType === latestRevision.triggerType;
+      const isTriggerConfigEqual = isDeepEqual(flowEntity.triggerConfig, latestRevision.triggerConfig);
+      const isNodesEqual = isDeepEqual(flowEntity.nodes, latestRevision.nodes);
+      const isEdgesEqual = isDeepEqual(flowEntity.edges, latestRevision.edges);
+      const isSettingsEqual = isDeepEqual(flowEntity.settings, latestRevision.settings);
+
+      if (isNameEqual && isDescEqual && isTriggerTypeEqual && isTriggerConfigEqual && isNodesEqual && isEdgesEqual && isSettingsEqual) {
+        logger.info({ flowId }, 'Flow layout is identical to the latest revision. Skipping duplicate version snapshot.');
+        return;
+      }
+    }
+
+    const currentVersion = await this.flowRepo.getLatestRevisionVersion(flowId);
+    const nextVersion = currentVersion + 1;
+    await this.flowRepo.createRevision(flowId, nextVersion, flowEntity, isPublished);
+    await this.flowRepo.pruneOldRevisions(flowId);
+  }
+
+  async getFlowRevisions(flowId: string): Promise<any[]> {
+    return this.flowRepo.getRevisions(flowId);
+  }
+
+  async rollbackToRevision(flowId: string, revisionId: string): Promise<FlowEntity> {
+    const revision = await this.flowRepo.findRevisionById(revisionId);
+    if (!revision || revision.flowId !== flowId) {
+      throw new ValidationError('Revision not found or does not belong to this flow');
+    }
+
+    const flow = await this.flowRepo.findByIdOrFail(flowId);
+    if (flow.status === 'published') {
+      throw new ValidationError('Cannot rollback a published flow. Archive it first.');
+    }
+
+    const updates: Partial<FlowProperties> = {
+      name: revision.name,
+      description: revision.description ?? undefined,
+      triggerType: revision.triggerType,
+      triggerConfig: revision.triggerConfig as any,
+      nodes: revision.nodes as any,
+      edges: revision.edges as any,
+      settings: revision.settings as any,
+    };
+
+    const updated = await this.flowRepo.update(flowId, updates);
+    this.denormalizeNodeUrls(updated);
+
+    // Rollback copies the target revision's layout back to the active draft flow,
+    // but does NOT immediately create a new revision snapshot in the version history.
+    // A new revision version is only created when this rolled back draft is published.
+
+    return updated;
   }
 }

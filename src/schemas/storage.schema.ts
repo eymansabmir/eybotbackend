@@ -1,16 +1,21 @@
 import { z } from "zod";
-import { ALLOWED_FOLDERS } from "../plugins/storage/storage.config";
+import { ALLOWED_PURPOSES } from "../plugins/storage/storage.config";
 
-/** Schema for POST /upload body (folder field from multipart form) */
+/** Schema for POST /upload body (purpose field from multipart form) */
 export const UploadBodySchema = z.object({
-    folder: z.enum(ALLOWED_FOLDERS).default("uploads"),
+    purpose: z.enum(ALLOWED_PURPOSES).default("general"),
+});
+
+/** Schema for GET /upload-policy query */
+export const UploadPolicyQuerySchema = z.object({
+    purpose: z.enum(ALLOWED_PURPOSES),
 });
 
 /** Schema for GET /presigned-url query */
 export const PresignedUrlQuerySchema = z.object({
     fileName: z.string().min(1, "fileName is required"),
     contentType: z.string().min(1, "contentType is required"),
-    folder: z.enum(ALLOWED_FOLDERS),
+    purpose: z.enum(ALLOWED_PURPOSES),
 });
 
 /** Schema for GET /signed-url query */
@@ -25,6 +30,11 @@ export const DeleteFileBodySchema = z.object({
 
 /** Schema for GET /resolve-url query */
 export const ResolveUrlQuerySchema = z.object({
-    filePath: z.string().min(1, "filePath is required"),
-    bucket: z.enum(["public", "private"]).default("public"),
+  filePath: z.string().min(1),
+  bucket: z.enum(['public', 'private']).default('public'),
+});
+
+export const ValidateMediaUrlSchema = z.object({
+  url: z.string().url(),
+  purpose: z.enum(['image', 'video', 'audio', 'document', 'sticker']),
 });
