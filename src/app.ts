@@ -113,6 +113,7 @@ import { createApiKeyManagementRouter } from './features/auth/api-key.route';
 import { ApiKeyController } from './features/auth/api-key.controller';
 
 import { errorHandler } from './middleware/error.middleware';
+import { csrfProtection, issueCsrfToken } from './middleware/csrf.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
 
 export function createApp(registry: IPluginRegistry): Application {
@@ -180,6 +181,9 @@ export function createApp(registry: IPluginRegistry): Application {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  app.get('/api/csrf-token', issueCsrfToken);
+  app.use(csrfProtection);
 
   // ── Resolve plugins ────────────────────────────────────────────────────────
   const enginePlugin = registry.get<IEnginePlugin>(ENGINE_PLUGIN);
