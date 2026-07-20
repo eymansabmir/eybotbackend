@@ -25,6 +25,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   EMAIL_OTP_DEV_FALLBACK: z.enum(['true', 'false']).optional(),
+  MAX_ACTIVE_USER_SESSIONS: z.string().optional(),
+  BLOCK_SUSPICIOUS_CONCURRENT_SESSIONS: z.enum(['true', 'false']).optional(),
 
   /** Google Cloud Storage */
   GCS_PROJECT_ID: z.string().optional(),

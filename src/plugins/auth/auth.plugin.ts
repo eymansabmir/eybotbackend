@@ -97,7 +97,16 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
         },
       },
       advanced: {
+        useSecureCookies: true,
         defaultCookieAttributes: sessionCookieAttributes,
+        cookies: {
+          session_token: {
+            attributes: sessionCookieAttributes,
+          },
+          session_data: {
+            attributes: sessionCookieAttributes,
+          },
+        },
       },
       cookies: {
         sessionToken: {
