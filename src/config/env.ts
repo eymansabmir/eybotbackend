@@ -16,6 +16,8 @@ const envSchema = z.object({
   BETTER_AUTH_URL: z.string().url().optional(),
   /** When true, browser calls auth via FRONTEND_URL (e.g. SWA /api proxy); session cookies are first-party. */
   AUTH_USE_FRONTEND_ORIGIN: z.enum(['true', 'false']).optional(),
+  /** Override session cookie SameSite: none | lax (use none for SWA + App Service). */
+  AUTH_COOKIE_SAME_SITE: z.enum(['none', 'lax']).optional(),
 
   /** Auth email OTP */
   SMTP_HOST: z.string().optional(),
