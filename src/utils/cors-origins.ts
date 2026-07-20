@@ -108,6 +108,14 @@ export function buildSessionCookieAttributes(): {
   httpOnly: true;
 } {
   const isProduction = env.NODE_ENV === 'production';
+
+  if (env.AUTH_COOKIE_SAME_SITE === 'none') {
+    return { sameSite: 'none', secure: true, httpOnly: true };
+  }
+  if (env.AUTH_COOKIE_SAME_SITE === 'lax') {
+    return { sameSite: 'lax', secure: isProduction, httpOnly: true };
+  }
+
   if (needsCrossSiteAuthCookies()) {
     return {
       sameSite: 'none',
@@ -115,6 +123,23 @@ export function buildSessionCookieAttributes(): {
       httpOnly: true,
     };
   }
+
+  // Production SPA on a different host than the API (typical Azure SWA + App Service)
+  if (isProduction && env.FRONTEND_URL?.trim()) {
+    try {
+      const frontendHost = new URL(env.FRONTEND_URL.trim()).hostname;
+      const apiHost =
+        env.BETTER_AUTH_URL?.trim()
+          ? new URL(env.BETTER_AUTH_URL.trim()).hostname
+          : process.env.WEBSITE_HOSTNAME?.trim();
+      if (apiHost && frontendHost !== apiHost) {
+        return { sameSite: 'none', secure: true, httpOnly: true };
+      }
+    } catch {
+      return { sameSite: 'none', secure: true, httpOnly: true };
+    }
+  }
+
   if (authUsesFrontendOrigin()) {
     return {
       sameSite: 'lax',
