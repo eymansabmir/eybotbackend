@@ -115,6 +115,7 @@ import { ApiKeyController } from './features/auth/api-key.controller';
 import { errorHandler } from './middleware/error.middleware';
 import { csrfProtection, issueCsrfToken } from './middleware/csrf.middleware';
 import { GoogleSheetsIntegrationService } from './plugins/google-sheets/google-sheets.service';
+import { corsOriginDelegate } from './utils/cors-origins';
 
 export function createApp(registry: IPluginRegistry): Application {
   const app = express();
@@ -122,13 +123,12 @@ export function createApp(registry: IPluginRegistry): Application {
   // Trust proxy for ngrok/LB support
   app.set('trust proxy', true);
   const WEBHOOK_URL = process.env.WEBHOOK_URL;
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
   const authPlugin = registry.get<IAuthPlugin>(AUTH_PLUGIN);
   const authHandler = toNodeHandler(authPlugin.auth as any);
 
   app.use(helmet());
   app.use(cors({
-    origin: FRONTEND_URL,
+    origin: corsOriginDelegate,
     credentials: true,
   }));
   app.use('/api/auth', authHandler);
