@@ -88,10 +88,6 @@ export function resolveBetterAuthClientBaseUrl(): string | undefined {
 
 /** True when the SPA and API are on different origins (Azure SWA + App Service, or Vite + local API). */
 export function needsCrossSiteAuthCookies(): boolean {
-  if (authUsesFrontendOrigin()) {
-    return false;
-  }
-
   const frontend = (env.FRONTEND_URL || 'http://localhost:5173').trim();
   try {
     const frontendOrigin = new URL(frontend).origin;
@@ -116,6 +112,13 @@ export function buildSessionCookieAttributes(): {
     return {
       sameSite: 'none',
       secure: true,
+      httpOnly: true,
+    };
+  }
+  if (authUsesFrontendOrigin()) {
+    return {
+      sameSite: 'lax',
+      secure: isProduction,
       httpOnly: true,
     };
   }
