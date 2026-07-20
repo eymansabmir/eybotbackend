@@ -14,6 +14,8 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().optional(),
   BETTER_AUTH_SECRET: z.string().min(1, 'BETTER_AUTH_SECRET is required'),
   BETTER_AUTH_URL: z.string().url().optional(),
+  /** When true, browser calls auth via FRONTEND_URL (e.g. SWA /api proxy); session cookies are first-party. */
+  AUTH_USE_FRONTEND_ORIGIN: z.enum(['true', 'false']).optional(),
 
   /** Auth email OTP */
   SMTP_HOST: z.string().optional(),
