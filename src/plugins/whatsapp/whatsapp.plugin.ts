@@ -1,10 +1,10 @@
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import type { IWhatsAppPlugin, IWhatsAppSender } from './whatsapp.interface';
 import { REDIS_PLUGIN, type IRedisPlugin } from '../redis';
-import { DirectWhatsAppSender, StubWhatsAppSender } from './sender';
 import { WhatsAppNormalizer } from './normalizer';
 import { WhatsAppDeduplicator } from './deduplicator';
-import { WhatsAppAPIService, type WhatsAppConfig } from './whatsapp-api.service';
+import { WhatsAppAPIService } from './whatsapp-api.service';
+import { createWhatsAppProvider } from './provider.factory';
 
 export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
   readonly name = 'whatsapp';
@@ -28,14 +28,18 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
 
   async getMediaUrl(mediaId: string): Promise<string> {
     if (!this._api) {
-      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+      throw new Error(
+        'WhatsAppPlugin: media download requires Meta provider (WHATSAPP_PROVIDER=meta with API credentials)',
+      );
     }
     return this._api.getMediaUrl(mediaId);
   }
 
   async downloadMedia(mediaUrl: string): Promise<Buffer> {
     if (!this._api) {
-      throw new Error('WhatsAppPlugin: API client unavailable (WHATSAPP_API_URL/WHATSAPP_API_TOKEN/WHATSAPP_PHONE_NUMBER_ID not configured)');
+      throw new Error(
+        'WhatsAppPlugin: media download requires Meta provider (WHATSAPP_PROVIDER=meta with API credentials)',
+      );
     }
     return this._api.downloadMedia(mediaUrl);
   }
@@ -45,19 +49,16 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
     this._normalizer = new WhatsAppNormalizer();
     this._deduplicator = new WhatsAppDeduplicator(redisPlugin.client);
 
-    const apiUrl = process.env.WHATSAPP_API_URL;
-    const apiToken = process.env.WHATSAPP_API_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const bundle = createWhatsAppProvider();
+    this._sender = bundle.sender;
+    this._api = bundle.metaApi;
 
-    if (apiUrl && apiToken && phoneNumberId) {
-      const config: WhatsAppConfig = { apiUrl, apiToken, phoneNumberId };
-      this._api = new WhatsAppAPIService(config);
-      this._sender = new DirectWhatsAppSender(this._api);
-      logger.info('WhatsAppPlugin: DirectWhatsAppSender ready');
+    if (bundle.provider === 'meta') {
+      logger.info('WhatsAppPlugin: Meta DirectWhatsAppSender ready');
+    } else if (bundle.provider === 'interakt') {
+      logger.info('WhatsAppPlugin: InteraktSender ready (Template + Sticker)');
     } else {
-      this._sender = new StubWhatsAppSender();
-      this._api = undefined;
-      logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — WhatsApp API not configured');
+      logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — no WhatsApp provider configured');
     }
   }
 
