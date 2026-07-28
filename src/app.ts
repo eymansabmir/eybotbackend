@@ -63,6 +63,7 @@ import { FlowController } from './features/flow/flow.controller';
 import { SessionController } from './features/session/session.controller';
 import { NodeTypesController } from './features/node-types/node-types.controller';
 import { WhatsAppWebhookController } from './features/whatsapp-webhook/whatsapp-webhook.controller';
+import { InteraktWebhookController } from './features/whatsapp-webhook/interakt-webhook.controller';
 import { StorageController } from './features/storage/storage.controller';
 import { CampaignController } from './features/campaign/campaign.controller';
 import { OpenAIController } from './features/integrations/openai/openai.controller';
@@ -89,6 +90,7 @@ import { createFlowRouter } from './features/flow/flow.route';
 import { createSessionRouter } from './features/session/session.route';
 import { createNodeTypesRouter } from './features/node-types/node-types.route';
 import { createWhatsAppWebhookRouter } from './features/whatsapp-webhook/whatsapp-webhook.route';
+import { createInteraktWebhookRouter } from './features/whatsapp-webhook/interakt-webhook.route';
 import { createStorageRouter } from './features/storage/storage.route';
 import { createCampaignRouter } from './features/campaign/campaign.route';
 import { WhatsAppController } from './features/whatsapp/whatsapp.controller';
@@ -133,7 +135,12 @@ export function createApp(registry: IPluginRegistry): Application {
   }));
   app.use('/api/auth', authHandler);
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   
   // Auth Session Middleware
@@ -245,6 +252,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const sessionController = new SessionController(sessionService);
   const nodeTypesController = new NodeTypesController();
   const webhookController = new WhatsAppWebhookController(whatsappPlugin, workerPlugin, credentialRepo);
+  const interaktWebhookController = new InteraktWebhookController(whatsappPlugin, workerPlugin, credentialRepo);
   const storageController = new StorageController(storagePlugin);
   const campaignController = new CampaignController(campaignService);
   const whatsappController = new WhatsAppController(whatsappPlugin);
@@ -316,6 +324,7 @@ export function createApp(registry: IPluginRegistry): Application {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
   }
   app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(webhookController));
+  app.use('/api/webhooks/interakt', createInteraktWebhookRouter(interaktWebhookController));
 
   app.use(errorHandler);
   return app;

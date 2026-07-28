@@ -13,10 +13,11 @@ export interface IWhatsAppSender {
 /**
  * WhatsAppPlugin is the central communication layer for the WhatsApp channel.
  * It handles:
- *  - Sending messages via Meta Cloud API (sender)
- *  - Parsing incoming webhook payloads (normalizer)
+ *  - Sending messages via the configured provider (Meta Cloud API or Interakt)
+ *  - Parsing incoming webhook payloads (normalizer — Meta shape today)
  *  - Deduplicating inbound messages (deduplicator)
  *
+ * Provider is selected with WHATSAPP_PROVIDER (meta | interakt | stub).
  * It does NOT own any workers or queues — those belong to WorkerPlugin.
  */
 export interface IWhatsAppPlugin {
