@@ -7,6 +7,7 @@ import { handleImportJob } from './consumers/import.consumer';
 import { handleDispatchJob } from './consumers/dispatcher.consumer';
 import { handleExecutionJob } from './consumers/execution.consumer';
 import { handleStatusUpdateJob } from './consumers/status.consumer';
+import { handleFlowResponseJob } from './consumers/flow-response.consumer';
 import { handleVoiceIngestJob } from './consumers/voice-ingest.consumer';
 import { handleVoiceCampaignJob } from './consumers/voice-campaign.consumer';
 import { handleRenudgeJob } from './consumers/renudge.consumer';
@@ -53,6 +54,7 @@ export class WorkerPlugin implements IPlugin, IWorkerPlugin {
 
       if (role === 'all' || role === 'inbound' || role === 'status') {
         await this.broker.consume('wa.status.q', data => handleStatusUpdateJob(data, registry), 10);
+        await this.broker.consume('wa.flow_response.q', data => handleFlowResponseJob(data, registry), 5);
       }
 
       if (role === 'all' || role === 'renudge') {

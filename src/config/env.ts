@@ -23,6 +23,15 @@ const envSchema = z.object({
   INTERAKT_WA_BUSINESS_NUMBER: z.string().optional(),
   /** Fallback org when webhook URL has no :orgId and no credential match */
   INTERAKT_ORG_ID: z.string().optional(),
+  /** Optional credential id stamped on inbound jobs (BSP env-scoped webhook) */
+  INTERAKT_CREDENTIAL_ID: z.string().optional(),
+  /**
+   * Hardcoded Interakt/BSP webhook path (exact mount), e.g.
+   * /api/v1/workspaces/ws_123456/whatsapp/cred_789012/webhook
+   */
+  BSP_WEBHOOK_PATH: z.string().optional(),
+  /** When true (default if BSP_WEBHOOK_PATH set), skip DB credential lookup and use env/path ids */
+  BSP_WEBHOOK_BYPASS_CREDENTIAL_LOOKUP: z.enum(['true', 'false']).optional(),
   FRONTEND_URL: z.string().url().optional(),
   BETTER_AUTH_SECRET: z.string().min(1, 'BETTER_AUTH_SECRET is required'),
   BETTER_AUTH_URL: z.string().url().optional(),

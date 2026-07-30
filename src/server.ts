@@ -40,9 +40,15 @@ import {
   RENUDGE_SERVICE,
   ACTIVITY_LOG_REPOSITORY,
   ACTIVITY_LOG_SERVICE,
+  WA_FLOW_SURVEY_REPOSITORY,
+  WA_FLOW_SURVEY_SERVICE,
 } from './features/repositories.interface';
 import { PrismaActivityLogRepository } from './features/activity-log/infrastructure/prisma-activity-log.repository';
 import { ActivityLogService } from './features/activity-log/application/activity-log.service';
+import {
+  PrismaWaFlowSurveyRepository,
+  WaFlowSurveyService,
+} from './features/wa-flow-survey';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
@@ -99,6 +105,8 @@ async function startServer(): Promise<void> {
   const recipientRepo = new PrismaCampaignRecipientRepository(dbPlugin.prisma);
   const activityLogRepo = new PrismaActivityLogRepository(dbPlugin.prisma);
   const activityLogService = new ActivityLogService(activityLogRepo);
+  const waFlowSurveyRepo = new PrismaWaFlowSurveyRepository(dbPlugin.prisma);
+  const waFlowSurveyService = new WaFlowSurveyService(waFlowSurveyRepo);
   const credentialRepo = new PrismaCredentialRepository(dbPlugin.prisma);
   const credentialService = new CredentialService(credentialRepo, undefined, activityLogService);
   const voiceEntityRepo = new PrismaEntityRepository(dbPlugin.prisma, redisPlugin.client);
@@ -116,6 +124,8 @@ async function startServer(): Promise<void> {
   registry.registerValue(RENUDGE_SERVICE, renudgeService);
   registry.registerValue(ACTIVITY_LOG_REPOSITORY, activityLogRepo);
   registry.registerValue(ACTIVITY_LOG_SERVICE, activityLogService);
+  registry.registerValue(WA_FLOW_SURVEY_REPOSITORY, waFlowSurveyRepo);
+  registry.registerValue(WA_FLOW_SURVEY_SERVICE, waFlowSurveyService);
 
   const inboundHandler = new SessionInboundHandler(
     flowRepo,

@@ -148,6 +148,97 @@ describe('InteraktNormalizer', () => {
       }),
     ).toMatchObject({ messageId: 'abc', status: 'read' });
   });
+
+  it('extracts message_api_flow_response nfm_reply answers', () => {
+    const responseJson = {
+      flow_token: 'unused',
+      'Choose one:': 'Open to our offering',
+      'Choose one:_(2)': 'Yes',
+      'Choose all that apply:': ['Cost Pressure', 'AI Adoption'],
+      'Choose all that apply:_(2)': ['Advisory', 'Operations'],
+    };
+    const extracted = normalizer.extractFlowResponse({
+      type: 'message_api_flow_response',
+      timestamp: '2026-07-29T19:27:33.963215',
+      data: {
+        customer: { channel_phone_number: '918448728057' },
+        message: {
+          id: '06a6a542-59b2-7de0-8000-e98d5d958bb1',
+          message_content_type: 'InteractiveFlowReply',
+          received_at_utc: '2026-07-29T19:27:33.285809',
+          message: JSON.stringify({
+            type: 'nfm_reply',
+            nfm_reply: {
+              response_json: JSON.stringify(responseJson),
+              body: 'Sent',
+              name: 'flow',
+            },
+          }),
+          message_context: { id: 'ae5009cb-bd36-41ea-ab77-b6df91cf77dc' },
+        },
+        source_template_message: {
+          template_name: 'partners_connect_flow_test',
+          callback_data: '90103e12-6279-43e4-bfb6-324f61e72157',
+        },
+        flow_id: 1595727721924365,
+      },
+    });
+
+    expect(extracted).toMatchObject({
+      providerMessageId: '06a6a542-59b2-7de0-8000-e98d5d958bb1',
+      waId: '918448728057',
+      interaktFlowId: '1595727721924365',
+      templateName: 'partners_connect_flow_test',
+      callbackData: '90103e12-6279-43e4-bfb6-324f61e72157',
+      flowToken: 'unused',
+    });
+    expect(extracted?.responseJson['Choose one:']).toBe('Open to our offering');
+
+    const answers = InteraktNormalizer.expandAnswers(extracted!.responseJson);
+    expect(answers.filter((a) => a.questionKey === 'Choose all that apply:')).toHaveLength(2);
+    expect(answers.some((a) => a.valueText === 'Cost Pressure')).toBe(true);
+    expect(answers.every((a) => a.questionKey !== 'flow_token')).toBe(true);
+  });
+
+  it('ignores InteractiveFlowReply on message_received without flow_id/template', () => {
+    // Early Interakt event — wait for message_api_flow_response instead of orphaning.
+    const responseJson = {
+      choose_one_yypRmY: 'option_1785127011941_e83glid1g',
+      Choose_all_that_apply_0: ['0_Buy_it_right_away'],
+      flow_token: 'unused',
+    };
+    const extracted = normalizer.extractFlowResponse({
+      type: 'message_received',
+      data: {
+        customer: { channel_phone_number: '918448728057' },
+        message: {
+          id: 'msg-flow-no-id',
+          message_content_type: 'InteractiveFlowReply',
+          message: JSON.stringify({
+            type: 'nfm_reply',
+            nfm_reply: { response_json: JSON.stringify(responseJson), body: 'Sent', name: 'flow' },
+          }),
+          message_context: { id: 'ctx-1' },
+        },
+      },
+    });
+
+    expect(extracted).toBeNull();
+  });
+
+  it('humanizes indexed Meta option values', () => {
+    const answers = InteraktNormalizer.expandAnswers({
+      Choose_all_that_apply_0: ['0_Buy_it_right_away', '1_Check_reviews_before_buying'],
+      flow_token: 'unused',
+    });
+    expect(answers.some((a) => a.valueText === 'Buy it right away')).toBe(true);
+  });
+
+  it('does not normalize flow responses as inbound chat', () => {
+    expect(
+      normalizer.normalize('org-1', { type: 'message_api_flow_response' }, 'biz'),
+    ).toBeNull();
+  });
 });
 
 describe('verifyInteraktSignature', () => {

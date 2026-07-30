@@ -93,6 +93,7 @@ export class RabbitMQBroker {
     await ch.assertExchange(EXCHANGES.CAMPAIGN_START, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.CAMPAIGN_DISPATCH, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.WA_STATUS, 'direct', { durable: true });
+    await ch.assertExchange(EXCHANGES.WA_FLOW_RESPONSE, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.VOICE_INGEST, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.VOICE_INGEST_RETRY, 'direct', { durable: true });
     await ch.assertExchange(EXCHANGES.VOICE_INGEST_DLQ, 'direct', { durable: true });
@@ -128,6 +129,10 @@ export class RabbitMQBroker {
     // WhatsApp Status Updates (delivered/read callbacks from Meta)
     await ch.assertQueue('wa.status.q', { durable: true });
     await ch.bindQueue('wa.status.q', EXCHANGES.WA_STATUS, '');
+
+    // WhatsApp Flow survey responses (Interakt message_api_flow_response)
+    await ch.assertQueue('wa.flow_response.q', { durable: true });
+    await ch.bindQueue('wa.flow_response.q', EXCHANGES.WA_FLOW_RESPONSE, '');
 
     // Bot Trigger Ingestion (API driven)
     await ch.assertQueue('bot.trigger.q', { durable: true });

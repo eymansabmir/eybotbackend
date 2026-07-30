@@ -6,8 +6,15 @@ export { WhatsAppNormalizer } from './normalizer';
 export { WhatsAppDeduplicator } from './deduplicator';
 export { createWhatsAppProvider } from './provider.factory';
 export type { WhatsAppProviderName, WhatsAppProviderBundle } from './provider.factory';
-export { InteraktAPIService, mapMetaComponentsToInterakt } from './interakt/interakt-api.service';
+export {
+  InteraktAPIService,
+  mapMetaComponentsToInterakt,
+  toInteraktLanguageCode,
+} from './interakt/interakt-api.service';
 export { InteraktSender } from './interakt/interakt.sender';
 export { InteraktNormalizer } from './interakt/interakt.normalizer';
-export type { InteraktWebhookPayload } from './interakt/interakt.normalizer';
+export type {
+  InteraktWebhookPayload,
+  InteraktFlowResponseExtract,
+} from './interakt/interakt.normalizer';
 export { verifyInteraktSignature } from './interakt/interakt-signature';
