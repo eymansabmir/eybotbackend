@@ -26,6 +26,23 @@ export interface StatusUpdateJob {
   timestamp: number;
 }
 
+/** Job pushed to wa.flow_response when Interakt delivers a Meta Flow (nfm_reply) submission. */
+export interface FlowResponseJob {
+  orgId: string;
+  credentialId?: string;
+  waBusinessNumber: string;
+  providerMessageId: string;
+  waId: string;
+  interaktFlowId: string;
+  templateName?: string;
+  callbackData?: string;
+  contextMessageId?: string;
+  flowToken?: string;
+  responseJson: Record<string, unknown>;
+  rawPayload: unknown;
+  submittedAt: number;
+}
+
 /** Stub for future campaign broadcast jobs. */
 export interface CampaignJob {
   campaignId: string;

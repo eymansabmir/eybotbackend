@@ -9,6 +9,7 @@ export const EXCHANGES = {
   CAMPAIGN_START: 'campaign.start',
   CAMPAIGN_DISPATCH: 'campaign.dispatch',
   WA_STATUS: 'wa.status',
+  WA_FLOW_RESPONSE: 'wa.flow_response',
   VOICE_INGEST: 'voice.ingest',
   VOICE_INGEST_RETRY: 'voice.ingest.retry',
   VOICE_INGEST_DLQ: 'voice.ingest.dlq',

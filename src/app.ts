@@ -30,6 +30,7 @@ import {
   VOICE_ENTITY_REPOSITORY,
   VOICE_ROUTING_REPOSITORY,
   ACTIVITY_LOG_SERVICE,
+  WA_FLOW_SURVEY_SERVICE,
 } from './features/repositories.interface';
 
 import { PrismaFlowRepository } from './features/flow/flow.repository';
@@ -57,6 +58,7 @@ import { AnthropicIntegrationService } from './plugins/anthropic/anthropic.servi
 import { DeepSeekIntegrationService } from './plugins/deepseek/deepseek.service';
 import { HttpRequestIntegrationService } from './plugins/http-request';
 import { ActivityLogService } from './features/activity-log/application/activity-log.service';
+import { WaFlowSurveyService, WaFlowSurveyController, createWaFlowSurveyRouter } from './features/wa-flow-survey';
 import { RequestContext } from './utils/request-context';
 
 import { FlowController } from './features/flow/flow.controller';
@@ -217,6 +219,7 @@ export function createApp(registry: IPluginRegistry): Application {
   const credentialRepo = registry.get<ICredentialRepository>(CREDENTIAL_REPOSITORY);
   const credentialService = registry.get<CredentialService>(CREDENTIAL_SERVICE);
   const activityLogService = registry.get<ActivityLogService>(ACTIVITY_LOG_SERVICE);
+  const waFlowSurveyService = registry.get<WaFlowSurveyService>(WA_FLOW_SURVEY_SERVICE);
 
   // ── Services ───────────────────────────────────────────────────────────────
   const flowService = new FlowService(flowRepo, activityLogService);
@@ -248,6 +251,7 @@ export function createApp(registry: IPluginRegistry): Application {
 
   // ── Controllers ────────────────────────────────────────────────────────────
   const activityLogController = new ActivityLogController(activityLogService);
+  const waFlowSurveyController = new WaFlowSurveyController(waFlowSurveyService);
   const flowController = new FlowController(flowService);
   const sessionController = new SessionController(sessionService);
   const nodeTypesController = new NodeTypesController();
@@ -319,12 +323,19 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/voice-tech/providers', createVoiceProviderRouter(voiceProviderController));
   app.use('/api/voice-tech/providers/exotel', createExotelCallbackRouter(exotelCallbackController));
   app.use('/api/activity-logs', createActivityLogRouter(activityLogController));
+  app.use('/api/wa-flow-surveys', createWaFlowSurveyRouter(waFlowSurveyController));
 
   if (WEBHOOK_URL) {
     app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
   }
   app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(webhookController));
   app.use('/api/webhooks/interakt', createInteraktWebhookRouter(interaktWebhookController));
+
+  const bspWebhookPath = process.env.BSP_WEBHOOK_PATH?.trim();
+  if (bspWebhookPath) {
+    app.post(bspWebhookPath, interaktWebhookController.handleBsp);
+    logger.info({ path: bspWebhookPath }, 'BSP Interakt webhook mounted (env-scoped)');
+  }
 
   app.use(errorHandler);
   return app;

@@ -101,6 +101,17 @@ function extractParameterValue(param: Record<string, unknown>): string | undefin
 }
 
 /**
+ * Interakt template language codes are short (e.g. `en`), while flow nodes often
+ * store Meta-style locales (`en_US`). Collapse `en_US` / `en-US` → `en`.
+ */
+export function toInteraktLanguageCode(languageCode: string): string {
+  const trimmed = languageCode?.trim();
+  if (!trimmed) return languageCode;
+  const primary = trimmed.split(/[_-]/)[0];
+  return primary || trimmed;
+}
+
+/**
  * Map a WhatsApp waId (E.164 digits, optional +) to Interakt recipient fields.
  * Uses fullPhoneNumber so we do not need to guess country vs national split.
  */
@@ -131,7 +142,7 @@ export class InteraktAPIService {
       type: 'Template',
       template: {
         name: template.name,
-        languageCode: template.languageCode,
+        languageCode: toInteraktLanguageCode(template.languageCode),
         ...(template.headerValues?.length ? { headerValues: template.headerValues } : {}),
         ...(template.bodyValues?.length ? { bodyValues: template.bodyValues } : {}),
         ...(template.buttonValues && Object.keys(template.buttonValues).length
