@@ -15,3 +15,6 @@ export const RENUDGE_SERVICE = 'RenudgeService' as const;
 
 export const ACTIVITY_LOG_REPOSITORY = 'ActivityLogRepository' as const;
 export const ACTIVITY_LOG_SERVICE = 'ActivityLogService' as const;
+
+export const WA_FLOW_SURVEY_REPOSITORY = 'WaFlowSurveyRepository' as const;
+export const WA_FLOW_SURVEY_SERVICE = 'WaFlowSurveyService' as const;

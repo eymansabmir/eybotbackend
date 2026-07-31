@@ -15,6 +15,16 @@ export interface InteraktTemplatePayload {
   fileName?: string;
 }
 
+export interface InteraktListSection {
+  title: string;
+  rows: Array<{ id: string; title: string; description?: string }>;
+}
+
+export interface InteraktReplyButton {
+  id: string;
+  title: string;
+}
+
 export interface InteraktSendResult {
   id: string;
   result: boolean;
@@ -23,8 +33,11 @@ export interface InteraktSendResult {
 
 /**
  * Converts Meta-style template `components` into Interakt template fields.
+<<<<<<< HEAD
+=======
  * Meta: { type: 'body'|'header'|'button', parameters: [...] }
  * Interakt: headerValues / bodyValues / buttonValues / fileName
+>>>>>>> d7ad7c736b71a885da4bec991fa33a3028176d19
  */
 export function mapMetaComponentsToInterakt(components?: unknown[]): {
   headerValues?: string[];
@@ -100,15 +113,36 @@ function extractParameterValue(param: Record<string, unknown>): string | undefin
   return undefined;
 }
 
+/** Interakt language codes are short (`en`); collapse `en_US` / `en-US` → `en`. */
+export function toInteraktLanguageCode(languageCode: string): string {
+  const trimmed = languageCode?.trim();
+  if (!trimmed) return languageCode;
+  const primary = trimmed.split(/[_-]/)[0];
+  return primary || trimmed;
+}
+
 /**
- * Map a WhatsApp waId (E.164 digits, optional +) to Interakt recipient fields.
- * Uses fullPhoneNumber so we do not need to guess country vs national split.
+ * Prefer countryCode + phoneNumber (matches Interakt docs examples).
+ * Falls back to fullPhoneNumber when national number cannot be split.
  */
-export function toInteraktRecipient(waId: string): { fullPhoneNumber: string } {
+export function toInteraktRecipient(
+  waId: string,
+  defaultCountryCode = '+91',
+): { countryCode: string; phoneNumber: string } | { fullPhoneNumber: string } {
   const digits = waId.replace(/[^\d]/g, '');
   if (!digits) {
     throw new WhatsAppAPIError(`Interakt: invalid phone number "${waId}"`);
   }
+
+  const ccDigits = defaultCountryCode.replace(/[^\d]/g, '');
+  const countryCode = defaultCountryCode.startsWith('+')
+    ? `+${ccDigits}`
+    : `+${ccDigits || defaultCountryCode}`;
+
+  if (ccDigits && digits.startsWith(ccDigits) && digits.length > ccDigits.length) {
+    return { countryCode, phoneNumber: digits.slice(ccDigits.length) };
+  }
+
   return { fullPhoneNumber: `+${digits}` };
 }
 
@@ -120,18 +154,114 @@ export class InteraktAPIService {
     this.messageUrl = `${base}/public/message/`;
   }
 
+  private recipient(waId: string) {
+    return toInteraktRecipient(waId, this.config.defaultCountryCode);
+  }
+
+  async sendText(waId: string, message: string, callbackData?: string): Promise<string> {
+    const body: Record<string, unknown> = {
+      ...this.recipient(waId),
+      type: 'Text',
+      data: { message: message || '...' },
+    };
+    if (callbackData) body['callbackData'] = callbackData;
+    return this.call(body, 'Text');
+  }
+
+  async sendInteractiveList(
+    waId: string,
+    bodyText: string,
+    buttonTitle: string,
+    sections: InteraktListSection[],
+    callbackData?: string,
+  ): Promise<string> {
+    const normalizedSections = this.normalizeListSections(sections);
+    const body: Record<string, unknown> = {
+      ...this.recipient(waId),
+      type: 'InteractiveList',
+      data: {
+        message: {
+          type: 'list',
+          body: { text: bodyText || 'Please select an option:' },
+          action: {
+            button: this.sliceGraphemes(buttonTitle || 'Options', 20),
+            sections: normalizedSections,
+          },
+        },
+      },
+    };
+    if (callbackData) body['callbackData'] = callbackData;
+    return this.call(body, 'InteractiveList');
+  }
+
+  async sendInteractiveReplyButtons(
+    waId: string,
+    bodyText: string,
+    buttons: InteraktReplyButton[],
+    footer?: string,
+    callbackData?: string,
+  ): Promise<string> {
+    const message: Record<string, unknown> = {
+      type: 'button',
+      body: { text: bodyText || 'Please choose an option:' },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({
+          type: 'reply',
+          reply: {
+            id: this.sliceGraphemes(String(b.id).trim() || 'option', 200),
+            title: this.sliceGraphemes(String(b.title).trim() || 'Option', 20),
+          },
+        })),
+      },
+    };
+    if (footer) {
+      message['footer'] = { text: this.sliceGraphemes(footer, 60) };
+    }
+
+    const body: Record<string, unknown> = {
+      ...this.recipient(waId),
+      type: 'InteractiveReplyButton',
+      data: { message },
+    };
+    if (callbackData) body['callbackData'] = callbackData;
+    return this.call(body, 'InteractiveReplyButton');
+  }
+
+  async sendMedia(
+    waId: string,
+    type: 'Image' | 'Video' | 'Audio' | 'Document',
+    mediaUrl: string,
+    caption?: string,
+    filename?: string,
+    callbackData?: string,
+  ): Promise<string> {
+    if (!mediaUrl.startsWith('http')) {
+      throw new WhatsAppAPIError(`Interakt ${type} send requires a public mediaUrl`);
+    }
+    const data: Record<string, unknown> = { mediaUrl };
+    if (caption) data['message'] = caption;
+    if (filename && type === 'Document') data['fileName'] = filename;
+
+    const body: Record<string, unknown> = {
+      ...this.recipient(waId),
+      type,
+      data,
+    };
+    if (callbackData) body['callbackData'] = callbackData;
+    return this.call(body, type);
+  }
+
   async sendTemplate(
     waId: string,
     template: InteraktTemplatePayload,
     callbackData?: string,
   ): Promise<string> {
-    const recipient = toInteraktRecipient(waId);
     const body: Record<string, unknown> = {
-      ...recipient,
+      ...this.recipient(waId),
       type: 'Template',
       template: {
         name: template.name,
-        languageCode: template.languageCode,
+        languageCode: toInteraktLanguageCode(template.languageCode),
         ...(template.headerValues?.length ? { headerValues: template.headerValues } : {}),
         ...(template.bodyValues?.length ? { bodyValues: template.bodyValues } : {}),
         ...(template.buttonValues && Object.keys(template.buttonValues).length
@@ -150,14 +280,65 @@ export class InteraktAPIService {
         'Interakt sticker send requires a public mediaUrl (Meta media ids are not supported)',
       );
     }
-    const recipient = toInteraktRecipient(waId);
     const body: Record<string, unknown> = {
-      ...recipient,
+      ...this.recipient(waId),
       type: 'Sticker',
       data: { mediaUrl },
     };
     if (callbackData) body['callbackData'] = callbackData;
     return this.call(body, 'Sticker');
+  }
+
+  private normalizeListSections(sections: InteraktListSection[]): InteraktListSection[] {
+    const MAX_ROWS_TOTAL = 10;
+    const normalized: InteraktListSection[] = [];
+    let usedRows = 0;
+
+    for (const section of sections ?? []) {
+      if (usedRows >= MAX_ROWS_TOTAL) break;
+
+      const rows = (section?.rows ?? [])
+        .filter((row) => typeof row?.id === 'string' && row.id.trim().length > 0)
+        .map((row) => ({
+          id: this.sliceGraphemes(String(row.id).trim(), 200),
+          title: this.sliceGraphemes(String(row.title ?? '').trim() || 'Option', 24),
+          description: row.description
+            ? this.sliceGraphemes(String(row.description).trim(), 72)
+            : undefined,
+        }));
+
+      const limitedRows = rows.slice(0, MAX_ROWS_TOTAL - usedRows);
+      if (limitedRows.length === 0) continue;
+
+      normalized.push({
+        title: this.sliceGraphemes(String(section?.title ?? '').trim() || 'Options', 24),
+        rows: limitedRows,
+      });
+      usedRows += limitedRows.length;
+    }
+
+    if (normalized.length === 0) {
+      return [{ title: 'Options', rows: [{ id: 'default_option', title: 'Continue' }] }];
+    }
+    return normalized;
+  }
+
+  private sliceGraphemes(text: string, limit: number): string {
+    if (!text) return '';
+    const trimmed = text.trim();
+    if (trimmed.length <= limit) return trimmed;
+
+    try {
+      const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+      let result = '';
+      for (const { segment } of segmenter.segment(trimmed)) {
+        if ((result + segment).length > limit) break;
+        result += segment;
+      }
+      return result;
+    } catch {
+      return trimmed.slice(0, limit);
+    }
   }
 
   private async call(payload: Record<string, unknown>, messageType: string): Promise<string> {

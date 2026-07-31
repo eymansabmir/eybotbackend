@@ -7,6 +7,7 @@ export type InteraktWebhookType =
   | 'message_api_read'
   | 'message_api_failed'
   | 'message_api_clicked'
+  | 'message_api_flow_response'
   | 'message_campaign_sent'
   | 'message_campaign_delivered'
   | 'message_campaign_read'
@@ -29,11 +30,13 @@ export interface InteraktWebhookMessage {
   delivered_at_utc?: string | null;
   seen_at_utc?: string | null;
   campaign_id?: string | null;
+  campaign_name?: string;
   is_template_message?: boolean;
+  raw_template?: unknown;
   message_content_type?: string;
   media_url?: string | null;
-  /** Plain text for customer messages, or stringified JSON for templates */
-  message?: string | null;
+  /** Plain text, or stringified / object nfm_reply for flow responses */
+  message?: string | Record<string, unknown> | null;
   meta_data?: {
     source?: string;
     source_data?: { callback_data?: string };
@@ -45,6 +48,11 @@ export interface InteraktWebhookMessage {
   click_timestamp?: string;
   channel_failure_reason?: string | null;
   channel_error_code?: string | null;
+  source_message_id?: string | null;
+  message_context?: {
+    from?: string;
+    id?: string;
+  };
 }
 
 export interface InteraktWebhookPayload {
@@ -61,6 +69,18 @@ export interface InteraktWebhookPayload {
       button_link?: string;
       click_timestamp?: string;
     };
+    channel_type?: string;
+    is_fallback_message?: boolean;
+    next_fallback_channel?: unknown;
+    source_template_message?: {
+      template_name?: string;
+      campaign_id?: string | null;
+      callback_data?: string;
+      status?: string;
+      is_campaign?: boolean;
+      message_type?: string;
+    };
+    flow_id?: number | string;
   };
 }
 
@@ -68,6 +88,19 @@ export interface InteraktStatusUpdate {
   messageId: string;
   status: 'delivered' | 'read';
   timestamp: number;
+}
+
+export interface InteraktFlowResponseExtract {
+  providerMessageId: string;
+  waId: string;
+  interaktFlowId: string;
+  templateName?: string;
+  callbackData?: string;
+  contextMessageId?: string;
+  flowToken?: string;
+  responseJson: Record<string, unknown>;
+  submittedAt: number;
+  rawPayload: InteraktWebhookPayload;
 }
 
 const MEDIA_CONTENT_TYPES = new Set([
@@ -89,6 +122,42 @@ const READ_TYPES = new Set([
   'message_campaign_read',
 ]);
 
+const FLOW_META_KEYS = new Set(['flow_token']);
+
+/** `Choose all that apply:_(2)` / `choose_all_that_apply_ZHJHcT` → readable label */
+function humanizeFlowFieldKey(key: string): string {
+  const withoutDup = key.replace(/_\(\d+\)$/, '');
+  // Already human: "Choose all that apply:"
+  if (/^[A-Z]/.test(withoutDup) && (withoutDup.includes(' ') || withoutDup.includes(':'))) {
+    return withoutDup;
+  }
+  // Meta ids: choose_one_yypRmY / Choose_all_that_apply_0
+  const parts = withoutDup.split('_').filter(Boolean);
+  // Drop trailing random Meta suffix (short mixed-case token) and trailing numeric index
+  while (parts.length > 1) {
+    const last = parts[parts.length - 1]!;
+    if (/^\d+$/.test(last) || (/^[A-Za-z0-9]+$/.test(last) && last.length >= 4 && /[A-Z]/.test(last) && /[a-z]/.test(last))) {
+      parts.pop();
+      continue;
+    }
+    break;
+  }
+  return parts.join(' ').replace(/\b\w/g, (c) => c.toUpperCase()).trim();
+}
+
+/**
+ * Meta Flow option values:
+ * - `0_Buy_it_right_away` → `Buy it right away`
+ * - `option_1785127011941_e83glid1g` → keep as-is (opaque id)
+ */
+function humanizeFlowOptionValue(raw: string): string {
+  const indexed = raw.match(/^\d+_(.+)$/);
+  if (indexed?.[1]) {
+    return indexed[1].replace(/_/g, ' ');
+  }
+  return raw;
+}
+
 /**
  * Maps Interakt webhook payloads into the system's NormalizedInboundMessage /
  * status shapes so the existing inbound pipeline is unchanged.
@@ -106,6 +175,10 @@ export class InteraktNormalizer {
     const type = payload.type;
     if (!type || !waBusinessNumber) return null;
 
+    // Flow responses are stored separately — never treat as bot inbound.
+    if (type === 'message_api_flow_response') return null;
+    if (this.isInteractiveFlowReply(payload)) return null;
+
     if (type === 'message_received') {
       return this.normalizeCustomerMessage(orgId, payload, waBusinessNumber);
     }
@@ -115,6 +188,140 @@ export class InteraktNormalizer {
     }
 
     return null;
+  }
+
+  /**
+   * Extracts Meta WhatsApp Flow (nfm_reply) survey submissions from Interakt.
+   * Handles both `message_api_flow_response` and `message_received` + InteractiveFlowReply.
+   */
+  extractFlowResponse(payload: InteraktWebhookPayload): InteraktFlowResponseExtract | null {
+    const message = payload.data?.message;
+    if (!message?.id) return null;
+
+    const isFlowEvent =
+      payload.type === 'message_api_flow_response' || this.isInteractiveFlowReply(payload);
+    if (!isFlowEvent) return null;
+
+    const waId = this.resolveWaId(payload.data?.customer);
+    if (!waId) return null;
+
+    const nfm = this.parseNfmReply(message.message);
+    if (!nfm) return null;
+
+    const responseJson = nfm.responseJson;
+    const flowToken =
+      typeof responseJson['flow_token'] === 'string' ? responseJson['flow_token'] : undefined;
+
+    // Interakt often sends message_received (InteractiveFlowReply) first WITHOUT flow_id /
+    // template, then message_api_flow_response WITH them. Ignoring the early event avoids
+    // orphan surveys (keyed by message_context.id) that steal the providerMessageId via dedupe
+    // and leave the real partners_connect survey without the new answers.
+    const interaktFlowIdRaw = payload.data?.flow_id;
+    const templateName = payload.data?.source_template_message?.template_name?.trim();
+    const hasFlowId = interaktFlowIdRaw !== undefined && interaktFlowIdRaw !== null;
+    if (!hasFlowId && !templateName) {
+      return null;
+    }
+
+    const interaktFlowId = hasFlowId ? String(interaktFlowIdRaw) : templateName!;
+
+    return {
+      providerMessageId: message.id,
+      waId,
+      interaktFlowId,
+      templateName,
+      callbackData: payload.data?.source_template_message?.callback_data,
+      contextMessageId: message.message_context?.id,
+      flowToken,
+      responseJson,
+      submittedAt: this.parseTimestamp(message.received_at_utc ?? payload.timestamp),
+      rawPayload: payload,
+    };
+  }
+
+  /** Flatten response_json into answer rows (arrays → one row per option). */
+  static expandAnswers(
+    responseJson: Record<string, unknown>,
+  ): Array<{ questionKey: string; questionLabel: string; valueText: string | null }> {
+    const answers: Array<{ questionKey: string; questionLabel: string; valueText: string | null }> =
+      [];
+
+    for (const [questionKey, raw] of Object.entries(responseJson)) {
+      if (FLOW_META_KEYS.has(questionKey)) continue;
+      const questionLabel = humanizeFlowFieldKey(questionKey);
+
+      if (Array.isArray(raw)) {
+        for (const item of raw) {
+          answers.push({
+            questionKey,
+            questionLabel,
+            valueText: item == null ? null : humanizeFlowOptionValue(String(item)),
+          });
+        }
+        continue;
+      }
+
+      if (raw == null) {
+        answers.push({ questionKey, questionLabel, valueText: null });
+        continue;
+      }
+
+      if (typeof raw === 'object') {
+        answers.push({ questionKey, questionLabel, valueText: JSON.stringify(raw) });
+        continue;
+      }
+
+      answers.push({
+        questionKey,
+        questionLabel,
+        valueText: humanizeFlowOptionValue(String(raw)),
+      });
+    }
+
+    return answers;
+  }
+
+  private isInteractiveFlowReply(payload: InteraktWebhookPayload): boolean {
+    const contentType = payload.data?.message?.message_content_type?.toLowerCase() ?? '';
+    if (contentType.includes('flow')) return true;
+    const msg = payload.data?.message?.message;
+    if (typeof msg === 'object' && msg && (msg as { type?: string }).type === 'nfm_reply') {
+      return true;
+    }
+    if (typeof msg === 'string' && msg.includes('nfm_reply')) return true;
+    return false;
+  }
+
+  private parseNfmReply(
+    messageField: InteraktWebhookMessage['message'],
+  ): { responseJson: Record<string, unknown> } | null {
+    let root: unknown = messageField;
+    if (typeof messageField === 'string') {
+      try {
+        root = JSON.parse(messageField);
+      } catch {
+        return null;
+      }
+    }
+    if (!root || typeof root !== 'object') return null;
+
+    const obj = root as { type?: string; nfm_reply?: { response_json?: unknown } };
+    const nfm = obj.nfm_reply;
+    if (!nfm) return null;
+
+    let responseJson: unknown = nfm.response_json;
+    if (typeof responseJson === 'string') {
+      try {
+        responseJson = JSON.parse(responseJson);
+      } catch {
+        return null;
+      }
+    }
+    if (!responseJson || typeof responseJson !== 'object' || Array.isArray(responseJson)) {
+      return null;
+    }
+
+    return { responseJson: responseJson as Record<string, unknown> };
   }
 
   extractStatus(payload: InteraktWebhookPayload): InteraktStatusUpdate | null {
@@ -262,7 +469,9 @@ export class InteraktNormalizer {
       if (typeof raw === 'string' && raw.trim() && !raw.trim().startsWith('[')) {
         return raw;
       }
-      return message.button_text ?? raw ?? contentType;
+      if (typeof message.button_text === 'string') return message.button_text;
+      if (typeof raw === 'string') return raw;
+      return contentType;
     }
 
     if (MEDIA_CONTENT_TYPES.has(mappedType)) {

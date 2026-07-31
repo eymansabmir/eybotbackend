@@ -4,6 +4,11 @@ import type { NormalizedInboundMessage } from '../whatsapp/normalizer';
 export interface InboundJob {
   orgId: string;
   credentialId?: string;
+  /**
+   * When true (BSP / Interakt env-scoped webhook), skip credential DB lookup
+   * and match published flows for the org without requiring a WHATSAPP_CLOUD credential row.
+   */
+  skipCredentialLookup?: boolean;
   message: NormalizedInboundMessage;
 }
 
@@ -24,6 +29,23 @@ export interface StatusUpdateJob {
   messageId: string;
   status: 'delivered' | 'read';
   timestamp: number;
+}
+
+/** Job pushed to wa.flow_response when Interakt delivers a Meta Flow (nfm_reply) submission. */
+export interface FlowResponseJob {
+  orgId: string;
+  credentialId?: string;
+  waBusinessNumber: string;
+  providerMessageId: string;
+  waId: string;
+  interaktFlowId: string;
+  templateName?: string;
+  callbackData?: string;
+  contextMessageId?: string;
+  flowToken?: string;
+  responseJson: Record<string, unknown>;
+  rawPayload: unknown;
+  submittedAt: number;
 }
 
 /** Stub for future campaign broadcast jobs. */

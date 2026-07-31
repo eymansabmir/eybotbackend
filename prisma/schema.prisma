@@ -577,3 +577,63 @@ model ActivityLog {
   @@index([createdAt])
   @@map("activity_logs")
 }
+
+/** Meta/Interakt WhatsApp Flow survey (grouped by org + Interakt flow_id). */
+model WaFlowSurvey {
+  id             String   @id @default(uuid())
+  orgId          String
+  interaktFlowId String
+  templateName   String?
+  title          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  submissions WaFlowSubmission[]
+
+  @@unique([orgId, interaktFlowId])
+  @@index([orgId])
+  @@map("wa_flow_surveys")
+}
+
+model WaFlowSubmission {
+  id                String   @id @default(uuid())
+  orgId             String
+  surveyId          String
+  survey            WaFlowSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  waId              String
+  waBusinessNumber  String
+  credentialId      String?
+  providerMessageId String
+  contextMessageId  String?
+  flowToken         String?
+  templateName      String?
+  interaktFlowId    String
+  callbackData      String?
+  rawPayload        Json
+  responseJson      Json
+  submittedAt       DateTime
+  createdAt         DateTime @default(now())
+
+  answers WaFlowAnswer[]
+
+  @@unique([orgId, providerMessageId])
+  @@index([orgId, surveyId, submittedAt])
+  @@index([orgId, waId])
+  @@map("wa_flow_submissions")
+}
+
+model WaFlowAnswer {
+  id            String   @id @default(uuid())
+  submissionId  String
+  submission    WaFlowSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  orgId         String
+  surveyId      String
+  questionKey   String
+  questionLabel String
+  valueText     String?
+  createdAt     DateTime @default(now())
+
+  @@index([orgId, surveyId, questionKey, valueText])
+  @@index([submissionId])
+  @@map("wa_flow_answers")
+}
