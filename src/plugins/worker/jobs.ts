@@ -4,6 +4,11 @@ import type { NormalizedInboundMessage } from '../whatsapp/normalizer';
 export interface InboundJob {
   orgId: string;
   credentialId?: string;
+  /**
+   * When true (BSP / Interakt env-scoped webhook), skip credential DB lookup
+   * and match published flows for the org without requiring a WHATSAPP_CLOUD credential row.
+   */
+  skipCredentialLookup?: boolean;
   message: NormalizedInboundMessage;
 }
 

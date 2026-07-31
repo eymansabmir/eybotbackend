@@ -21,6 +21,9 @@ RUN npm run build
 # Production Stage
 FROM node:20-alpine AS runner
 
+# Needed for Prisma engines on Alpine
+RUN apk add --no-cache libc6-compat openssl
+
 WORKDIR /app
 RUN chown node:node /app
 
@@ -40,6 +43,13 @@ COPY --chown=node:node --from=builder /app/node_modules/.prisma ./node_modules/.
 COPY --chown=node:node --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --chown=node:node --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
+# Run migrations on startup, then start the app
+COPY --chown=node:node docker-entrypoint.sh ./
+USER root
+RUN chmod +x docker-entrypoint.sh
+USER node
+
 EXPOSE 4000
 
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

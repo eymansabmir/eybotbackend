@@ -37,7 +37,7 @@ export class SessionInboundHandler implements IInboundHandler {
   ) {}
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
-    const { orgId, credentialId, message } = job;
+    const { orgId, credentialId, message, skipCredentialLookup } = job;
     console.log("STEP 3: SessionInboundHandler started processing job", { orgId, waId: message.waId, text: message.text });
     const { waId, waBusinessNumber, text } = message;
 
@@ -59,14 +59,27 @@ export class SessionInboundHandler implements IInboundHandler {
         customFields: {},
       };
 
-      const matchingCredential = await this.resolveMatchingCredential(orgId, waBusinessNumber, credentialId);
-      if (!matchingCredential || !matchingCredential.isActive || matchingCredential.revokedAt) {
-        logger.warn({ waId, waBusinessNumber }, 'SessionInboundHandler: no credential found matching this business number');
-        return [];
-      }
-
       const publishedFlows = await this.flowRepo.findByOrgId(orgId, 'published');
-      const { scopedFlows, unboundFlows } = this.partitionFlowsByCredential(publishedFlows, matchingCredential.id);
+      let scopedFlows: FlowEntity[];
+      let unboundFlows: FlowEntity[];
+
+      if (skipCredentialLookup) {
+        // BSP / Interakt env-scoped inbound: no WHATSAPP_CLOUD credential row required.
+        // Path credential ids are often placeholders — match all published flows for the org.
+        logger.info(
+          { orgId, credentialId, waBusinessNumber, publishedCount: publishedFlows.length },
+          'SessionInboundHandler: skipping credential lookup (BSP/env-scoped)',
+        );
+        scopedFlows = [];
+        unboundFlows = publishedFlows;
+      } else {
+        const matchingCredential = await this.resolveMatchingCredential(orgId, waBusinessNumber, credentialId);
+        if (!matchingCredential || !matchingCredential.isActive || matchingCredential.revokedAt) {
+          logger.warn({ waId, waBusinessNumber }, 'SessionInboundHandler: no credential found matching this business number');
+          return [];
+        }
+        ({ scopedFlows, unboundFlows } = this.partitionFlowsByCredential(publishedFlows, matchingCredential.id));
+      }
 
       const activeSession = await this.sessionRepo.findCurrentByWhatsApp(waBusinessNumber, waId);
       console.log("STEP 4: DB query finished - Active session check", { exists: !!activeSession, sessionId: activeSession?.id });
