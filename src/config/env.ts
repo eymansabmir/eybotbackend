@@ -7,10 +7,22 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().url().optional(),
   RABBITMQ_URL: z.string().url().optional(),
+  /** WhatsApp channel provider: meta (Cloud API), interakt, or stub */
+  WHATSAPP_PROVIDER: z.enum(['meta', 'interakt', 'stub']).optional(),
   WHATSAPP_API_URL: z.string().url().optional(),
   WHATSAPP_API_TOKEN: z.string().optional(),
   WHATSAPP_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+
+  /** Interakt WhatsApp BSP */
+  INTERAKT_API_URL: z.string().url().default('https://api.interakt.ai/v1'),
+  INTERAKT_API_KEY: z.string().optional(),
+  INTERAKT_DEFAULT_COUNTRY_CODE: z.string().default('+91'),
+  INTERAKT_WEBHOOK_SECRET: z.string().optional(),
+  /** Business WhatsApp number / phoneNumberId used for session + credential scoping on inbound */
+  INTERAKT_WA_BUSINESS_NUMBER: z.string().optional(),
+  /** Fallback org when webhook URL has no :orgId and no credential match */
+  INTERAKT_ORG_ID: z.string().optional(),
   FRONTEND_URL: z.string().url().optional(),
   BETTER_AUTH_SECRET: z.string().min(1, 'BETTER_AUTH_SECRET is required'),
   BETTER_AUTH_URL: z.string().url().optional(),
