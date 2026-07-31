@@ -114,7 +114,6 @@ export class InteraktSender implements IWhatsAppSender {
           callbackData,
         );
       }
-
       case NodeType.SEND_STICKER: {
         const sticker = (p['mediaId'] as string) || (p['url'] as string);
         if (!sticker) {

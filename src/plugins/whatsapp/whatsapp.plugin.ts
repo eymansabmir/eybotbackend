@@ -56,7 +56,9 @@ export class WhatsAppPlugin implements IPlugin, IWhatsAppPlugin {
     if (bundle.provider === 'meta') {
       logger.info('WhatsAppPlugin: Meta DirectWhatsAppSender ready');
     } else if (bundle.provider === 'interakt') {
-      logger.info('WhatsAppPlugin: InteraktSender ready (Template + Sticker)');
+      logger.info(
+        'WhatsAppPlugin: InteraktSender ready (Text, InteractiveList, Buttons, Media, Sticker, Template)',
+      );
     } else {
       logger.warn('WhatsAppPlugin: StubWhatsAppSender ready — no WhatsApp provider configured');
     }

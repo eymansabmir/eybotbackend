@@ -33,6 +33,11 @@ export interface InteraktSendResult {
 
 /**
  * Converts Meta-style template `components` into Interakt template fields.
+<<<<<<< HEAD
+=======
+ * Meta: { type: 'body'|'header'|'button', parameters: [...] }
+ * Interakt: headerValues / bodyValues / buttonValues / fileName
+>>>>>>> d7ad7c736b71a885da4bec991fa33a3028176d19
  */
 export function mapMetaComponentsToInterakt(components?: unknown[]): {
   headerValues?: string[];
