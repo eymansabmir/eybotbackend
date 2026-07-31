@@ -122,27 +122,17 @@ export function toInteraktLanguageCode(languageCode: string): string {
 }
 
 /**
- * Prefer countryCode + phoneNumber (matches Interakt docs examples).
- * Falls back to fullPhoneNumber when national number cannot be split.
+ * Map WhatsApp waId → Interakt recipient.
+ * Prefer fullPhoneNumber (matches Interakt Text docs); countryCode is unused for routing.
  */
 export function toInteraktRecipient(
   waId: string,
-  defaultCountryCode = '+91',
-): { countryCode: string; phoneNumber: string } | { fullPhoneNumber: string } {
+  _defaultCountryCode = '+91',
+): { fullPhoneNumber: string } {
   const digits = waId.replace(/[^\d]/g, '');
   if (!digits) {
     throw new WhatsAppAPIError(`Interakt: invalid phone number "${waId}"`);
   }
-
-  const ccDigits = defaultCountryCode.replace(/[^\d]/g, '');
-  const countryCode = defaultCountryCode.startsWith('+')
-    ? `+${ccDigits}`
-    : `+${ccDigits || defaultCountryCode}`;
-
-  if (ccDigits && digits.startsWith(ccDigits) && digits.length > ccDigits.length) {
-    return { countryCode, phoneNumber: digits.slice(ccDigits.length) };
-  }
-
   return { fullPhoneNumber: `+${digits}` };
 }
 
