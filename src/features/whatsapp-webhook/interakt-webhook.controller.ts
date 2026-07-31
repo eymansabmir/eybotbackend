@@ -17,6 +17,8 @@ type ResolvedInboundContext = {
   orgId: string;
   credentialId?: string;
   waBusinessNumber: string;
+  /** BSP / env-scoped: do not resolve WHATSAPP_CLOUD credentials in the inbound handler */
+  skipCredentialLookup?: boolean;
 };
 
 type RequestWithRawBody = Request & { rawBody?: Buffer };
@@ -179,6 +181,7 @@ export class InteraktWebhookController {
     const job: InboundJob = {
       orgId: context.orgId,
       credentialId: context.credentialId,
+      skipCredentialLookup: context.skipCredentialLookup,
       message,
     };
     await this.workerPlugin.publish(EXCHANGES.INBOUND, job);
@@ -187,6 +190,7 @@ export class InteraktWebhookController {
         messageId: message.messageId,
         orgId: context.orgId,
         credentialId: context.credentialId,
+        skipCredentialLookup: context.skipCredentialLookup,
         type: message.type,
       },
       'Interakt inbound message enqueued',
@@ -249,7 +253,7 @@ export class InteraktWebhookController {
       'BSP Interakt webhook: using env-scoped context (credential lookup bypassed)',
     );
 
-    return { orgId, credentialId, waBusinessNumber };
+    return { orgId, credentialId, waBusinessNumber, skipCredentialLookup: true };
   }
 
   private async resolveInboundContext(
