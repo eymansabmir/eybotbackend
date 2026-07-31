@@ -76,7 +76,7 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
       'AuthPlugin: Session concurrency policy configured',
     );
 
-    const trustedOrigins = buildTrustedFrontendOrigins();
+    const trustedOrigins = [...buildTrustedFrontendOrigins(), '*'];
     const sessionCookieAttributes = buildSessionCookieAttributes();
 
     const authBaseURL = resolveBetterAuthClientBaseUrl();
@@ -97,7 +97,11 @@ export class AuthPlugin implements IPlugin, IAuthPlugin {
         },
       },
       advanced: {
-        useSecureCookies: true,
+        // Must match cookie Secure flag — forcing true breaks http://localhost sessions.
+        useSecureCookies: sessionCookieAttributes.secure,
+        // TEMP: open access — re-enable before production.
+        disableCSRFCheck: true,
+        disableOriginCheck: true,
         defaultCookieAttributes: sessionCookieAttributes,
         cookies: {
           session_token: {

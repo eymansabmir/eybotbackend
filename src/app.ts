@@ -130,10 +130,17 @@ export function createApp(registry: IPluginRegistry): Application {
   const authPlugin = registry.get<IAuthPlugin>(AUTH_PLUGIN);
   const authHandler = toNodeHandler(authPlugin.auth as any);
 
-  app.use(helmet());
+  // TEMP: open CORS / relaxed helmet — re-tighten before production.
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false,
+    contentSecurityPolicy: false,
+  }));
   app.use(cors({
     origin: corsOriginDelegate,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
   }));
   app.use('/api/auth', authHandler);
 

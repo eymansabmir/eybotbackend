@@ -31,35 +31,15 @@ export function buildTrustedFrontendOrigins(): string[] {
   return [...origins];
 }
 
-/** Express/cors origin callback — strict in production, permissive for local dev hosts. */
+/**
+ * TEMP: allow any Origin (reflects request origin so credentials still work).
+ * Re-tighten before shipping to production.
+ */
 export function corsOriginDelegate(
-  origin: string | undefined,
+  _origin: string | undefined,
   callback: (err: Error | null, allow?: boolean) => void,
 ): void {
-  if (!origin) {
-    callback(null, true);
-    return;
-  }
-
-  const allowed = buildTrustedFrontendOrigins();
-  if (allowed.includes(origin)) {
-    callback(null, true);
-    return;
-  }
-
-  if (env.NODE_ENV !== 'production') {
-    try {
-      const { hostname } = new URL(origin);
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        callback(null, true);
-        return;
-      }
-    } catch {
-      // fall through
-    }
-  }
-
-  callback(new Error(`CORS blocked origin: ${origin}`));
+  callback(null, true);
 }
 
 export function authUsesFrontendOrigin(): boolean {
@@ -117,9 +97,19 @@ export function buildSessionCookieAttributes(): {
   }
 
   if (needsCrossSiteAuthCookies()) {
+    // Chrome treats http://localhost as a secure context; Secure+None is required
+    // for cross-port cookies (Vite :5173 → API :3000).
+    const frontendUrl = (env.FRONTEND_URL || 'http://localhost:5173').trim();
+    let isLocalHost = false;
+    try {
+      const host = new URL(frontendUrl).hostname;
+      isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    } catch {
+      isLocalHost = false;
+    }
     return {
       sameSite: 'none',
-      secure: true,
+      secure: isProduction || isLocalHost,
       httpOnly: true,
     };
   }
