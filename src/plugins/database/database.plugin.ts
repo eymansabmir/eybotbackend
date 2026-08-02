@@ -15,7 +15,6 @@ export class DatabasePlugin implements IPlugin, IDatabasePlugin {
 
   async initialize(_registry: IPluginRegistry): Promise<void> {
     const connectionString = process.env.DATABASE_URL;
-    logger.info({ connectionString }, 'DatabasePlugin: PostgreSQL connection string');
     if (!connectionString) {
       throw new Error('[DatabasePlugin] DATABASE_URL environment variable is required');
     }

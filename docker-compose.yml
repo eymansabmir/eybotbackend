@@ -10,6 +10,16 @@ services:
     volumes:
       - redis-data:/data
 
+  qdrant:
+    image: qdrant/qdrant:v1.13.2
+    container_name: flowbuilder-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
   backend:
     build: .
     container_name: flowbuilder-backend
@@ -18,10 +28,13 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
     ports:
       - "3000:3000"
     depends_on:
       - redis
+      - qdrant
 
 volumes:
   redis-data:
+  qdrant-data:

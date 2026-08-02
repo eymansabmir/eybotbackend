@@ -32,6 +32,15 @@ const envSchema = z.object({
   BSP_WEBHOOK_PATH: z.string().optional(),
   /** When true (default if BSP_WEBHOOK_PATH set), skip DB credential lookup and use env/path ids */
   BSP_WEBHOOK_BYPASS_CREDENTIAL_LOOKUP: z.enum(['true', 'false']).optional(),
+
+  /** EY Managed Services WhatsApp Assistant (validated lightly; full config in ms-assistant/config) */
+  MANAGED_SERVICES_ASSISTANT_ENABLED: z.enum(['true', 'false']).optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  GITHUB_TOKEN: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
+  QDRANT_URL: z.string().url().optional(),
+  QDRANT_COLLECTION: z.string().optional(),
+
   FRONTEND_URL: z.string().url().optional(),
   BETTER_AUTH_SECRET: z.string().min(1, 'BETTER_AUTH_SECRET is required'),
   BETTER_AUTH_URL: z.string().url().optional(),

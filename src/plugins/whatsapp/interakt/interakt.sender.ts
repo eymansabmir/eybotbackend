@@ -10,7 +10,7 @@ import {
 /**
  * Outbound sender for Interakt public message API.
  * Mirrors DirectWhatsAppSender node mapping for supported Interakt types:
- * Text, InteractiveList, InteractiveReplyButton, Image/Video/Audio/Document, Sticker, Template.
+ * Text, InteractiveList, InteractiveButton, Image/Video/Audio/Document, Sticker, Template.
  */
 export class InteraktSender implements IWhatsAppSender {
   constructor(private readonly api: InteraktAPIService) {}
