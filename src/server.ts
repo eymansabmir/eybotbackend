@@ -49,6 +49,15 @@ import {
   PrismaWaFlowSurveyRepository,
   WaFlowSurveyService,
 } from './features/wa-flow-survey';
+import {
+  loadMsAssistantConfig,
+  resolveMsAssistantApiKey,
+  MsAssistantService,
+  MS_ASSISTANT_SERVICE,
+} from './features/ms-assistant';
+import { RedisConversationMemory } from './features/ms-assistant/infrastructure/memory/redis-memory';
+import { QdrantKnowledgeStore } from './features/ms-assistant/infrastructure/rag/qdrant.store';
+import { createMsEmbeddings, createMsLlm } from './features/ms-assistant/providers';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
@@ -127,6 +136,39 @@ async function startServer(): Promise<void> {
   registry.registerValue(WA_FLOW_SURVEY_REPOSITORY, waFlowSurveyRepo);
   registry.registerValue(WA_FLOW_SURVEY_SERVICE, waFlowSurveyService);
 
+  const msAssistantConfig = loadMsAssistantConfig();
+  let msAssistant: MsAssistantService | undefined;
+  if (msAssistantConfig.enabled) {
+    if (!resolveMsAssistantApiKey(msAssistantConfig)) {
+      logger.warn(
+        'Managed Services Assistant enabled but GitHub PAT missing (OPENAI_API_KEY or GITHUB_TOKEN) — assistant disabled',
+      );
+    } else {
+      try {
+        msAssistant = new MsAssistantService(
+          msAssistantConfig,
+          new RedisConversationMemory(redisPlugin.client, msAssistantConfig),
+          createMsEmbeddings(msAssistantConfig),
+          new QdrantKnowledgeStore(msAssistantConfig),
+          createMsLlm(msAssistantConfig),
+        );
+        registry.registerValue(MS_ASSISTANT_SERVICE, msAssistant);
+        logger.info(
+          {
+            collection: msAssistantConfig.QDRANT_COLLECTION,
+            qdrant: msAssistantConfig.QDRANT_URL,
+            llm: msAssistantConfig.MS_ASSISTANT_LLM_PROVIDER,
+            embeddings: msAssistantConfig.MS_ASSISTANT_EMBED_PROVIDER,
+            model: msAssistantConfig.MS_ASSISTANT_CHAT_MODEL,
+          },
+          'Managed Services Assistant ready (exclusive inbound mode)',
+        );
+      } catch (err) {
+        logger.error({ err }, 'Managed Services Assistant failed to initialize');
+      }
+    }
+  }
+
   const inboundHandler = new SessionInboundHandler(
     flowRepo,
     sessionRepo,
@@ -136,6 +178,7 @@ async function startServer(): Promise<void> {
     whatsappPlugin,
     credentialRepo,
     renudgeService,
+    msAssistant,
   );
   registry.registerValue(INBOUND_HANDLER, inboundHandler);
 

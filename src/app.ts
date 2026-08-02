@@ -332,17 +332,36 @@ export function createApp(registry: IPluginRegistry): Application {
   app.use('/api/activity-logs', createActivityLogRouter(activityLogController));
   app.use('/api/wa-flow-surveys', createWaFlowSurveyRouter(waFlowSurveyController));
 
-  if (WEBHOOK_URL) {
-    app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
-  }
-  app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(webhookController));
-  app.use('/api/webhooks/interakt', createInteraktWebhookRouter(interaktWebhookController));
-
+  // Mount Interakt BSP BEFORE Meta WEBHOOK_URL. If both point at the same path
+  // (common when Interakt dashboard reuses the workspace webhook URL), Express
+  // would otherwise deliver Interakt JSON to WhatsAppWebhookController → STEP 1.1.
   const bspWebhookPath = process.env.BSP_WEBHOOK_PATH?.trim();
   if (bspWebhookPath) {
     app.post(bspWebhookPath, interaktWebhookController.handleBsp);
     logger.info({ path: bspWebhookPath }, 'BSP Interakt webhook mounted (env-scoped)');
   }
+
+  const metaWebhookMount = WEBHOOK_URL
+    ? `/api/v1/${WEBHOOK_URL}`.replace(/\/+$/, '')
+    : '';
+  const bspNormalized = bspWebhookPath?.replace(/\/+$/, '') ?? '';
+  const metaOverlapsBsp =
+    Boolean(bspNormalized) &&
+    (metaWebhookMount === bspNormalized ||
+      `${metaWebhookMount}/webhook` === bspNormalized ||
+      metaWebhookMount === bspNormalized.replace(/\/webhook$/i, ''));
+
+  if (WEBHOOK_URL && !metaOverlapsBsp) {
+    app.use(`/api/v1/${WEBHOOK_URL}`, createWhatsAppWebhookRouter(webhookController));
+  } else if (WEBHOOK_URL && metaOverlapsBsp) {
+    logger.warn(
+      { metaWebhookMount, bspWebhookPath },
+      'WEBHOOK_URL overlaps BSP_WEBHOOK_PATH — Meta mount skipped; Interakt owns that path',
+    );
+  }
+
+  app.use('/api/webhooks/whatsapp', createWhatsAppWebhookRouter(webhookController));
+  app.use('/api/webhooks/interakt', createInteraktWebhookRouter(interaktWebhookController));
 
   app.use(errorHandler);
   return app;

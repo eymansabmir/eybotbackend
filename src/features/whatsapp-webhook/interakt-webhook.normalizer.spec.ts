@@ -66,6 +66,58 @@ describe('InteraktNormalizer', () => {
     });
   });
 
+  it('parses InteractiveButtonReply JSON into button id + title', () => {
+    const result = normalizer.normalize(
+      orgId,
+      {
+        type: 'message_received',
+        data: {
+          customer: { channel_phone_number: '918448728057' },
+          message: {
+            id: 'msg-btn-reply',
+            message_content_type: 'InteractiveButtonReply',
+            message:
+              '{"type": "button_reply", "button_reply": {"id": "ms_offerings", "title": "Browse Topics"}}',
+          },
+        },
+      },
+      business,
+    );
+
+    expect(result).toMatchObject({
+      type: 'interactive',
+      text: 'Browse Topics',
+      interactiveOptionId: 'ms_offerings',
+      waId: '918448728057',
+    });
+  });
+
+  it('parses InteractiveListReply JSON into row id + title', () => {
+    const result = normalizer.normalize(
+      orgId,
+      {
+        type: 'message_received',
+        data: {
+          customer: { channel_phone_number: '918448728057' },
+          message: {
+            id: 'msg-list-reply',
+            message_content_type: 'InteractiveListReply',
+            message:
+              '{"type": "list_reply", "list_reply": {"id": "ms_offer_cloud", "title": "Cloud managed"}}',
+          },
+        },
+      },
+      business,
+    );
+
+    expect(result).toMatchObject({
+      type: 'interactive',
+      text: 'Cloud managed',
+      interactiveOptionId: 'ms_offer_cloud',
+      waId: '918448728057',
+    });
+  });
+
   it('normalizes media message with media_url', () => {
     const result = normalizer.normalize(
       orgId,

@@ -466,11 +466,16 @@ export class InteraktNormalizer {
     const raw = message.message;
 
     if (mappedType === 'interactive' || mappedType === 'button') {
-      if (typeof raw === 'string' && raw.trim() && !raw.trim().startsWith('[')) {
+      // Interakt InteractiveButtonReply / InteractiveListReply often ships JSON:
+      // {"type":"button_reply","button_reply":{"id":"ms_offerings","title":"Browse Topics"}}
+      const parsed = this.parseInteractiveReply(raw);
+      if (parsed) return parsed.title || parsed.id;
+
+      if (typeof raw === 'string' && raw.trim() && !raw.trim().startsWith('[') && !raw.trim().startsWith('{')) {
         return raw;
       }
       if (typeof message.button_text === 'string') return message.button_text;
-      if (typeof raw === 'string') return raw;
+      if (typeof raw === 'string' && !raw.trim().startsWith('{')) return raw;
       return contentType;
     }
 
@@ -502,11 +507,54 @@ export class InteraktNormalizer {
     if (!lower.includes('list') && !lower.includes('button') && !lower.includes('quick')) {
       return undefined;
     }
+
+    const parsed = this.parseInteractiveReply(message.message);
+    if (parsed?.id) return parsed.id;
+
     const raw = message.message;
-    if (typeof raw === 'string' && raw.trim() && !raw.trim().startsWith('[')) {
+    if (
+      typeof raw === 'string' &&
+      raw.trim() &&
+      !raw.trim().startsWith('[') &&
+      !raw.trim().startsWith('{')
+    ) {
       return raw.trim();
     }
     return message.button_text;
+  }
+
+  /**
+   * Parse Meta-style interactive reply payloads that Interakt embeds in `message`
+   * as a JSON string (or object) for InteractiveButtonReply / InteractiveListReply.
+   */
+  private parseInteractiveReply(
+    messageField: InteraktWebhookMessage['message'],
+  ): { id: string; title: string } | null {
+    let root: unknown = messageField;
+    if (typeof messageField === 'string') {
+      const trimmed = messageField.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+      try {
+        root = JSON.parse(trimmed);
+      } catch {
+        return null;
+      }
+    }
+    if (!root || typeof root !== 'object') return null;
+
+    const obj = root as {
+      type?: string;
+      button_reply?: { id?: unknown; title?: unknown };
+      list_reply?: { id?: unknown; title?: unknown };
+    };
+
+    const reply = obj.button_reply ?? obj.list_reply;
+    if (!reply) return null;
+
+    const id = typeof reply.id === 'string' ? reply.id.trim() : '';
+    const title = typeof reply.title === 'string' ? reply.title.trim() : '';
+    if (!id && !title) return null;
+    return { id: id || title, title: title || id };
   }
 
   private extractMedia(

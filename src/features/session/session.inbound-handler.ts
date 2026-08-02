@@ -14,6 +14,7 @@ import { selectFlowByTrigger } from './trigger-selector';
 import { syncFlowTranslations } from '../../plugins/i18n/syncTranslations';
 import { simplifyTriggerText } from './trigger-normalization';
 import { IRenudgeService } from '../renudge/renudge.service';
+import type { MsAssistantService } from '../ms-assistant';
 
 type RedisLockClient = {
   set(key: string, value: string, ex: 'EX', ttl: number, nx: 'NX'): Promise<string | null>;
@@ -34,6 +35,7 @@ export class SessionInboundHandler implements IInboundHandler {
     private readonly whatsappPlugin: IWhatsAppPlugin,
     private readonly credentialRepo: ICredentialRepository,
     private readonly renudgeService: IRenudgeService,
+    private readonly msAssistant?: MsAssistantService,
   ) {}
 
   async process(job: InboundJob): Promise<OutboundJob[]> {
@@ -53,6 +55,15 @@ export class SessionInboundHandler implements IInboundHandler {
     logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock acquired');
 
     try {
+      // Exclusive Managed Services Assistant mode (demo): bypass flow engine.
+      if (this.msAssistant?.enabled) {
+        logger.info(
+          { waId, orgId, waBusinessNumber },
+          'SessionInboundHandler: routing to Managed Services Assistant',
+        );
+        return await this.msAssistant.handleInbound(job);
+      }
+
       const contact: ContactInfo = {
         waId,
         name: message.contactName ?? waId,

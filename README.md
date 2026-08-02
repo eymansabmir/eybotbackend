@@ -124,3 +124,47 @@ PORT=3000
 MONGODB_URI=mongodb://localhost:27017/flowbuilder
 REDIS_URL=redis://localhost:6379
 ```
+
+## EY Managed Services WhatsApp Assistant
+
+Internal RAG assistant for EY partners over WhatsApp (Interakt). When enabled, chat inbound bypasses the flow engine; WhatsApp Flow survey webhooks still use `WA_FLOW_RESPONSE`.
+
+### Quick start
+
+```bash
+# Redis + Qdrant (RabbitMQ must already be reachable via RABBITMQ_URL)
+docker compose up -d redis qdrant
+
+# .env essentials (EY Copilot-only default)
+# MANAGED_SERVICES_ASSISTANT_ENABLED=true
+# OPENAI_API_KEY=<fine-grained GitHub PAT with Copilot Requests>
+# MS_ASSISTANT_LLM_PROVIDER=copilot
+# MS_ASSISTANT_EMBED_PROVIDER=local
+# MS_ASSISTANT_CHAT_MODEL=gpt-4.1
+# QDRANT_URL=http://localhost:6333
+# REDIS_URL=redis://localhost:6379
+# WHATSAPP_PROVIDER=interakt
+
+# Ingest uses local Xenova embeddings (downloads model once; no OpenAI)
+npm run ingest:ms-kb
+
+npm run dev
+```
+
+Point Interakt Developer Settings webhook at your existing BSP path (e.g. `BSP_WEBHOOK_PATH`).
+
+**EY workaround:** chat goes through the official `@github/copilot-sdk` (your Copilot subscription + PAT). Embeddings run on-device via `@xenova/transformers` so RAG never calls OpenAI. GitHub Models (`models.github.ai`) is retired and is not used.
+
+### Demo script
+
+1. Send `Hi` → welcome + buttons (*Our Services*, *Ask a Question*, *Explore Offerings*)
+2. Tap *Ask a Question* → type a question
+3. Examples: “Do we have SAP offerings?”, “What differentiates our cloud managed services?”
+
+### Layout
+
+```
+src/features/ms-assistant/   # greeting, RAG, Redis memory, LLM, formatter
+knowledge/managed-services/  # seed docs
+scripts/ingest-ms-knowledge.ts
+```

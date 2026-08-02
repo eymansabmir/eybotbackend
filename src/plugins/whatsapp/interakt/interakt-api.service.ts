@@ -208,13 +208,14 @@ export class InteraktAPIService {
       message['footer'] = { text: this.sliceGraphemes(footer, 60) };
     }
 
+    // Interakt public API expects "InteractiveButton" (not InteractiveReplyButton).
     const body: Record<string, unknown> = {
       ...this.recipient(waId),
-      type: 'InteractiveReplyButton',
+      type: 'InteractiveButton',
       data: { message },
     };
     if (callbackData) body['callbackData'] = callbackData;
-    return this.call(body, 'InteractiveReplyButton');
+    return this.call(body, 'InteractiveButton');
   }
 
   async sendMedia(
