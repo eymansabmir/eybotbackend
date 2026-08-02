@@ -6,7 +6,6 @@ import type { RetrievedChunk } from '../rag/qdrant.store';
 import { createMsOpenAIClient } from './openai-client';
 import {
   buildAnswerUserContent,
-  insufficientKnowledgeResponse,
   MS_ASSISTANT_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
@@ -25,7 +24,6 @@ export class MsAssistantLlm implements MsAssistantChat {
     memory: ConversationMemory;
   }): Promise<BotResponse> {
     const userContent = buildAnswerUserContent(params);
-    if (!userContent) return insufficientKnowledgeResponse();
 
     const completion = await this.createChatCompletion({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,

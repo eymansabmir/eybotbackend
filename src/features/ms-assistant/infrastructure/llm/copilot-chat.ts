@@ -6,7 +6,6 @@ import type { RetrievedChunk } from '../rag/qdrant.store';
 import type { BotResponse } from '../../domain/bot-response';
 import {
   buildAnswerUserContent,
-  insufficientKnowledgeResponse,
   MS_ASSISTANT_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
@@ -41,7 +40,6 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     memory: ConversationMemory;
   }): Promise<BotResponse> {
     const userContent = buildAnswerUserContent(params);
-    if (!userContent) return insufficientKnowledgeResponse();
 
     await this.started;
     const session = await this.client.createSession({
