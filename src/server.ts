@@ -52,11 +52,11 @@ import {
 import {
   loadMsAssistantConfig,
   resolveMsAssistantApiKey,
+  createMsKnowledgeStore,
   MsAssistantService,
   MS_ASSISTANT_SERVICE,
 } from './features/ms-assistant';
 import { RedisConversationMemory } from './features/ms-assistant/infrastructure/memory/redis-memory';
-import { QdrantKnowledgeStore } from './features/ms-assistant/infrastructure/rag/qdrant.store';
 import { createMsEmbeddings, createMsLlm } from './features/ms-assistant/providers';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
@@ -145,18 +145,20 @@ async function startServer(): Promise<void> {
       );
     } else {
       try {
+        const knowledgeStore = createMsKnowledgeStore(msAssistantConfig, dbPlugin.prisma);
         msAssistant = new MsAssistantService(
           msAssistantConfig,
           new RedisConversationMemory(redisPlugin.client, msAssistantConfig),
           createMsEmbeddings(msAssistantConfig),
-          new QdrantKnowledgeStore(msAssistantConfig),
+          knowledgeStore,
           createMsLlm(msAssistantConfig),
         );
         registry.registerValue(MS_ASSISTANT_SERVICE, msAssistant);
         logger.info(
           {
-            collection: msAssistantConfig.QDRANT_COLLECTION,
+            vectorStore: msAssistantConfig.MS_ASSISTANT_VECTOR_STORE,
             qdrant: msAssistantConfig.QDRANT_URL,
+            collection: msAssistantConfig.QDRANT_COLLECTION,
             llm: msAssistantConfig.MS_ASSISTANT_LLM_PROVIDER,
             embeddings: msAssistantConfig.MS_ASSISTANT_EMBED_PROVIDER,
             model: msAssistantConfig.MS_ASSISTANT_CHAT_MODEL,

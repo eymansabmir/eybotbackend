@@ -17,7 +17,12 @@ const msAssistantEnvSchema = z.object({
   MS_ASSISTANT_CHAT_MODEL: z.string().default('gpt-4.1'),
   MS_ASSISTANT_EMBED_MODEL: z.string().default('text-embedding-3-small'),
   MS_ASSISTANT_LOCAL_EMBED_MODEL: z.string().default('Xenova/all-MiniLM-L6-v2'),
-  QDRANT_URL: z.string().url().default('http://localhost:6333'),
+  /**
+   * Vector store for RAG. Default pgvector uses the app DATABASE_URL.
+   * qdrant kept for local rollback only.
+   */
+  MS_ASSISTANT_VECTOR_STORE: z.enum(['pgvector', 'qdrant']).default('pgvector'),
+  QDRANT_URL: z.string().url().optional(),
   /** Use a distinct name when switching embed dims (local=384 vs openai=1536). */
   QDRANT_COLLECTION: z.string().default('ey_managed_services_local'),
   MS_ASSISTANT_TOP_K: z.coerce.number().int().min(1).max(20).default(5),

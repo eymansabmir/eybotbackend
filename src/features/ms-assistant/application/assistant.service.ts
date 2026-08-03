@@ -6,7 +6,7 @@ import { botResponseToOutboundJobs } from '../infrastructure/formatter/to-outbou
 import type { MsAssistantChat } from '../infrastructure/llm/shared';
 import { RedisConversationMemory } from '../infrastructure/memory/redis-memory';
 import type { MsEmbeddings } from '../infrastructure/rag/embeddings.types';
-import { QdrantKnowledgeStore } from '../infrastructure/rag/qdrant.store';
+import type { KnowledgeStore } from '../infrastructure/rag/knowledge-store';
 import {
   MS_BUTTON_IDS,
   buildAnswerWithNav,
@@ -29,7 +29,7 @@ export class MsAssistantService {
     private readonly config: MsAssistantConfig,
     private readonly memory: RedisConversationMemory,
     private readonly embeddings: MsEmbeddings,
-    private readonly store: QdrantKnowledgeStore,
+    private readonly store: KnowledgeStore,
     private readonly llm: MsAssistantChat,
   ) {}
 

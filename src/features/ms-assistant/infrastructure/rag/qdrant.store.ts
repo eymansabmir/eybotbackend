@@ -2,27 +2,24 @@ import crypto from 'crypto';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import type { MsAssistantConfig } from '../../config';
 import type { KnowledgeChunk } from './chunker';
+import type { KnowledgeStore, RetrievedChunk } from './knowledge-store';
 
-export interface RetrievedChunk {
-  text: string;
-  source: string;
-  title: string;
-  score: number;
-}
+export type { RetrievedChunk } from './knowledge-store';
 
-export class QdrantKnowledgeStore {
+export class QdrantKnowledgeStore implements KnowledgeStore {
   private readonly client: QdrantClient;
   private readonly collection: string;
 
   constructor(config: MsAssistantConfig) {
+    const url = config.QDRANT_URL ?? 'http://localhost:6333';
     this.client = new QdrantClient({
-      url: config.QDRANT_URL,
+      url,
       checkCompatibility: false,
     });
     this.collection = config.QDRANT_COLLECTION;
   }
 
-  async ensureCollection(vectorSize: number): Promise<void> {
+  async ensureReady(vectorSize: number): Promise<void> {
     const exists = await this.client.collectionExists(this.collection);
     if (exists.exists) return;
 
@@ -35,7 +32,7 @@ export class QdrantKnowledgeStore {
   }
 
   /** Drop and recreate collection (use on full KB re-ingest to remove stale chunks). */
-  async recreateCollection(vectorSize: number): Promise<void> {
+  async recreate(vectorSize: number): Promise<void> {
     const exists = await this.client.collectionExists(this.collection);
     if (exists.exists) {
       await this.client.deleteCollection(this.collection);
@@ -54,7 +51,7 @@ export class QdrantKnowledgeStore {
       throw new Error('[MsAssistant] chunk/vector length mismatch');
     }
 
-    await this.ensureCollection(vectors[0]!.length);
+    await this.ensureReady(vectors[0]!.length);
 
     await this.client.upsert(this.collection, {
       wait: true,
