@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { BotResponseSchema, type BotResponse } from '../../domain/bot-response';
 import type { ConversationMemory } from '../memory/redis-memory';
-import type { RetrievedChunk } from '../rag/qdrant.store';
+import type { RetrievedChunk } from '../rag/knowledge-store';
 import { formatWhatsAppText } from '../formatter/whatsapp-format';
 
 export const MS_ASSISTANT_SYSTEM_PROMPT = `You are the EY Managed Services Qualification Assistant for EY partners on WhatsApp.

@@ -10,15 +10,33 @@ services:
     volumes:
       - redis-data:/data
 
+  # Optional: only needed when MS_ASSISTANT_VECTOR_STORE=qdrant (default is pgvector on DATABASE_URL).
   qdrant:
     image: qdrant/qdrant:v1.13.2
     container_name: flowbuilder-qdrant
     restart: unless-stopped
+    profiles: ["qdrant"]
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
+
+  # Optional Postgres with pgvector preinstalled (use if host Postgres lacks the extension).
+  # Point DATABASE_URL at postgresql://postgres:postgres@localhost:5432/eybot
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: flowbuilder-postgres
+    restart: unless-stopped
+    profiles: ["pgvector"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: eybot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
   backend:
     build: .
@@ -28,13 +46,13 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - QDRANT_URL=http://qdrant:6333
+      - MS_ASSISTANT_VECTOR_STORE=pgvector
     ports:
       - "3000:3000"
     depends_on:
       - redis
-      - qdrant
 
 volumes:
   redis-data:
   qdrant-data:
+  postgres-data:

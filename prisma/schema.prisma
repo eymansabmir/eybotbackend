@@ -637,3 +637,18 @@ model WaFlowAnswer {
   @@index([submissionId])
   @@map("wa_flow_answers")
 }
+
+/// RAG chunks for Managed Services Assistant. Embeddings are 384-d (local Xenova).
+/// Vector search uses raw SQL / pgvector; do not query `embedding` via Prisma client APIs.
+model MsKnowledgeChunk {
+  id        String                       @id
+  source    String
+  title     String
+  text      String
+  embedding Unsupported("vector(384)")
+  createdAt DateTime                     @default(now()) @map("created_at")
+  updatedAt DateTime                     @updatedAt @map("updated_at")
+
+  @@index([source])
+  @@map("ms_knowledge_chunks")
+}

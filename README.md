@@ -129,42 +129,55 @@ REDIS_URL=redis://localhost:6379
 
 Internal RAG assistant for EY partners over WhatsApp (Interakt). When enabled, unmatched chat messages (no active flow session and no intent/trigger match) fall through to GenAI; intent-matched bots still start the flow engine. WhatsApp Flow survey webhooks still use `WA_FLOW_RESPONSE`.
 
-### Quick start
+**Vector store:** PostgreSQL **pgvector** on `DATABASE_URL` (default). Azure AI Search is not required. Qdrant remains optional via `MS_ASSISTANT_VECTOR_STORE=qdrant`.
+
+### Dev setup (pgvector)
+
+1. Postgres 14+ with the `vector` extension (your host DB, or `docker compose --profile pgvector up -d postgres`).
+2. Enable the extension once (migration also runs this):
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+3. Apply migrations and ingest knowledge (local Xenova = **384-d**, locked to `vector(384)`):
 
 ```bash
-# Redis + Qdrant (RabbitMQ must already be reachable via RABBITMQ_URL)
-docker compose up -d redis qdrant
+# Redis (RabbitMQ must already be reachable via RABBITMQ_URL)
+docker compose up -d redis
 
-# .env essentials (EY Copilot-only default)
+npx prisma migrate deploy
+npm run ingest:ms-kb
+npm run dev
+```
+
+### .env essentials
+
+```bash
 # MANAGED_SERVICES_ASSISTANT_ENABLED=true
 # OPENAI_API_KEY=<fine-grained GitHub PAT with Copilot Requests>
 # MS_ASSISTANT_LLM_PROVIDER=copilot
 # MS_ASSISTANT_EMBED_PROVIDER=local
+# MS_ASSISTANT_VECTOR_STORE=pgvector
 # MS_ASSISTANT_CHAT_MODEL=gpt-4.1
-# QDRANT_URL=http://localhost:6333
 # REDIS_URL=redis://localhost:6379
 # WHATSAPP_PROVIDER=interakt
-
-# Ingest uses local Xenova embeddings (downloads model once; no OpenAI)
-npm run ingest:ms-kb
-
-npm run dev
 ```
 
 Point Interakt Developer Settings webhook at your existing BSP path (e.g. `BSP_WEBHOOK_PATH`).
 
-**EY workaround:** chat goes through the official `@github/copilot-sdk` (your Copilot subscription + PAT). Embeddings run on-device via `@xenova/transformers` so RAG never calls OpenAI. GitHub Models (`models.github.ai`) is retired and is not used.
+**EY workaround:** chat goes through the official `@github/copilot-sdk` (your Copilot subscription + PAT). Embeddings run on-device via `@xenova/transformers` so RAG never calls OpenAI. Vectors live in Postgres (`ms_knowledge_chunks`).
 
 ### Demo script
 
-1. Send `Hi` → welcome + buttons (*Our Services*, *Ask a Question*, *Explore Offerings*)
-2. Tap *Ask a Question* → type a question
+1. Send `Hi` → welcome menu (*MS Lens*, *Triggers*, *Guide & Ask*, *Talk to a human*)
+2. Type a free-text question anytime, or use *Guide & Ask*
 3. Examples: “Do we have SAP offerings?”, “What differentiates our cloud managed services?”
 
 ### Layout
 
 ```
-src/features/ms-assistant/   # greeting, RAG, Redis memory, LLM, formatter
+src/features/ms-assistant/   # greeting, RAG (pgvector), Redis memory, LLM, formatter
 knowledge/managed-services/  # seed docs
 scripts/ingest-ms-knowledge.ts
 ```
