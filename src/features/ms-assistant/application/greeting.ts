@@ -28,21 +28,210 @@ export const MS_TOPIC_IDS = {
   SCALE: 'ms_topic_scale',
 } as const;
 
-/** Expert handoff category ids (canned contacts — no RAG invent). */
+/** Expert handoff menu / contact ids (canned — no RAG invent). */
 export const MS_HANDOFF_IDS = {
-  PRC_INDIA: 'ms_handoff_prc_india',
-  PRC: 'ms_handoff_prc',
-  TECHNOLOGY: 'ms_handoff_technology',
-  CYBER: 'ms_handoff_cyber',
-  HRMS: 'ms_handoff_hrms',
-  LEARNING: 'ms_handoff_learning',
-  DATA_AI: 'ms_handoff_data_ai',
-  TAX: 'ms_handoff_tax',
-  FINANCE: 'ms_handoff_finance',
-  SUPPLY: 'ms_handoff_supply',
-  RISK: 'ms_handoff_risk',
-  MORE: 'ms_handoff_more',
+  LEADERSHIP: 'ms_handoff_leadership',
+  CORE: 'ms_handoff_core',
+  // Leadership Team pillars
+  LD_CYBER: 'ms_handoff_ld_cyber',
+  LD_HR: 'ms_handoff_ld_hr',
+  LD_TAX: 'ms_handoff_ld_tax',
+  LD_TECHNOLOGY: 'ms_handoff_ld_technology',
+  LD_DATA_AI: 'ms_handoff_ld_data_ai',
+  LD_AI_BUSINESS: 'ms_handoff_ld_ai_business',
+  LD_GCC_CAAS: 'ms_handoff_ld_gcc_caas',
+  LD_AI_COE: 'ms_handoff_ld_ai_coe',
+  LD_SR_MSL: 'ms_handoff_ld_sr_msl',
+  // Core Team pillars
+  CT_AMS: 'ms_handoff_ct_ams',
+  CT_TFO: 'ms_handoff_ct_tfo',
+  CT_AI_TAX: 'ms_handoff_ct_ai_tax',
+  CT_MLS: 'ms_handoff_ct_mls',
+  CT_LLM_GOV: 'ms_handoff_ct_llm_gov',
+  CT_ACR_PAYROLL: 'ms_handoff_ct_acr_payroll',
+  CT_PAYROLL: 'ms_handoff_ct_payroll',
+  CT_HRO: 'ms_handoff_ct_hro',
+  CT_DATA_AI: 'ms_handoff_ct_data_ai',
+  CT_AI_SUPPLY: 'ms_handoff_ct_ai_supply',
 } as const;
+
+type HandoffTeam = 'Leadership Team' | 'Core Team';
+
+type HandoffContact = {
+  id: string;
+  pillar: string;
+  /** WhatsApp list row title (max 24 chars). */
+  title: string;
+  contactName: string;
+  team: HandoffTeam;
+  aliases?: string[];
+  solution?: string;
+};
+
+/** Approved directory — names only; never invent emails. */
+export const HANDOFF_CONTACTS: HandoffContact[] = [
+  {
+    id: MS_HANDOFF_IDS.LD_CYBER,
+    pillar: 'Cyber',
+    title: 'Cyber',
+    contactName: 'Murali Rao',
+    team: 'Leadership Team',
+    aliases: ['cyber'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_HR,
+    pillar: 'HR',
+    title: 'HR',
+    contactName: 'Anurag Malik',
+    team: 'Leadership Team',
+    aliases: ['hr', 'human resources'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_TAX,
+    pillar: 'Tax',
+    title: 'Tax',
+    contactName: 'Garima Pande',
+    team: 'Leadership Team',
+    aliases: ['tax'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_TECHNOLOGY,
+    pillar: 'Technology',
+    title: 'Technology',
+    contactName: 'Selva R.',
+    team: 'Leadership Team',
+    aliases: ['technology', 'tech'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_DATA_AI,
+    pillar: 'Data & AI',
+    title: 'Data & AI',
+    contactName: 'Alexy Thomas',
+    team: 'Leadership Team',
+    aliases: ['data & ai', 'data and ai'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_AI_BUSINESS,
+    pillar: 'AI in Business',
+    title: 'AI in Business',
+    contactName: 'Vijay Shankar',
+    team: 'Leadership Team',
+    aliases: ['ai in business'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_GCC_CAAS,
+    pillar: 'GCC CaaS',
+    title: 'GCC CaaS',
+    contactName: 'Manoj Marwah',
+    team: 'Leadership Team',
+    aliases: ['gcc', 'gcc caas', 'caas'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_AI_COE,
+    pillar: 'AI COE',
+    title: 'AI COE',
+    contactName: 'Hari Balaji',
+    team: 'Leadership Team',
+    aliases: ['ai coe', 'coe'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_SR_MSL,
+    pillar: 'SR-MSL',
+    title: 'SR-MSL',
+    contactName: 'Rakesh Kaul Punjabi',
+    team: 'Leadership Team',
+    aliases: ['sr-msl', 'sr msl', 'msl'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_AMS,
+    pillar: 'AMS',
+    title: 'AMS / SAP',
+    contactName: 'Shanthi Mani',
+    team: 'Core Team',
+    solution: 'SAP',
+    aliases: ['ams', 'sap', 'ams sap'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_TFO,
+    pillar: 'Tax and Finance Operate',
+    title: 'Tax & Finance Operate',
+    contactName: 'Jitesh Bansal',
+    team: 'Core Team',
+    aliases: ['tfo', 'tax and finance operate', 'tax & finance operate'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_AI_TAX,
+    pillar: 'AI in Tax',
+    title: 'AI in Tax',
+    contactName: 'Nitish Jain',
+    team: 'Core Team',
+    aliases: ['ai in tax'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_MLS,
+    pillar: 'Managed Learning Services',
+    title: 'Managed Learning',
+    contactName: 'Ashish Jain',
+    team: 'Core Team',
+    aliases: ['mls', 'learning', 'managed learning', 'managed learning services'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_LLM_GOV,
+    pillar: 'LLM Governance',
+    title: 'LLM Governance',
+    contactName: 'Salil Shekharan',
+    team: 'Core Team',
+    aliases: ['llm governance', 'llm'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_ACR_PAYROLL,
+    pillar: 'ACR and Payroll',
+    title: 'ACR and Payroll',
+    contactName: 'Shobha Keni',
+    team: 'Core Team',
+    aliases: ['acr', 'acr and payroll', 'acr payroll'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_PAYROLL,
+    pillar: 'Payroll',
+    title: 'Payroll',
+    contactName: 'Vinayak Iyer',
+    team: 'Core Team',
+    aliases: ['payroll'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_HRO,
+    pillar: 'HRO',
+    title: 'HRO',
+    contactName: 'Sanjeev Duggal',
+    team: 'Core Team',
+    aliases: ['hro', 'human resources outsourcing'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_DATA_AI,
+    pillar: 'Data and AI',
+    title: 'Data and AI',
+    contactName: 'Sivakumar Moorty',
+    team: 'Core Team',
+    aliases: ['data and ai', 'data & ai', 'ai'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_AI_SUPPLY,
+    pillar: 'AI in Supply Chain',
+    title: 'AI in Supply Chain',
+    contactName: 'Sudhanshu S Singh',
+    team: 'Core Team',
+    aliases: ['ai in supply chain', 'supply chain'],
+  },
+];
+
+function contactsForTeam(team: HandoffTeam): HandoffContact[] {
+  return HANDOFF_CONTACTS.filter((c) => c.team === team);
+}
+
+function findHandoffContact(id: string): HandoffContact | undefined {
+  return HANDOFF_CONTACTS.find((c) => c.id === id);
+}
 
 export const MS_FAQ_IDS = {
   COST: 'ms_faq_cost',
@@ -125,103 +314,65 @@ export function buildMenuNudgeResponse(): BotResponse {
 }
 
 export function buildHandoffMenuResponse(): BotResponse {
-  // WhatsApp list max 10 rows total
+  return {
+    mode: 'buttons',
+    text: formatWhatsAppText(
+      `${WA_EMOJI.people} *Talk to an expert*\n\n` +
+        'Choose a team. Named contacts are shown only from the approved directory — never invented.',
+    ),
+    buttons: [
+      { id: MS_HANDOFF_IDS.LEADERSHIP, title: 'Leadership Team' },
+      { id: MS_HANDOFF_IDS.CORE, title: 'Core Team' },
+      { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
+    ],
+  };
+}
+
+/** Leadership Team pillar list (9 rows). */
+export function buildHandoffLeadershipResponse(): BotResponse {
   return {
     mode: 'list',
     text: formatWhatsAppText(
-      `${WA_EMOJI.people} *Talk to an expert*\n\n` +
-        'Pick a Managed Services tower. Named contacts are shown only when configured in the approved directory — never invented.',
+      `${WA_EMOJI.people} *Leadership Team*\n\nPick a pillar to see the named contact.`,
     ),
-    buttonTitle: 'Contacts',
+    buttonTitle: 'Leadership',
     sections: [
       {
-        title: 'Expert routing',
-        rows: [
-          {
-            id: MS_HANDOFF_IDS.PRC_INDIA,
-            title: 'India PRC / Pursuit',
-            description: 'India pursuit / proposal support',
-          },
-          {
-            id: MS_HANDOFF_IDS.PRC,
-            title: 'USLI PRC / Pursuit',
-            description: 'USLI PRC MS resources',
-          },
-          {
-            id: MS_HANDOFF_IDS.TECHNOLOGY,
-            title: 'Technology MS',
-            description: 'AMS, SAP, Oracle, Cloud',
-          },
-          {
-            id: MS_HANDOFF_IDS.CYBER,
-            title: 'Cyber MS',
-            description: 'SOC, TDR, cyber platforms',
-          },
-          {
-            id: MS_HANDOFF_IDS.HRMS,
-            title: 'HRMS / Learning',
-            description: 'HR helpdesk, payroll, MLS',
-          },
-          {
-            id: MS_HANDOFF_IDS.DATA_AI,
-            title: 'Data and AI MS',
-            description: 'AI agents, analytics, AIOps',
-          },
-          {
-            id: MS_HANDOFF_IDS.TAX,
-            title: 'Tax Operate',
-            description: 'Tax managed services',
-          },
-          {
-            id: MS_HANDOFF_IDS.FINANCE,
-            title: 'Finance Operate',
-            description: 'Finance MS / operate',
-          },
-          {
-            id: MS_HANDOFF_IDS.MORE,
-            title: 'More towers',
-            description: 'Supply chain, risk & more',
-          },
-        ],
+        title: 'Leadership Team',
+        rows: contactsForTeam('Leadership Team').map((c) => ({
+          id: c.id,
+          title: c.title,
+          description: c.contactName,
+        })),
       },
     ],
   };
 }
 
-/** Secondary handoff list for towers that did not fit the 10-row primary list. */
-export function buildHandoffMoreResponse(): BotResponse {
+/** Core Team pillar list (10 rows — WhatsApp list max). */
+export function buildHandoffCoreResponse(): BotResponse {
   return {
     mode: 'list',
-    text: formatWhatsAppText(`${WA_EMOJI.people} *Talk to an expert — more towers*`),
-    buttonTitle: 'More towers',
+    text: formatWhatsAppText(
+      `${WA_EMOJI.people} *Core Team*\n\nPick a pillar to see the named contact.`,
+    ),
+    buttonTitle: 'Core Team',
     sections: [
       {
-        title: 'More towers',
-        rows: [
-          {
-            id: MS_HANDOFF_IDS.SUPPLY,
-            title: 'Supply Chain & Ops',
-            description: 'Supply chain / operations MS',
-          },
-          {
-            id: MS_HANDOFF_IDS.RISK,
-            title: 'Risk & Compliance',
-            description: 'Digital risk / compliance MS',
-          },
-          {
-            id: MS_BUTTON_IDS.HANDOFF,
-            title: 'Back to experts',
-            description: 'Primary tower list',
-          },
-          {
-            id: MS_BUTTON_IDS.MAIN_MENU,
-            title: 'Main menu',
-            description: 'Back to start',
-          },
-        ],
+        title: 'Core Team',
+        rows: contactsForTeam('Core Team').map((c) => ({
+          id: c.id,
+          title: c.title,
+          description: c.contactName,
+        })),
       },
     ],
   };
+}
+
+/** @deprecated Use buildHandoffCoreResponse — kept for older button ids. */
+export function buildHandoffMoreResponse(): BotResponse {
+  return buildHandoffCoreResponse();
 }
 
 export function buildServicesOverviewResponse(): BotResponse {
@@ -379,36 +530,18 @@ const POST_NAV_BUTTONS = [
   { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
 ] as const;
 
-const HANDOFF_FALLBACK =
-  'A named contact is not configured for this tower in the approved directory yet.\n\n' +
-  'Ask your Managed Services pursuit lead to route you. For *USLI PRC* pursuit materials only, ' +
-  'Sabrina Custer (PRC USLI Managed Services Lead) is listed at *Sabrina.Custer@ey.com*.';
-
-function formatHandoffContact(opts: {
-  category: string;
-  name: string;
-  role: string;
-  email: string;
-  region: string;
-  routeWhen: string;
-}): string {
+function formatHandoffContact(contact: HandoffContact): string {
+  const solutionLine = contact.solution ? `\n*Solution:* ${contact.solution}` : '';
+  const aliasLine =
+    contact.aliases?.length && contact.aliases.some((a) => a.toLowerCase() !== contact.pillar.toLowerCase())
+      ? `\n*Also route for:* ${contact.aliases.join(', ')}`
+      : '';
   return (
-    `${WA_EMOJI.people} *${opts.category}*\n\n` +
-    `*Name:* ${opts.name}\n` +
-    `*Role:* ${opts.role}\n` +
-    `*Email:* ${opts.email}\n` +
-    `*Region:* ${opts.region}\n\n` +
-    `_Route when:_ ${opts.routeWhen}`
-  );
-}
-
-function formatHandoffTbd(category: string, routeWhen: string, region = 'India / Global'): string {
-  return (
-    `${WA_EMOJI.people} *${category}*\n\n` +
-    `*Status:* Contact TBD (not in approved directory)\n` +
-    `*Region:* ${region}\n\n` +
-    `_Route when:_ ${routeWhen}\n\n` +
-    HANDOFF_FALLBACK
+    `${WA_EMOJI.people} *${contact.pillar}*\n\n` +
+    `*Contact:* ${contact.contactName}\n` +
+    `*Team:* ${contact.team}` +
+    solutionLine +
+    aliasLine
   );
 }
 
@@ -578,97 +711,47 @@ export function cannedAnswerForId(id: string): string | undefined {
         value: 'Cost transparency and continuous optimization.',
         ask: 'Can consumption be attributed to business owners, products and environments?',
       });
-    case MS_HANDOFF_IDS.PRC:
-      return formatHandoffContact({
-        category: 'USLI PRC / Pursuit',
-        name: 'Sabrina Custer',
-        role: 'PRC USLI Managed Services Lead',
-        email: 'Sabrina.Custer@ey.com',
-        region: 'USLI / PRC',
-        routeWhen: 'USLI pursuit materials, PRC Managed Services resources, proposal assets',
-      });
-    case MS_HANDOFF_IDS.PRC_INDIA:
-      return formatHandoffTbd(
-        'India PRC / Pursuit',
-        'India pursuit materials, proposal assets, India Managed Services resources',
-        'India',
-      );
-    case MS_HANDOFF_IDS.TECHNOLOGY:
-      return formatHandoffContact({
-        category: 'Technology Managed Services',
-        name: 'Milan Sheth',
-        role: 'EY Global Technology Managed Services Leader',
-        email: 'milan.sheth@in.ey.com',
-        region: 'India / Global',
-        routeWhen: 'Tech Operations, AMS, SAP, Oracle, Microsoft, Salesforce, Cloud (service code 11182)',
-      });
-    case MS_HANDOFF_IDS.CYBER:
-      return formatHandoffContact({
-        category: 'Cyber Managed Services',
-        name: 'Tapan Shah',
-        role: 'Global Cybersecurity Managed Services Leader',
-        email: 'tapan.shah@ey.com',
-        region: 'Global / India',
-        routeWhen: 'Cyber Operations, SOC, TDR, cyber platforms (service code 111822)',
-      });
-    case MS_HANDOFF_IDS.LEARNING:
-      return formatHandoffContact({
-        category: 'Learning Managed Services',
-        name: 'Savvas Koufou',
-        role: 'EY Global Managed Learning Services Leader',
-        email: 'Savvas.Koufou@uk.ey.com',
-        region: 'Global',
-        routeWhen: 'Managed Learning Services',
-      });
-    case MS_HANDOFF_IDS.HRMS:
-      return (
-        `${WA_EMOJI.people} *HRMS / Learning*\n\n` +
-        `*Managed Learning Services*\n` +
-        `*Name:* Savvas Koufou\n` +
-        `*Role:* EY Global Managed Learning Services Leader\n` +
-        `*Email:* Savvas.Koufou@uk.ey.com\n` +
-        `*Region:* Global\n\n` +
-        `*HRMS / Payroll*\n` +
-        `*Status:* Contact TBD (not in approved directory)\n\n` +
-        `_Route when:_ HR helpdesk, payroll, employee-service ops, Managed Learning Services\n\n` +
-        'For HRMS/payroll routing, ask your Managed Services pursuit lead until a named owner is added.'
-      );
-    case MS_HANDOFF_IDS.DATA_AI:
-      return formatHandoffTbd(
-        'Data and AI Managed Services',
-        'AI agents, analytics, data ops, AIOps',
-      );
-    case MS_HANDOFF_IDS.TAX:
-      return formatHandoffContact({
-        category: 'Tax Operate',
-        name: 'Stuart Lang',
-        role: 'Global TFO Leader',
-        email: 'slang1@uk.ey.com',
-        region: 'Global',
-        routeWhen: 'Tax managed services / Tax Operate (TFO, service code 10691)',
-      });
-    case MS_HANDOFF_IDS.FINANCE:
-      return formatHandoffContact({
-        category: 'Finance Operate',
-        name: 'Stuart Lang',
-        role: 'Global TFO Leader',
-        email: 'slang1@uk.ey.com',
-        region: 'Global',
-        routeWhen: 'Finance managed services / Finance Operate (TFO, service code 10691)',
-      });
-    case MS_HANDOFF_IDS.SUPPLY:
-      return formatHandoffTbd(
-        'Supply Chain and Operations',
-        'Supply chain and operations Managed Services',
-      );
-    case MS_HANDOFF_IDS.RISK:
-      return formatHandoffTbd(
-        'Risk and Compliance',
-        'Digital risk, risk and compliance Managed Services',
-      );
-    default:
+    default: {
+      const contact = findHandoffContact(id);
+      if (contact) return formatHandoffContact(contact);
       return undefined;
+    }
   }
+}
+
+/** Match free-text / list titles to an approved handoff contact id. */
+export function resolveHandoffContactId(raw: string): string | undefined {
+  const key = raw.trim().toLowerCase();
+  if (!key) return undefined;
+
+  for (const contact of HANDOFF_CONTACTS) {
+    if (contact.id === raw.trim()) return contact.id;
+    const needles = [
+      contact.pillar.toLowerCase(),
+      contact.title.toLowerCase(),
+      ...(contact.aliases ?? []).map((a) => a.toLowerCase()),
+      ...(contact.solution ? [contact.solution.toLowerCase()] : []),
+    ];
+    if (needles.some((n) => n === key || key === n)) return contact.id;
+  }
+
+  // Prefer longer / more specific alias contains matches (e.g. "ams sap" before "ai").
+  let best: { id: string; len: number } | undefined;
+  for (const contact of HANDOFF_CONTACTS) {
+    const needles = [
+      contact.pillar.toLowerCase(),
+      contact.title.toLowerCase(),
+      ...(contact.aliases ?? []).map((a) => a.toLowerCase()),
+      ...(contact.solution ? [contact.solution.toLowerCase()] : []),
+    ];
+    for (const n of needles) {
+      if (n.length < 3) continue;
+      if (key.includes(n) || n.includes(key)) {
+        if (!best || n.length > best.len) best = { id: contact.id, len: n.length };
+      }
+    }
+  }
+  return best?.id;
 }
 
 /** RAG query strings for themes that should pull full trigger detail from KB. */
@@ -718,25 +801,16 @@ export function resolveMenuSelection(raw: string): string {
     'talk to human': MS_BUTTON_IDS.HANDOFF,
     'talk to an expert': MS_BUTTON_IDS.HANDOFF,
     'talk to expert': MS_BUTTON_IDS.HANDOFF,
-    'more towers': MS_HANDOFF_IDS.MORE,
     'back to experts': MS_BUTTON_IDS.HANDOFF,
     handoff: MS_BUTTON_IDS.HANDOFF,
     contact: MS_BUTTON_IDS.HANDOFF,
     contacts: MS_BUTTON_IDS.HANDOFF,
     'human handoff': MS_BUTTON_IDS.HANDOFF,
-    'india prc / pursuit': MS_HANDOFF_IDS.PRC_INDIA,
-    'usli prc / pursuit': MS_HANDOFF_IDS.PRC,
-    'prc / pursuit': MS_HANDOFF_IDS.PRC,
-    'technology ms': MS_HANDOFF_IDS.TECHNOLOGY,
-    'cyber ms': MS_HANDOFF_IDS.CYBER,
-    'hrms / payroll': MS_HANDOFF_IDS.HRMS,
-    'hrms / learning': MS_HANDOFF_IDS.HRMS,
-    'managed learning': MS_HANDOFF_IDS.LEARNING,
-    'data and ai ms': MS_HANDOFF_IDS.DATA_AI,
-    'tax operate': MS_HANDOFF_IDS.TAX,
-    'finance operate': MS_HANDOFF_IDS.FINANCE,
-    'supply chain & ops': MS_HANDOFF_IDS.SUPPLY,
-    'risk & compliance': MS_HANDOFF_IDS.RISK,
+    'leadership team': MS_HANDOFF_IDS.LEADERSHIP,
+    leadership: MS_HANDOFF_IDS.LEADERSHIP,
+    'core team': MS_HANDOFF_IDS.CORE,
+    core: MS_HANDOFF_IDS.CORE,
+    'more towers': MS_HANDOFF_IDS.CORE,
     'main menu': MS_BUTTON_IDS.MAIN_MENU,
     'guide list': MS_BUTTON_IDS.FAQ,
     'browse faqs': MS_BUTTON_IDS.FAQ,

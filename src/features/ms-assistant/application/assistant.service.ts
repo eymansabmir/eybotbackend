@@ -14,11 +14,13 @@ import type { MsEmbeddings } from '../infrastructure/rag/embeddings.types';
 import type { KnowledgeStore } from '../infrastructure/rag/knowledge-store';
 import {
   MS_BUTTON_IDS,
+  MS_HANDOFF_IDS,
   buildAnswerWithNav,
   buildAskPromptResponse,
   buildFaqMenuResponse,
+  buildHandoffCoreResponse,
+  buildHandoffLeadershipResponse,
   buildHandoffMenuResponse,
-  buildHandoffMoreResponse,
   buildMenuNudgeResponse,
   buildOfferingsResponse,
   buildServicesOverviewResponse,
@@ -27,6 +29,7 @@ import {
   isGreetingText,
   isMenuNavText,
   offeringQueryForId,
+  resolveHandoffContactId,
   resolveMenuSelection,
 } from './greeting';
 
@@ -151,15 +154,32 @@ export class MsAssistantService {
       return this.toJobs(buildHandoffMenuResponse(), job);
     }
 
-    if (key === 'ms_handoff_more' || key === 'more towers') {
+    if (
+      key === MS_HANDOFF_IDS.LEADERSHIP ||
+      key === 'leadership team' ||
+      key === 'leadership'
+    ) {
       await this.memory.setMode(waBusinessNumber, waId, 'menu');
-      return this.toJobs(buildHandoffMoreResponse(), job);
+      return this.toJobs(buildHandoffLeadershipResponse(), job);
+    }
+
+    if (
+      key === MS_HANDOFF_IDS.CORE ||
+      key === 'core team' ||
+      key === 'core' ||
+      key === 'ms_handoff_more' ||
+      key === 'more towers'
+    ) {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(buildHandoffCoreResponse(), job);
     }
 
     const topicId = resolved.trim();
+    const handoffId = resolveHandoffContactId(topicId) || resolveHandoffContactId(key);
     const canned =
       cannedAnswerForId(topicId) ||
       cannedAnswerForId(key) ||
+      (handoffId ? cannedAnswerForId(handoffId) : undefined) ||
       cannedFromFuzzyTitle(key);
 
     if (canned) {
@@ -281,31 +301,8 @@ function normalizeInteractiveKey(value: string): string {
 }
 
 function cannedFromFuzzyTitle(key: string): string | undefined {
-  if (key.includes('prc') || key.includes('pursuit')) {
-    return cannedAnswerForId('ms_handoff_prc');
-  }
-  if (key.includes('india prc')) return cannedAnswerForId('ms_handoff_prc_india');
-  if (key === 'technology ms' || key.startsWith('technology ms')) {
-    return cannedAnswerForId('ms_handoff_technology');
-  }
-  if (key === 'cyber ms' || key.startsWith('cyber ms')) {
-    return cannedAnswerForId('ms_handoff_cyber');
-  }
-  if (key.includes('hrms') || key.includes('payroll')) {
-    return cannedAnswerForId('ms_handoff_hrms');
-  }
-  if (key.includes('learning') && key.includes('managed')) {
-    return cannedAnswerForId('ms_handoff_learning');
-  }
-  if (key === 'data and ai ms' || key.startsWith('data and ai')) {
-    return cannedAnswerForId('ms_handoff_data_ai');
-  }
-  if (key.includes('tax')) return cannedAnswerForId('ms_handoff_tax');
-  if (key.includes('finance')) return cannedAnswerForId('ms_handoff_finance');
-  if (key.includes('supply')) return cannedAnswerForId('ms_handoff_supply');
-  if (key.includes('risk') || key.includes('compliance')) {
-    return cannedAnswerForId('ms_handoff_risk');
-  }
+  const handoffId = resolveHandoffContactId(key);
+  if (handoffId) return cannedAnswerForId(handoffId);
 
   if (key.includes('qualification') || key.includes('3 qualification') || key === 'ms lens') {
     return cannedAnswerForId('ms_topic_qualify');
