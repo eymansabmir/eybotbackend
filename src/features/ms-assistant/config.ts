@@ -28,7 +28,8 @@ const msAssistantEnvSchema = z.object({
   MS_ASSISTANT_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
   MS_ASSISTANT_MEMORY_TTL_SEC: z.coerce.number().int().min(60).default(86_400),
   MS_ASSISTANT_MEMORY_MAX_TURNS: z.coerce.number().int().min(2).max(40).default(8),
-  MS_ASSISTANT_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.25),
+  /** Higher = stricter grounding (fewer weak RAG hits → unavailable message). */
+  MS_ASSISTANT_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.32),
   MS_ASSISTANT_KNOWLEDGE_DIR: z.string().default('knowledge/managed-services'),
   MS_ASSISTANT_JSON_OBJECT: z.enum(['true', 'false']).default('true'),
 });

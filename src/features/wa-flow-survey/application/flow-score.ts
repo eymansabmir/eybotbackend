@@ -264,8 +264,7 @@ export function scoreFlowAnswers(
 
 export function formatFlowScoreMessage(result: FlowScoreResult): string {
   return (
-    `Thank you for completing the survey.\n` +
-    `Your score is ${result.percentage}% ` +
-    `(${result.score}/${result.maxScore}).`
+    `The Managed Services Opportunity Score is ${result.percentage}%. ` +
+    `The MS self-assessment and personalized roadmap for you and your CXO is available at https://www.ey.com/en_in .`
   );
 }
