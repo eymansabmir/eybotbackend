@@ -26,7 +26,7 @@ import { ENGINE_PLUGIN, type IEnginePlugin } from './plugins/engine';
 import { REDIS_PLUGIN, type IRedisPlugin } from './plugins/redis';
 import { STORAGE_PLUGIN, type IStoragePlugin } from './plugins/storage';
 import { WHATSAPP_PLUGIN, type IWhatsAppPlugin } from './plugins/whatsapp';
-import { WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
+import { EXCHANGES, WORKER_PLUGIN, type IWorkerPlugin } from './plugins/worker';
 import {
   FLOW_REPOSITORY,
   SESSION_REPOSITORY,
@@ -152,6 +152,15 @@ async function startServer(): Promise<void> {
           createMsEmbeddings(msAssistantConfig),
           knowledgeStore,
           createMsLlm(msAssistantConfig),
+          async (jobs) => {
+            for (const outboundJob of jobs) {
+              await workerPlugin.publish(
+                EXCHANGES.OUTBOUND,
+                outboundJob,
+                outboundJob.sessionId || '',
+              );
+            }
+          },
         );
         registry.registerValue(MS_ASSISTANT_SERVICE, msAssistant);
         logger.info(

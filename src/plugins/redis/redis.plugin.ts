@@ -1,4 +1,5 @@
 import Redis, { Cluster } from 'ioredis';
+import { logger } from '../../utils/logger';
 import type { IPlugin, IPluginRegistry } from '../plugin.interface';
 import type { IRedisPlugin, RedisClient } from './redis.interface';
 

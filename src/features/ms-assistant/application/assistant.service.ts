@@ -3,7 +3,12 @@ import { logger } from '../../../utils/logger';
 import type { MsAssistantConfig } from '../config';
 import type { BotResponse } from '../domain/bot-response';
 import { botResponseToOutboundJobs } from '../infrastructure/formatter/to-outbound';
-import type { MsAssistantChat } from '../infrastructure/llm/shared';
+import {
+  enforceGroundedReply,
+  sanitizeUserQuestion,
+  UNAVAILABLE_KB_MESSAGE,
+  type MsAssistantChat,
+} from '../infrastructure/llm/shared';
 import { RedisConversationMemory } from '../infrastructure/memory/redis-memory';
 import type { MsEmbeddings } from '../infrastructure/rag/embeddings.types';
 import type { KnowledgeStore } from '../infrastructure/rag/knowledge-store';
@@ -13,6 +18,7 @@ import {
   buildAskPromptResponse,
   buildFaqMenuResponse,
   buildHandoffMenuResponse,
+  buildHandoffMoreResponse,
   buildMenuNudgeResponse,
   buildOfferingsResponse,
   buildServicesOverviewResponse,
@@ -24,6 +30,8 @@ import {
   resolveMenuSelection,
 } from './greeting';
 
+export type MsAssistantProgressPublisher = (jobs: OutboundJob[]) => Promise<void>;
+
 export class MsAssistantService {
   constructor(
     private readonly config: MsAssistantConfig,
@@ -31,6 +39,8 @@ export class MsAssistantService {
     private readonly embeddings: MsEmbeddings,
     private readonly store: KnowledgeStore,
     private readonly llm: MsAssistantChat,
+    /** Optional early publish for "Fetching…" while RAG/LLM runs (TC-40). */
+    private readonly publishProgress?: MsAssistantProgressPublisher,
   ) {}
 
   get enabled(): boolean {
@@ -61,8 +71,8 @@ export class MsAssistantService {
         return this.toJobs(buildMenuNudgeResponse(), job);
       }
 
-      // Any free text → RAG + LLM (chunks when available; generic MS guidance otherwise).
-      return await this.answerWithLlm(job, text, { mode: 'qa' });
+      // Free text anytime — answers only from approved knowledge (no generic invent).
+      return await this.answerFromKnowledge(job, text, { mode: 'qa' });
     } catch (err) {
       logger.error({ err, waId, orgId }, 'MsAssistantService: handleInbound failed');
       return this.toJobs(
@@ -72,7 +82,7 @@ export class MsAssistantService {
             '⚠️ Something went wrong preparing that reply. Please try again from the menu.',
           buttons: [
             { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
-            { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to human' },
+            { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
             { id: MS_BUTTON_IDS.ASK, title: 'Guide & Ask' },
           ],
         },
@@ -113,7 +123,8 @@ export class MsAssistantService {
       key === 'faqs & ask' ||
       key === 'ask a question' ||
       key === 'browse faqs' ||
-      key === 'common faqs'
+      key === 'common faqs' ||
+      key === 'guide list'
     ) {
       await this.memory.setMode(waBusinessNumber, waId, 'menu');
       return this.toJobs(buildFaqMenuResponse(), job);
@@ -128,16 +139,23 @@ export class MsAssistantService {
       key === MS_BUTTON_IDS.HANDOFF ||
       key === 'talk to a human' ||
       key === 'talk to human' ||
+      key === 'talk to an expert' ||
+      key === 'talk to expert' ||
       key === 'handoff' ||
       key === 'contact' ||
       key === 'contacts' ||
-      key === 'human handoff'
+      key === 'human handoff' ||
+      key === 'back to experts'
     ) {
       await this.memory.setMode(waBusinessNumber, waId, 'menu');
       return this.toJobs(buildHandoffMenuResponse(), job);
     }
 
-    // Topic / FAQ / handoff rows: prefer canned answers (fast). Fall back to RAG without LLM.
+    if (key === 'ms_handoff_more' || key === 'more towers') {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(buildHandoffMoreResponse(), job);
+    }
+
     const topicId = resolved.trim();
     const canned =
       cannedAnswerForId(topicId) ||
@@ -156,7 +174,7 @@ export class MsAssistantService {
 
     if (offeringQuery) {
       await this.memory.setMode(waBusinessNumber, waId, 'menu');
-      return this.answerFromRetrieval(job, offeringQuery);
+      return this.answerFromKnowledge(job, offeringQuery, { mode: 'menu' });
     }
 
     await this.memory.setMode(waBusinessNumber, waId, 'menu');
@@ -164,63 +182,56 @@ export class MsAssistantService {
   }
 
   /**
-   * Menu theme path: prefer fast retrieval formatting; if no hits, fall back to LLM
-   * with generic guidance (never a "KB empty" error).
+   * Free-text / theme path: retrieve approved chunks, then LLM may ONLY paraphrase those chunks.
+   * No chunks → fixed unavailable message (never invent).
    */
-  private async answerFromRetrieval(job: InboundJob, question: string): Promise<OutboundJob[]> {
-    const vector = await this.embeddings.embedOne(question);
-    const chunks = await this.store.search(vector, Math.min(3, this.config.MS_ASSISTANT_TOP_K));
-    const filtered = chunks.filter(
-      (c) => c.text && c.score >= this.config.MS_ASSISTANT_MIN_SCORE,
-    );
-
-    if (filtered.length === 0) {
-      return this.answerWithLlm(job, question, { mode: 'menu' });
-    }
-
-    const bullets = filtered
-      .slice(0, 3)
-      .map((c) => `* ${c.text.replace(/\s+/g, ' ').trim().slice(0, 220)}`)
-      .join('\n');
-
-    return this.toJobs(
-      buildAnswerWithNav(`📌 *Quick overview*\n\n${bullets}`),
-      job,
-    );
-  }
-
-  /** Free-text (and retrieval fallback) — RAG chunks when available, else LLM general guidance. */
-  private async answerWithLlm(
+  private async answerFromKnowledge(
     job: InboundJob,
     question: string,
     opts: { mode: 'qa' | 'menu' } = { mode: 'qa' },
   ): Promise<OutboundJob[]> {
     const { waId, waBusinessNumber } = job.message;
+    const safeQuestion = sanitizeUserQuestion(question);
 
     await this.memory.appendTurn(
       waBusinessNumber,
       waId,
-      { role: 'user', content: question, at: Date.now() },
+      { role: 'user', content: safeQuestion, at: Date.now() },
       { mode: opts.mode },
     );
 
     const memory = await this.memory.get(waBusinessNumber, waId);
-    const vector = await this.embeddings.embedOne(question);
+
+    await this.emitProgress(job, 'Fetching information from approved knowledge…');
+
+    const vector = await this.embeddings.embedOne(safeQuestion);
     const chunks = await this.store.search(vector, this.config.MS_ASSISTANT_TOP_K);
     const filtered = chunks.filter(
       (c) => c.text && c.score >= this.config.MS_ASSISTANT_MIN_SCORE,
     );
 
+    if (filtered.length === 0) {
+      await this.memory.appendTurn(
+        waBusinessNumber,
+        waId,
+        { role: 'assistant', content: UNAVAILABLE_KB_MESSAGE, at: Date.now() },
+        { mode: opts.mode },
+      );
+      return this.toJobs(buildAnswerWithNav(UNAVAILABLE_KB_MESSAGE), job);
+    }
+
     const response = await this.llm.answer({
-      question,
+      question: safeQuestion,
       chunks: filtered,
       memory,
     });
 
-    const replyText =
+    let replyText =
       response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
         ? response.text
-        : (response.text ?? '💡 Here is a concise view based on MS qualification practice.');
+        : (response.text ?? UNAVAILABLE_KB_MESSAGE);
+
+    replyText = enforceGroundedReply(replyText, filtered);
 
     const updated = await this.memory.appendTurn(
       waBusinessNumber,
@@ -229,11 +240,12 @@ export class MsAssistantService {
       { mode: opts.mode },
     );
 
-    // Fire-and-forget summary — awaiting it roughly doubles Copilot latency.
     void this.llm
       .summarizeIfNeeded(updated)
       .then(async (summary) => {
         if (!summary) return;
+        // Summaries must not become a second knowledge source — keep short and factual only
+        if (/quantum computing|invented|discount|approval workflow/i.test(summary)) return;
         const current = await this.memory.get(waBusinessNumber, waId);
         await this.memory.save(waBusinessNumber, waId, { ...current, summary });
       })
@@ -252,6 +264,16 @@ export class MsAssistantService {
     };
     return list.flatMap((item) => botResponseToOutboundJobs(item, ctx));
   }
+
+  private async emitProgress(job: InboundJob, message: string): Promise<void> {
+    if (!this.publishProgress) return;
+    try {
+      const jobs = this.toJobs({ mode: 'text', text: message }, job);
+      await this.publishProgress(jobs);
+    } catch (err) {
+      logger.warn({ err }, 'MsAssistantService: progress publish failed');
+    }
+  }
 }
 
 function normalizeInteractiveKey(value: string): string {
@@ -259,21 +281,30 @@ function normalizeInteractiveKey(value: string): string {
 }
 
 function cannedFromFuzzyTitle(key: string): string | undefined {
-  // Handoff category titles before topic fuzzy matches (e.g. "cyber ms" ≠ tech triggers).
   if (key.includes('prc') || key.includes('pursuit')) {
     return cannedAnswerForId('ms_handoff_prc');
   }
+  if (key.includes('india prc')) return cannedAnswerForId('ms_handoff_prc_india');
   if (key === 'technology ms' || key.startsWith('technology ms')) {
     return cannedAnswerForId('ms_handoff_technology');
   }
   if (key === 'cyber ms' || key.startsWith('cyber ms')) {
     return cannedAnswerForId('ms_handoff_cyber');
   }
-  if (key.includes('hrms') || key === 'hrms / learning') {
+  if (key.includes('hrms') || key.includes('payroll')) {
     return cannedAnswerForId('ms_handoff_hrms');
+  }
+  if (key.includes('learning') && key.includes('managed')) {
+    return cannedAnswerForId('ms_handoff_learning');
   }
   if (key === 'data and ai ms' || key.startsWith('data and ai')) {
     return cannedAnswerForId('ms_handoff_data_ai');
+  }
+  if (key.includes('tax')) return cannedAnswerForId('ms_handoff_tax');
+  if (key.includes('finance')) return cannedAnswerForId('ms_handoff_finance');
+  if (key.includes('supply')) return cannedAnswerForId('ms_handoff_supply');
+  if (key.includes('risk') || key.includes('compliance')) {
+    return cannedAnswerForId('ms_handoff_risk');
   }
 
   if (key.includes('qualification') || key.includes('3 qualification') || key === 'ms lens') {
@@ -294,7 +325,7 @@ function cannedFromFuzzyTitle(key: string): string | undefined {
   if (key.includes('tech, cloud') || key.includes('cloud cost') || key === 'tech, cloud & cyber') {
     return cannedAnswerForId(key.includes('cloud cost') ? 'ms_faq_cloud_cost' : 'ms_topic_tech');
   }
-  if (key.includes('finance') || key.includes('hr & scale') || key.includes('scale') || key.includes('gcc')) {
+  if (key.includes('finance, hr') || key.includes('hr & scale') || key.includes('gcc')) {
     return cannedAnswerForId('ms_topic_scale');
   }
   if (key.includes('skills')) return cannedAnswerForId('ms_faq_skills');
@@ -307,6 +338,7 @@ function looksLikeMenuChoice(text: string): boolean {
   if (key.startsWith('ms_')) return true;
   return (
     key === 'ms lens' ||
+    key === 'qualification lens' ||
     key === 'our services' ||
     key === 'triggers' ||
     key === 'browse topics' ||
@@ -317,20 +349,15 @@ function looksLikeMenuChoice(text: string): boolean {
     key === 'ask a question' ||
     key === 'talk to a human' ||
     key === 'talk to human' ||
+    key === 'talk to an expert' ||
+    key === 'talk to expert' ||
     key === 'handoff' ||
     key === 'contact' ||
     key === 'contacts' ||
     key === 'human handoff' ||
-    key === 'prc / pursuit' ||
-    key === 'technology ms' ||
-    key === 'cyber ms' ||
-    key === 'hrms / learning' ||
-    key === 'data and ai ms' ||
     key === 'main menu' ||
     key === 'guide list' ||
-    key === 'browse faqs' ||
     key === 'type my question' ||
-    key === 'qualification lens' ||
     key === 'capacity & cost' ||
     key === 'quality & vendors' ||
     key === 'tech, cloud & cyber' ||
@@ -338,9 +365,6 @@ function looksLikeMenuChoice(text: string): boolean {
     key === 'conversation steps' ||
     key === 'how to converse' ||
     key === 'when not to force ms' ||
-    key === '3 qualification tests' ||
-    key === 'how to start' ||
-    key === 'when not to force' ||
     key === 'cost pressure trigger' ||
     key === 'skills shortage' ||
     key === 'cloud cost rising'

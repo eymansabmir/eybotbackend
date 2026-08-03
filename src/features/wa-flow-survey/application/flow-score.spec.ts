@@ -54,7 +54,9 @@ describe('scoreFlowAnswers (Partners Connect matrix)', () => {
       maxScore: 75,
       percentage: 23,
     });
-    expect(msg).toContain('23%');
-    expect(msg).toContain('17/75');
+    expect(msg).toBe(
+      'The Managed Services Opportunity Score is 23%. ' +
+        'The MS self-assessment and personalized roadmap for you and your CXO is available at https://www.ey.com/en_in .',
+    );
   });
 });
