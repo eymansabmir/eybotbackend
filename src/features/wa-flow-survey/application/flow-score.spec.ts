@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { formatFlowScoreMessage, scoreFlowAnswers } from './flow-score';
 
 describe('scoreFlowAnswers (Partners Connect matrix)', () => {

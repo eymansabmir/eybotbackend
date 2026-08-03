@@ -25,6 +25,7 @@ function makeJob(overrides: Partial<InboundJob['message']> & { text?: string } =
     orgId: 'org-1',
     skipCredentialLookup: true,
     message: {
+      orgId: 'org-1',
       messageId: 'msg-1',
       waId: '15550001111',
       waBusinessNumber: '1234567890',
