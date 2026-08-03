@@ -6,6 +6,8 @@ const envSchema = z.object({
   MONGODB_URI: z.string().optional(),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().url().optional(),
+  /** Azure Redis Cluster / Enterprise — use ioredis Cluster client (MOVED redirects). */
+  REDIS_CLUSTER: z.enum(['true', 'false']).optional(),
   RABBITMQ_URL: z.string().url().optional(),
   /** WhatsApp channel provider: meta (Cloud API), interakt, or stub */
   WHATSAPP_PROVIDER: z.enum(['meta', 'interakt', 'stub']).optional(),
