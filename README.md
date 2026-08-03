@@ -148,6 +148,7 @@ docker compose up -d redis
 
 npx prisma migrate deploy
 npm run ingest:ms-kb
+# optional: npx ts-node -r tsconfig-paths/register scripts/smoke-pgvector-search.ts
 npm run dev
 ```
 
@@ -167,6 +168,8 @@ npm run dev
 Point Interakt Developer Settings webhook at your existing BSP path (e.g. `BSP_WEBHOOK_PATH`).
 
 **EY workaround:** chat goes through the official `@github/copilot-sdk` (your Copilot subscription + PAT). Embeddings run on-device via `@xenova/transformers` so RAG never calls OpenAI. Vectors live in Postgres (`ms_knowledge_chunks`).
+
+**Docker note:** local embeddings need **glibc** (`onnxruntime-node`). The image uses `node:20-bookworm-slim`. Alpine (`node:*-alpine`) often dies with `Ort::Exception` / “No error information” during model load — rebuild with the current Dockerfile.
 
 ### Demo script
 
