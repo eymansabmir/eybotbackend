@@ -1,8 +1,9 @@
-# Build Stage
-FROM node:20-alpine AS builder
+# Build Stage — Debian (glibc) required for onnxruntime-node / @xenova/transformers
+FROM node:20-bookworm-slim AS builder
 
-# Install system dependencies (needed for prisma)
-RUN apk add --no-cache libc6-compat
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -19,10 +20,11 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production Stage
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 
-# Needed for Prisma engines on Alpine
-RUN apk add --no-cache libc6-compat openssl
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 RUN chown node:node /app
@@ -30,6 +32,8 @@ RUN chown node:node /app
 USER node
 
 ENV NODE_ENV=production
+# Xenova / onnxruntime-web: avoid multi-thread WASM issues in Node
+ENV OMP_NUM_THREADS=1
 
 # Re-install only production dependencies
 COPY --chown=node:node package*.json ./
@@ -42,6 +46,9 @@ COPY --chown=node:node --from=builder /app/dist ./dist
 COPY --chown=node:node --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --chown=node:node --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --chown=node:node --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+
+# Knowledge markdown for optional reindex-bundled / local docs in image
+COPY --chown=node:node knowledge ./knowledge
 
 # Run migrations on startup, then start the app
 COPY --chown=node:node docker-entrypoint.sh ./
