@@ -45,6 +45,39 @@ describe('scoreFlowAnswers (Partners Connect matrix)', () => {
     expect(result.percentage).toBe(100);
   });
 
+  it('scores ey_partners_connect_form_final where Choose-all keys are swapped', () => {
+    // Production webhook 2026-08-03: bare Choose-all = take-over options, _(2) = CXO options.
+    const result = scoreFlowAnswers([
+      { questionKey: 'Choose all that apply:', valueText: 'IT Operations' },
+      { questionKey: 'Choose all that apply:', valueText: 'Cyber' },
+      { questionKey: 'Choose all that apply:', valueText: 'Finance' },
+      { questionKey: 'Choose all that apply:', valueText: 'Data & AI' },
+      { questionKey: 'Choose all that apply:', valueText: 'Business Operations' },
+      { questionKey: 'Choose all that apply:', valueText: 'HR and Learning' },
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'Cost Pressure' },
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'AI Adoption' },
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'Talent shortage' },
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'Security & Operations' },
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'Regulation & Compliance' },
+      { questionKey: 'Choose one:_(2)', valueText: 'Yes' },
+      { questionKey: 'Choose one:', valueText: 'Open to our offering' },
+    ]);
+
+    // Q3: 4+5+5+4+3+4=25, Q1: 5*5=25, Q4:5, Q5:5 → 60 (Q2 engagement absent)
+    expect(result.score).toBe(60);
+    expect(result.percentage).toBe(80);
+    expect(result.scoredOptionCount).toBe(13);
+    expect(result.unmatched).toEqual([]);
+  });
+
+  it('does not score Security & Operations as engagement Operations', () => {
+    const result = scoreFlowAnswers([
+      { questionKey: 'Choose all that apply:_(2)', valueText: 'Security & Operations' },
+    ]);
+    expect(result.score).toBe(5);
+    expect(result.unmatched).toEqual([]);
+  });
+
   it('formats the outbound text message', () => {
     const msg = formatFlowScoreMessage({
       optionCount: 5,

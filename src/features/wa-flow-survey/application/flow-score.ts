@@ -27,18 +27,22 @@ type ScoredQuestion = {
 /**
  * Official Partners Connect scoring matrix.
  * Question caps: Q1=25, Q2=15, Q3=25, Q4=5, Q5=5 → total 75.
+ *
+ * Interakt/Meta field keys are NOT stable across Flow versions:
+ * - older: bare `Choose all that apply:` = Q1 CXO, `_(2)` = Q2 engagement, `operations_to_take_over` = Q3
+ * - ey_partners_connect_form_final: bare `Choose all that apply:` = Q3 take-over options,
+ *   `_(2)` = Q1 CXO options (engagement may be absent / differently keyed)
+ * Always prefer resolving by option value when possible.
  */
 const PARTNERS_CONNECT_SCORECARD: ScoredQuestion[] = [
   {
     id: 'q1_cxo',
+    // Never match via "choose all that apply" — Meta reuses that key; _(2) order swaps across Flows.
     questionMatchers: [
       'what keeps your clients cxo awake at night',
       'what keeps the clients cxo awake at night',
       'cxo awake',
-      'choose all that apply',
-    ], // Flow Q1
-    // Prefer more specific matchers for "choose all that apply" via question order —
-    // see resolveQuestion(). First multi "Choose all that apply:" without _(2) is Q1.
+    ],
     options: [
       { points: 5, aliases: ['cost pressure'] },
       { points: 5, aliases: ['ai adoption'] },
@@ -54,9 +58,7 @@ const PARTNERS_CONNECT_SCORECARD: ScoredQuestion[] = [
       'what is our current engagement with the client',
       'current ey engagement mix',
       'engagement mix',
-      'choose all that apply 2',
-      'choose all that apply_(2)',
-    ], // Flow Q2
+    ],
     options: [
       { points: 3, aliases: ['advisory'] },
       { points: 5, aliases: ['operations'] },
@@ -73,7 +75,7 @@ const PARTNERS_CONNECT_SCORECARD: ScoredQuestion[] = [
       'operations to take over',
       'operations_to_take_over',
       'take over an area',
-    ], // Flow Q3
+    ],
     options: [
       { points: 4, aliases: ['it operations'] },
       { points: 5, aliases: ['cyber'] },
@@ -91,7 +93,7 @@ const PARTNERS_CONNECT_SCORECARD: ScoredQuestion[] = [
       'outsourcing',
       'choose one 2',
       'choose one_(2)',
-    ], // Flow Q4
+    ],
     options: [
       { points: 5, aliases: ['yes'] },
       { points: 1, aliases: ['no'] },
@@ -105,7 +107,7 @@ const PARTNERS_CONNECT_SCORECARD: ScoredQuestion[] = [
       'client disposition towards ey operations',
       'disposition',
       'choose one',
-    ], // Flow Q5
+    ],
     options: [
       { points: 5, aliases: ['open to our offering'] },
       { points: 1, aliases: ['ey not recognized for ops'] },
@@ -125,7 +127,44 @@ function normalize(text: string): string {
     .trim();
 }
 
-function resolveQuestion(
+/** Exact alias hit — used so "Security & Operations" does not score as engagement "Operations". */
+function findExactOption(
+  question: ScoredQuestion,
+  valueNorm: string,
+): ScoredOption | undefined {
+  for (const option of question.options) {
+    for (const alias of option.aliases) {
+      if (normalize(alias) === valueNorm) return option;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve question from the selected option text.
+ * Meta reuses "Choose all that apply:" keys across Flow versions, so option
+ * identity is more reliable than questionKey.
+ */
+function resolveQuestionByOption(valueText: string): ScoredQuestion | undefined {
+  const valueNorm = normalize(valueText);
+  if (!valueNorm) return undefined;
+
+  let best: { question: ScoredQuestion; aliasLen: number } | undefined;
+  for (const question of PARTNERS_CONNECT_SCORECARD) {
+    for (const option of question.options) {
+      for (const alias of option.aliases) {
+        const a = normalize(alias);
+        if (!a || a !== valueNorm) continue;
+        if (!best || a.length > best.aliasLen) {
+          best = { question, aliasLen: a.length };
+        }
+      }
+    }
+  }
+  return best?.question;
+}
+
+function resolveQuestionByKey(
   questionKey: string,
   questionLabel: string,
 ): ScoredQuestion | undefined {
@@ -133,27 +172,16 @@ function resolveQuestion(
   const labelNorm = normalize(questionLabel);
   const haystack = `${keyNorm} ${labelNorm}`;
 
-  // Prefer specific keys first (avoid "choose all that apply" matching both Q1 and Q2).
   if (
     keyNorm.includes('operations to take over') ||
     keyNorm.includes('operations_to_take_over') ||
     labelNorm.includes('operations to take over') ||
-    labelNorm.includes('take over')
+    /take over an area|take over operations/.test(haystack)
   ) {
     return PARTNERS_CONNECT_SCORECARD.find((q) => q.id === 'q3_takeover');
   }
 
-  // "Choose all that apply:_(2)" / Choose_all_that_apply with index → Q2
-  if (
-    /choose all that apply.*\b2\b/.test(keyNorm) ||
-    /choose all that apply.*\b2\b/.test(labelNorm) ||
-    keyNorm.includes('choose all that apply 2') ||
-    questionKey.includes('_(2)') && /choose.?all/i.test(questionKey)
-  ) {
-    return PARTNERS_CONNECT_SCORECARD.find((q) => q.id === 'q2_engagement');
-  }
-
-  // "Choose one:_(2)" → Q4
+  // Indexed choose-one is stable (Q4) across known Flow versions.
   if (
     (/choose one/.test(keyNorm) || /choose one/.test(labelNorm)) &&
     (questionKey.includes('_(2)') || /\b2\b/.test(keyNorm) || /choose one 2/.test(keyNorm))
@@ -161,30 +189,20 @@ function resolveQuestion(
     return PARTNERS_CONNECT_SCORECARD.find((q) => q.id === 'q4_outsource');
   }
 
-  // Bare "Choose one:" (no _(2)) → Q5 disposition
   if (
     (/^choose one$/.test(keyNorm) || /^choose one$/.test(labelNorm) || keyNorm === 'choose one') &&
     !questionKey.includes('_(2)')
   ) {
-    // Only if not already matched as Q4; disposition is default Choose one:
     if (!/outsource|outsourcing/.test(haystack)) {
       return PARTNERS_CONNECT_SCORECARD.find((q) => q.id === 'q5_disposition');
     }
   }
 
-  // Bare "Choose all that apply:" → Q1
-  if (
-    (/^choose all that apply$/.test(keyNorm) || /^choose all that apply$/.test(labelNorm)) &&
-    !questionKey.includes('_(2)')
-  ) {
-    return PARTNERS_CONNECT_SCORECARD.find((q) => q.id === 'q1_cxo');
-  }
-
+  // Do NOT map bare / _(2) "Choose all that apply" by key — swapped in newer Flows.
   for (const question of PARTNERS_CONNECT_SCORECARD) {
     for (const matcher of question.questionMatchers) {
       const m = normalize(matcher);
       if (!m) continue;
-      // Skip overly generic matchers in the fallback loop — handled above.
       if (m === 'choose all that apply' || m === 'choose one') continue;
       if (haystack.includes(m) || keyNorm.includes(m) || labelNorm.includes(m)) {
         return question;
@@ -199,11 +217,15 @@ function resolveOptionPoints(question: ScoredQuestion, valueText: string): numbe
   const valueNorm = normalize(valueText);
   if (!valueNorm) return undefined;
 
+  const exact = findExactOption(question, valueNorm);
+  if (exact) return exact.points;
+
+  // Soft match only for longer aliases (avoid "operations" ⊂ "security and operations").
   for (const option of question.options) {
     for (const alias of option.aliases) {
       const a = normalize(alias);
-      if (!a) continue;
-      if (valueNorm === a || valueNorm.includes(a) || a.includes(valueNorm)) {
+      if (!a || a.length < 8) continue;
+      if (valueNorm.includes(a) || a.includes(valueNorm)) {
         return option.points;
       }
     }
@@ -232,7 +254,9 @@ export function scoreFlowAnswers(
     if (typeof value !== 'string' || !value.trim()) continue;
     optionCount += 1;
 
-    const question = resolveQuestion(answer.questionKey ?? '', answer.questionLabel ?? '');
+    const question =
+      resolveQuestionByOption(value) ??
+      resolveQuestionByKey(answer.questionKey ?? '', answer.questionLabel ?? '');
     if (!question) {
       unmatched.push(`${answer.questionKey ?? '?'}::${value}`);
       continue;
