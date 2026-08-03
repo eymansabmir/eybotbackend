@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type { RedisClient } from '../../../../plugins/redis';
 import type { MsAssistantConfig } from '../../config';
 
 export interface MemoryTurn {
@@ -15,7 +15,7 @@ export interface ConversationMemory {
 
 export class RedisConversationMemory {
   constructor(
-    private readonly redis: Redis,
+    private readonly redis: RedisClient,
     private readonly config: MsAssistantConfig,
   ) {}
 

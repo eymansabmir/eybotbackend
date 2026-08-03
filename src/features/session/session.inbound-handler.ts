@@ -445,8 +445,14 @@ export class SessionInboundHandler implements IInboundHandler {
         sessionId,
       }));
     } finally {
-      await releaseLock(redis, lockKey, lockValue);
-      logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock released');
+      try {
+        await releaseLock(redis, lockKey, lockValue);
+        logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock released');
+      } catch (err) {
+        // Never fail the inbound job after work completed — Redis Cluster MOVED / blips
+        // on unlock used to nack a successful session start.
+        logger.warn({ err, waId, lockKey }, 'SessionInboundHandler: lock release failed');
+      }
     }
   }
 

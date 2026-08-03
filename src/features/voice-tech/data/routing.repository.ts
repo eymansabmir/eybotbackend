@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type Redis from 'ioredis';
+import type { RedisClient } from '../../../plugins/redis';
 import type { RoutingConditionNode } from '../domain/condition.types';
 import type { RoutingAction } from '../domain/rule.types';
 import { logger } from '../../../utils/logger';
@@ -73,7 +73,7 @@ export interface IVoiceRoutingRepository {
 export class PrismaVoiceRoutingRepository implements IVoiceRoutingRepository {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly redis?: Redis,
+    private readonly redis?: RedisClient,
   ) {}
 
   async getRoutingConfig(configId: string, tenantId: string): Promise<RoutingConfigView | null> {

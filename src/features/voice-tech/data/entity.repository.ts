@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import type Redis from 'ioredis';
+import type { RedisClient } from '../../../plugins/redis';
 import crypto from 'crypto';
 import { logger } from '../../../utils/logger';
 
@@ -48,7 +48,7 @@ export interface IEntityRepository {
 export class PrismaEntityRepository implements IEntityRepository {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly redis?: Redis,
+    private readonly redis?: RedisClient,
   ) {}
 
   async ensureEntityType(tenantId: string, entityType: string): Promise<{ id: string; name: string }> {
