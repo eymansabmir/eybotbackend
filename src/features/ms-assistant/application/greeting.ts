@@ -263,14 +263,20 @@ export function buildWelcomeResponse(): BotResponse {
     text: formatWhatsAppText(
       `${WA_EMOJI.welcome} Welcome to the *EY Managed Services Qualification Assistant*.\n\n` +
         'Recognise Managed Services (MS) opportunities from customer statements and convert them into value-led conversations.\n\n' +
-        'Type a question anytime (answers only from approved knowledge). You can type *menu* anytime to return here.\n\n' +
-        `${WA_EMOJI.next} Or choose an option:`,
+        'Choose *Type my question* to ask from the approved knowledge base, or pick a guided option below.\n' +
+        'Type *menu* anytime to return here.\n\n' +
+        `${WA_EMOJI.next} Choose an option:`,
     ),
     buttonTitle: 'Menu',
     sections: [
       {
         title: 'Main options',
         rows: [
+          {
+            id: MS_BUTTON_IDS.TYPE_QUESTION,
+            title: 'Type my question',
+            description: 'Ask — answers from approved KB',
+          },
           {
             id: MS_BUTTON_IDS.SERVICES,
             title: 'Qualification lens',
@@ -284,7 +290,7 @@ export function buildWelcomeResponse(): BotResponse {
           {
             id: MS_BUTTON_IDS.ASK,
             title: 'Guide & Ask',
-            description: 'Sample triggers or type a question',
+            description: 'Sample customer triggers',
           },
           {
             id: MS_BUTTON_IDS.HANDOFF,
@@ -301,12 +307,12 @@ export function buildMenuNudgeResponse(): BotResponse {
   return {
     mode: 'buttons',
     text: formatWhatsAppText(
-      `${WA_EMOJI.tip} Type a question in your own words, or use the menu.\n\n` +
+      `${WA_EMOJI.tip} Choose *Ask again* / *Type my question* to query the knowledge base, or open the main menu.\n\n` +
         'Answers come only from approved knowledge sources.\n' +
         'Type *menu* anytime to return. For routing, choose *Talk to an expert*.',
     ),
     buttons: [
-      { id: MS_BUTTON_IDS.ASK, title: 'Guide & Ask' },
+      { id: MS_BUTTON_IDS.TYPE_QUESTION, title: 'Type my question' },
       { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
       { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
     ],
@@ -511,13 +517,15 @@ export function buildAskPromptResponse(): BotResponse {
   return {
     mode: 'buttons',
     text: formatWhatsAppText(
-      `${WA_EMOJI.people} *Ask from approved knowledge*\n\n` +
-        'Type a question *or paste a customer statement*.\n\n' +
-        'Answers are only provided when information exists in approved knowledge sources. Otherwise you will see: _Information not available in the approved knowledge source._\n\n' +
-        '_You can type freely anytime — this screen is optional. Type menu to return._',
+      `${WA_EMOJI.people} *Type my question*\n\n` +
+        'Send your question in plain text (or paste a customer statement).\n\n' +
+        'I will answer *only* from the approved Managed Services knowledge base, in a short structured format.\n\n' +
+        'If nothing relevant is found, you will see:\n' +
+        '_Information not available in the approved knowledge source._\n\n' +
+        '_Type *menu* anytime to return to the main menu._',
     ),
     buttons: [
-      { id: MS_BUTTON_IDS.FAQ, title: 'Guide list' },
+      { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
       { id: MS_BUTTON_IDS.OFFERINGS, title: 'Triggers' },
       { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
     ],
@@ -525,8 +533,8 @@ export function buildAskPromptResponse(): BotResponse {
 }
 
 const POST_NAV_BUTTONS = [
+  { id: MS_BUTTON_IDS.TYPE_QUESTION, title: 'Ask again' },
   { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
-  { id: MS_BUTTON_IDS.OFFERINGS, title: 'Triggers' },
   { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
 ] as const;
 

@@ -7,6 +7,7 @@ import {
   buildHandoffMenuResponse,
   buildHandoffLeadershipResponse,
   buildHandoffCoreResponse,
+  buildAskPromptResponse,
   offeringQueryForId,
   cannedAnswerForId,
   resolveMenuSelection,
@@ -33,14 +34,28 @@ describe('ms-assistant greeting', () => {
     expect(welcome.text).toMatch(/type \*menu\*/i);
     const ids = welcome.sections.flatMap((s) => s.rows.map((r) => r.id));
     expect(ids).toEqual([
+      MS_BUTTON_IDS.TYPE_QUESTION,
       MS_BUTTON_IDS.SERVICES,
       MS_BUTTON_IDS.OFFERINGS,
       MS_BUTTON_IDS.ASK,
       MS_BUTTON_IDS.HANDOFF,
     ]);
+    expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.TYPE_QUESTION)?.title).toBe(
+      'Type my question',
+    );
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.HANDOFF)?.title).toBe(
       'Talk to an expert',
     );
+  });
+
+  it('builds Type my question prompt for KB Q&A', () => {
+    const ask = buildAskPromptResponse();
+    expect(ask.mode).toBe('buttons');
+    if (ask.mode !== 'buttons') return;
+    expect(ask.text).toMatch(/Type my question/i);
+    expect(ask.text).toMatch(/approved/i);
+    expect(ask.buttons.some((b) => b.id === MS_BUTTON_IDS.MAIN_MENU)).toBe(true);
+    expect(resolveMenuSelection('Type my question')).toBe(MS_BUTTON_IDS.TYPE_QUESTION);
   });
 
   it('builds trigger themes with four-part canned cards', () => {
