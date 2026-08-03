@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "WhatsApp Flow Builder Backend - Plugin-First Architecture",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/server.ts",
     "build": "tsc",

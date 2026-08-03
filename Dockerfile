@@ -1,5 +1,5 @@
-# Build Stage — Debian (glibc) required for onnxruntime-node / @xenova/transformers
-FROM node:20-bookworm-slim AS builder
+# Build Stage — Node 22+ (Copilot CLI needs Promise.withResolvers); Debian/glibc for onnxruntime-node
+FROM node:22-bookworm-slim AS builder
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -20,7 +20,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production Stage
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \

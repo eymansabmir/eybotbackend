@@ -169,7 +169,9 @@ Point Interakt Developer Settings webhook at your existing BSP path (e.g. `BSP_W
 
 **EY workaround:** chat goes through the official `@github/copilot-sdk` (your Copilot subscription + PAT). Embeddings run on-device via `@xenova/transformers` so RAG never calls OpenAI. Vectors live in Postgres (`ms_knowledge_chunks`).
 
-**Docker note:** local embeddings need **glibc** (`onnxruntime-node`). The image uses `node:20-bookworm-slim`. Alpine (`node:*-alpine`) often dies with `Ort::Exception` / “No error information” during model load — rebuild with the current Dockerfile.
+**Docker notes:**
+- Image is `node:22-bookworm-slim` (glibc). Alpine often crashes Xenova with `Ort::Exception`.
+- Node **22+** is required for `@github/copilot-sdk` (`Promise.withResolvers`). Node 20 fails with `TypeError: Promise.withResolvers is not a function` in `@github/copilot-linux-x64`.
 
 ### Demo script
 

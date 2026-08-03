@@ -2,7 +2,7 @@ import { approveAll, CopilotClient } from '@github/copilot-sdk';
 import type { MsAssistantConfig } from '../../config';
 import { resolveMsAssistantApiKey } from '../../config';
 import type { ConversationMemory } from '../memory/redis-memory';
-import type { RetrievedChunk } from '../rag/qdrant.store';
+import type { RetrievedChunk } from '../rag/knowledge-store';
 import type { BotResponse } from '../../domain/bot-response';
 import {
   buildAnswerUserContent,
@@ -14,10 +14,12 @@ import {
 /**
  * Chat via official GitHub Copilot SDK (PAT + Copilot subscription).
  * Does not call api.openai.com or models.github.ai.
+ *
+ * Requires Node.js 22+ in the runtime (Copilot CLI uses Promise.withResolvers).
  */
 export class CopilotMsAssistantLlm implements MsAssistantChat {
   private readonly client: CopilotClient;
-  private readonly started: Promise<void>;
+  private startPromise: Promise<void> | null = null;
 
   constructor(private readonly config: MsAssistantConfig) {
     const token = resolveMsAssistantApiKey(config);
@@ -31,7 +33,16 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
       gitHubToken: token,
       useLoggedInUser: false,
     });
-    this.started = this.client.start();
+  }
+
+  private ensureStarted(): Promise<void> {
+    if (!this.startPromise) {
+      this.startPromise = this.client.start().catch((err) => {
+        this.startPromise = null;
+        throw err;
+      });
+    }
+    return this.startPromise;
   }
 
   async answer(params: {
@@ -41,7 +52,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
   }): Promise<BotResponse> {
     const userContent = buildAnswerUserContent(params);
 
-    await this.started;
+    await this.ensureStarted();
     const session = await this.client.createSession({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,
       systemMessage: { mode: 'replace', content: MS_ASSISTANT_SYSTEM_PROMPT },
@@ -70,7 +81,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
       .join('\n')
       .slice(0, 4000);
 
-    await this.started;
+    await this.ensureStarted();
     const session = await this.client.createSession({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,
       systemMessage: {
