@@ -161,7 +161,7 @@ async function startServer(): Promise<void> {
             embeddings: msAssistantConfig.MS_ASSISTANT_EMBED_PROVIDER,
             model: msAssistantConfig.MS_ASSISTANT_CHAT_MODEL,
           },
-          'Managed Services Assistant ready (exclusive inbound mode)',
+          'Managed Services Assistant ready (fallback when no intent match)',
         );
       } catch (err) {
         logger.error({ err }, 'Managed Services Assistant failed to initialize');

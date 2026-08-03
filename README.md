@@ -127,7 +127,7 @@ REDIS_URL=redis://localhost:6379
 
 ## EY Managed Services WhatsApp Assistant
 
-Internal RAG assistant for EY partners over WhatsApp (Interakt). When enabled, chat inbound bypasses the flow engine; WhatsApp Flow survey webhooks still use `WA_FLOW_RESPONSE`.
+Internal RAG assistant for EY partners over WhatsApp (Interakt). When enabled, unmatched chat messages (no active flow session and no intent/trigger match) fall through to GenAI; intent-matched bots still start the flow engine. WhatsApp Flow survey webhooks still use `WA_FLOW_RESPONSE`.
 
 ### Quick start
 

@@ -12,6 +12,7 @@ import {
   buildAnswerWithNav,
   buildAskPromptResponse,
   buildFaqMenuResponse,
+  buildHandoffMenuResponse,
   buildMenuNudgeResponse,
   buildOfferingsResponse,
   buildServicesOverviewResponse,
@@ -60,24 +61,19 @@ export class MsAssistantService {
         return this.toJobs(buildMenuNudgeResponse(), job);
       }
 
-      // Free text is only allowed in explicit Ask mode; otherwise stay menu-driven.
-      const memory = await this.memory.get(waBusinessNumber, waId);
-      if (memory.mode === 'qa') {
-        return await this.answerWithLlm(job, text);
-      }
-
-      return this.toJobs(buildMenuNudgeResponse(), job);
+      // Any free text → RAG + LLM (chunks when available; generic MS guidance otherwise).
+      return await this.answerWithLlm(job, text, { mode: 'qa' });
     } catch (err) {
       logger.error({ err, waId, orgId }, 'MsAssistantService: handleInbound failed');
       return this.toJobs(
         {
           mode: 'buttons',
           text:
-            'Sorry — something went wrong while preparing your answer. Please try again from the menu.',
+            '⚠️ Something went wrong preparing that reply. Please try again from the menu.',
           buttons: [
             { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
-            { id: MS_BUTTON_IDS.OFFERINGS, title: 'Browse Topics' },
-            { id: MS_BUTTON_IDS.ASK, title: 'FAQs & Ask' },
+            { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to human' },
+            { id: MS_BUTTON_IDS.ASK, title: 'Guide & Ask' },
           ],
         },
         job,
@@ -128,7 +124,20 @@ export class MsAssistantService {
       return this.toJobs(buildAskPromptResponse(), job);
     }
 
-    // Topic / FAQ rows: prefer canned answers (fast). Fall back to RAG without LLM.
+    if (
+      key === MS_BUTTON_IDS.HANDOFF ||
+      key === 'talk to a human' ||
+      key === 'talk to human' ||
+      key === 'handoff' ||
+      key === 'contact' ||
+      key === 'contacts' ||
+      key === 'human handoff'
+    ) {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(buildHandoffMenuResponse(), job);
+    }
+
+    // Topic / FAQ / handoff rows: prefer canned answers (fast). Fall back to RAG without LLM.
     const topicId = resolved.trim();
     const canned =
       cannedAnswerForId(topicId) ||
@@ -154,7 +163,10 @@ export class MsAssistantService {
     return this.toJobs(buildWelcomeResponse(), job);
   }
 
-  /** Menu path: embed + Qdrant only (no Copilot) — typically ~1s after model warm. */
+  /**
+   * Menu theme path: prefer fast retrieval formatting; if no hits, fall back to LLM
+   * with generic guidance (never a "KB empty" error).
+   */
   private async answerFromRetrieval(job: InboundJob, question: string): Promise<OutboundJob[]> {
     const vector = await this.embeddings.embedOne(question);
     const chunks = await this.store.search(vector, Math.min(3, this.config.MS_ASSISTANT_TOP_K));
@@ -163,31 +175,33 @@ export class MsAssistantService {
     );
 
     if (filtered.length === 0) {
-      return this.toJobs(
-        buildAnswerWithNav(
-          'I do not have enough information in the knowledge base for that topic yet. Please pick another option from the menu.',
-        ),
-        job,
-      );
+      return this.answerWithLlm(job, question, { mode: 'menu' });
     }
 
     const bullets = filtered
       .slice(0, 3)
-      .map((c) => `• ${c.text.replace(/\s+/g, ' ').trim().slice(0, 220)}`)
+      .map((c) => `* ${c.text.replace(/\s+/g, ' ').trim().slice(0, 220)}`)
       .join('\n');
 
-    return this.toJobs(buildAnswerWithNav(`*Quick overview*\n\n${bullets}`), job);
+    return this.toJobs(
+      buildAnswerWithNav(`📌 *Quick overview*\n\n${bullets}`),
+      job,
+    );
   }
 
-  /** Free-text Ask mode only — uses Copilot (slower by design). */
-  private async answerWithLlm(job: InboundJob, question: string): Promise<OutboundJob[]> {
+  /** Free-text (and retrieval fallback) — RAG chunks when available, else LLM general guidance. */
+  private async answerWithLlm(
+    job: InboundJob,
+    question: string,
+    opts: { mode: 'qa' | 'menu' } = { mode: 'qa' },
+  ): Promise<OutboundJob[]> {
     const { waId, waBusinessNumber } = job.message;
 
     await this.memory.appendTurn(
       waBusinessNumber,
       waId,
       { role: 'user', content: question, at: Date.now() },
-      { mode: 'qa' },
+      { mode: opts.mode },
     );
 
     const memory = await this.memory.get(waBusinessNumber, waId);
@@ -206,13 +220,13 @@ export class MsAssistantService {
     const replyText =
       response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
         ? response.text
-        : (response.text ?? 'Here is what I found.');
+        : (response.text ?? '💡 Here is a concise view based on MS qualification practice.');
 
     const updated = await this.memory.appendTurn(
       waBusinessNumber,
       waId,
       { role: 'assistant', content: replyText, at: Date.now() },
-      { mode: 'qa' },
+      { mode: opts.mode },
     );
 
     // Fire-and-forget summary — awaiting it roughly doubles Copilot latency.
@@ -245,6 +259,23 @@ function normalizeInteractiveKey(value: string): string {
 }
 
 function cannedFromFuzzyTitle(key: string): string | undefined {
+  // Handoff category titles before topic fuzzy matches (e.g. "cyber ms" ≠ tech triggers).
+  if (key.includes('prc') || key.includes('pursuit')) {
+    return cannedAnswerForId('ms_handoff_prc');
+  }
+  if (key === 'technology ms' || key.startsWith('technology ms')) {
+    return cannedAnswerForId('ms_handoff_technology');
+  }
+  if (key === 'cyber ms' || key.startsWith('cyber ms')) {
+    return cannedAnswerForId('ms_handoff_cyber');
+  }
+  if (key.includes('hrms') || key === 'hrms / learning') {
+    return cannedAnswerForId('ms_handoff_hrms');
+  }
+  if (key === 'data and ai ms' || key.startsWith('data and ai')) {
+    return cannedAnswerForId('ms_handoff_data_ai');
+  }
+
   if (key.includes('qualification') || key.includes('3 qualification') || key === 'ms lens') {
     return cannedAnswerForId('ms_topic_qualify');
   }
@@ -260,10 +291,10 @@ function cannedFromFuzzyTitle(key: string): string | undefined {
   if (key.includes('quality') || key.includes('vendor')) {
     return cannedAnswerForId('ms_topic_quality');
   }
-  if (key.includes('tech') || key.includes('cyber') || key.includes('cloud cost')) {
+  if (key.includes('tech, cloud') || key.includes('cloud cost') || key === 'tech, cloud & cyber') {
     return cannedAnswerForId(key.includes('cloud cost') ? 'ms_faq_cloud_cost' : 'ms_topic_tech');
   }
-  if (key.includes('finance') || key.includes('hr') || key.includes('scale') || key.includes('gcc')) {
+  if (key.includes('finance') || key.includes('hr & scale') || key.includes('scale') || key.includes('gcc')) {
     return cannedAnswerForId('ms_topic_scale');
   }
   if (key.includes('skills')) return cannedAnswerForId('ms_faq_skills');
@@ -284,6 +315,17 @@ function looksLikeMenuChoice(text: string): boolean {
     key === 'guide & ask' ||
     key === 'faqs & ask' ||
     key === 'ask a question' ||
+    key === 'talk to a human' ||
+    key === 'talk to human' ||
+    key === 'handoff' ||
+    key === 'contact' ||
+    key === 'contacts' ||
+    key === 'human handoff' ||
+    key === 'prc / pursuit' ||
+    key === 'technology ms' ||
+    key === 'cyber ms' ||
+    key === 'hrms / learning' ||
+    key === 'data and ai ms' ||
     key === 'main menu' ||
     key === 'guide list' ||
     key === 'browse faqs' ||

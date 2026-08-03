@@ -55,15 +55,6 @@ export class SessionInboundHandler implements IInboundHandler {
     logger.debug({ waId, lockKey }, 'SessionInboundHandler: lock acquired');
 
     try {
-      // Exclusive Managed Services Assistant mode (demo): bypass flow engine.
-      if (this.msAssistant?.enabled) {
-        logger.info(
-          { waId, orgId, waBusinessNumber },
-          'SessionInboundHandler: routing to Managed Services Assistant',
-        );
-        return await this.msAssistant.handleInbound(job);
-      }
-
       const contact: ContactInfo = {
         waId,
         name: message.contactName ?? waId,
@@ -424,6 +415,13 @@ export class SessionInboundHandler implements IInboundHandler {
             },
             'SessionInboundHandler: no flow matched trigger conditions'
           );
+          if (this.msAssistant?.enabled) {
+            logger.info(
+              { waId, orgId, waBusinessNumber },
+              'SessionInboundHandler: no intent match, routing to GenAI',
+            );
+            return await this.msAssistant.handleInbound(job);
+          }
           return [];
         }
 
