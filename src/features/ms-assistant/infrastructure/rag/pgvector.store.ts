@@ -10,14 +10,34 @@ export class PgVectorKnowledgeStore implements KnowledgeStore {
 
   async ensureReady(vectorSize: number): Promise<void> {
     assertLocalDims(vectorSize);
-    await this.prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS vector');
+
+    // Prefer a cheap table check first. CREATE EXTENSION on Azure Postgres is often
+    // slow/blocked (allowlist + privileges) and was timing out ingest.
     const rows = await this.prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
       `SELECT EXISTS (
          SELECT 1 FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name = 'ms_knowledge_chunks'
        ) AS "exists"`,
     );
-    if (!rows[0]?.exists) {
+    if (rows[0]?.exists) return;
+
+    try {
+      await this.prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS vector');
+    } catch (err) {
+      throw new Error(
+        '[MsAssistant] ms_knowledge_chunks missing and CREATE EXTENSION vector failed. ' +
+          'Enable the vector extension on the server, then run prisma migrate deploy. ' +
+          `Cause: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const again = await this.prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'ms_knowledge_chunks'
+       ) AS "exists"`,
+    );
+    if (!again[0]?.exists) {
       throw new Error(
         '[MsAssistant] ms_knowledge_chunks missing — run prisma migrate deploy',
       );

@@ -5,18 +5,18 @@ import {
   buildOfferingsResponse,
   buildFaqMenuResponse,
   buildHandoffMenuResponse,
-  buildHandoffLeadershipResponse,
-  buildHandoffCoreResponse,
   buildAskPromptResponse,
   offeringQueryForId,
   cannedAnswerForId,
   resolveMenuSelection,
+  resolveHandoffPillarId,
   truncateWhatsAppBody,
   MS_BUTTON_IDS,
   MS_TOPIC_IDS,
   MS_FAQ_IDS,
   MS_HANDOFF_IDS,
   HANDOFF_CONTACTS,
+  HANDOFF_PILLARS,
 } from './greeting';
 
 describe('ms-assistant greeting', () => {
@@ -37,25 +37,32 @@ describe('ms-assistant greeting', () => {
       MS_BUTTON_IDS.TYPE_QUESTION,
       MS_BUTTON_IDS.SERVICES,
       MS_BUTTON_IDS.OFFERINGS,
-      MS_BUTTON_IDS.ASK,
       MS_BUTTON_IDS.HANDOFF,
+      MS_BUTTON_IDS.ASK,
     ]);
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.TYPE_QUESTION)?.title).toBe(
-      'Type my question',
+      'Ask anything',
+    );
+    expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.ASK)?.title).toBe(
+      'Run a Client diagnostic',
     );
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.HANDOFF)?.title).toBe(
       'Talk to an expert',
     );
   });
 
-  it('builds Type my question prompt for KB Q&A', () => {
+  it('builds Ask anything prompt for open-ended KB Q&A', () => {
     const ask = buildAskPromptResponse();
     expect(ask.mode).toBe('buttons');
     if (ask.mode !== 'buttons') return;
-    expect(ask.text).toMatch(/Type my question/i);
+    expect(ask.text).toMatch(/Ask anything/i);
     expect(ask.text).toMatch(/approved/i);
     expect(ask.buttons.some((b) => b.id === MS_BUTTON_IDS.MAIN_MENU)).toBe(true);
+    expect(resolveMenuSelection('Ask anything')).toBe(MS_BUTTON_IDS.TYPE_QUESTION);
     expect(resolveMenuSelection('Type my question')).toBe(MS_BUTTON_IDS.TYPE_QUESTION);
+    expect(resolveMenuSelection('Ask a question')).toBe(MS_BUTTON_IDS.TYPE_QUESTION);
+    expect(resolveMenuSelection('Run a Client diagnostic')).toBe(MS_BUTTON_IDS.ASK);
+    expect(resolveMenuSelection('Guide & Ask')).toBe(MS_BUTTON_IDS.ASK);
   });
 
   it('builds trigger themes with four-part canned cards', () => {
@@ -74,53 +81,59 @@ describe('ms-assistant greeting', () => {
     expect(capacity).toMatch(/\*Client-facing opener:/i);
   });
 
-  it('dedupes Guide & Ask away from qualification duplicates', () => {
+  it('dedupes Client diagnostic away from qualification duplicates', () => {
     const faqs = buildFaqMenuResponse();
     expect(faqs.mode).toBe('list');
     if (faqs.mode !== 'list') return;
+    expect(faqs.text).toMatch(/Client diagnostic/i);
     const ids = faqs.sections[0]?.rows.map((r) => r.id) ?? [];
     expect(ids).toContain(MS_BUTTON_IDS.TYPE_QUESTION);
     expect(ids).toContain(MS_FAQ_IDS.COST);
     expect(ids).not.toContain(MS_TOPIC_IDS.QUALIFY);
   });
 
-  it('builds expert handoff menu with Leadership and Core Team', () => {
+  it('builds expert handoff menu by KB offering domains', () => {
     const handoff = buildHandoffMenuResponse();
-    expect(handoff.mode).toBe('buttons');
-    if (handoff.mode !== 'buttons') return;
-    expect(handoff.buttons.map((b) => b.id)).toEqual([
-      MS_HANDOFF_IDS.LEADERSHIP,
-      MS_HANDOFF_IDS.CORE,
+    expect(handoff.mode).toBe('list');
+    if (handoff.mode !== 'list') return;
+    const ids = handoff.sections.flatMap((s) => s.rows.map((r) => r.id));
+    expect(ids).toEqual([
+      ...HANDOFF_PILLARS.map((p) => p.id),
       MS_BUTTON_IDS.MAIN_MENU,
     ]);
-
-    const leadership = buildHandoffLeadershipResponse();
-    expect(leadership.mode).toBe('list');
-    if (leadership.mode !== 'list') return;
-    const ldIds = leadership.sections.flatMap((s) => s.rows.map((r) => r.id));
-    expect(ldIds).toContain(MS_HANDOFF_IDS.LD_CYBER);
-    expect(ldIds).toHaveLength(9);
-
-    const core = buildHandoffCoreResponse();
-    expect(core.mode).toBe('list');
-    if (core.mode !== 'list') return;
-    const ctIds = core.sections.flatMap((s) => s.rows.map((r) => r.id));
-    expect(ctIds).toContain(MS_HANDOFF_IDS.CT_AMS);
-    expect(ctIds).toHaveLength(10);
-    expect(ctIds.length).toBeLessThanOrEqual(10);
+    expect(ids.length).toBeLessThanOrEqual(10);
+    expect(ids).toContain(MS_HANDOFF_IDS.P_CYBER);
+    expect(ids).toContain(MS_HANDOFF_IDS.P_DATA_AI);
+    expect(ids).toContain(MS_HANDOFF_IDS.P_GTM);
+    expect(ids).not.toContain('ms_handoff_leadership');
   });
 
-  it('maps handoff contacts from the approved directory', () => {
-    expect(HANDOFF_CONTACTS).toHaveLength(19);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.LD_CYBER)).toMatch(/Murali Rao/i);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.LD_TECHNOLOGY)).toMatch(/Selva R\./i);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.CT_AMS)).toMatch(/Shanthi Mani/i);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.CT_TFO)).toMatch(/Jitesh Bansal/i);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.CT_MLS)).toMatch(/Ashish Jain/i);
-    expect(cannedAnswerForId(MS_HANDOFF_IDS.LD_CYBER)).not.toMatch(/@ey\.com/i);
+  it('maps handoff contacts under content-backed pillars', () => {
+    expect(HANDOFF_CONTACTS).toHaveLength(23);
+    expect(HANDOFF_PILLARS).toHaveLength(9);
+
+    const cyber = cannedAnswerForId(MS_HANDOFF_IDS.P_CYBER) ?? '';
+    expect(cyber).toMatch(/SOC and Cyber/i);
+    expect(cyber).toMatch(/Murali\.Rao@in\.ey\.com/i);
+    expect(cyber).toMatch(/Raghavendra\.Bv@in\.ey\.com/i);
+
+    const dataAi = cannedAnswerForId(MS_HANDOFF_IDS.P_DATA_AI) ?? '';
+    expect(dataAi).toMatch(/Alexy\.Thomas@in\.ey\.com/i);
+    expect(dataAi).toMatch(/Sivakumar\.Moorty@in\.ey\.com/i);
+    expect(dataAi).toMatch(/bvijay\.shankar@in\.ey\.com/i);
+    expect(dataAi).toMatch(/Hari\.Balaji@in\.ey\.com/i);
+    expect(dataAi).toMatch(/Salil\.Shekharan@in\.ey\.com/i);
+
+    const tax = cannedAnswerForId(MS_HANDOFF_IDS.P_TAX_FINANCE) ?? '';
+    expect(tax).toMatch(/jitesh\.bansal@in\.ey\.com/i);
+    expect(tax).toMatch(/Nitish\.Jain@in\.ey\.com/i);
+    expect(tax).toMatch(/swati\.umre@in\.ey\.com/i);
+
+    expect(resolveHandoffPillarId('cyber')).toBe(MS_HANDOFF_IDS.P_CYBER);
+    expect(resolveHandoffPillarId('sap')).toBe(MS_HANDOFF_IDS.P_TECH);
+    expect(resolveHandoffPillarId('llm governance')).toBe(MS_HANDOFF_IDS.P_DATA_AI);
     expect(resolveMenuSelection('Talk to an expert')).toBe(MS_BUTTON_IDS.HANDOFF);
-    expect(resolveMenuSelection('Leadership Team')).toBe(MS_HANDOFF_IDS.LEADERSHIP);
-    expect(resolveMenuSelection('Core Team')).toBe(MS_HANDOFF_IDS.CORE);
+    expect(resolveMenuSelection('Data and AI')).toBe(MS_HANDOFF_IDS.P_DATA_AI);
     expect(offeringQueryForId(MS_FAQ_IDS.CLOUD_COST)).toMatch(/FinOps/i);
   });
 
