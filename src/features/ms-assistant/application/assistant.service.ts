@@ -14,12 +14,9 @@ import type { MsEmbeddings } from '../infrastructure/rag/embeddings.types';
 import type { KnowledgeStore } from '../infrastructure/rag/knowledge-store';
 import {
   MS_BUTTON_IDS,
-  MS_HANDOFF_IDS,
   buildAnswerWithNav,
   buildAskPromptResponse,
   buildFaqMenuResponse,
-  buildHandoffCoreResponse,
-  buildHandoffLeadershipResponse,
   buildHandoffMenuResponse,
   buildMenuNudgeResponse,
   buildOfferingsResponse,
@@ -30,6 +27,7 @@ import {
   isMenuNavText,
   offeringQueryForId,
   resolveHandoffContactId,
+  resolveHandoffPillarId,
   resolveMenuSelection,
 } from './greeting';
 
@@ -86,7 +84,7 @@ export class MsAssistantService {
           buttons: [
             { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
             { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
-            { id: MS_BUTTON_IDS.ASK, title: 'Guide & Ask' },
+            { id: MS_BUTTON_IDS.ASK, title: 'Diagnostic' },
           ],
         },
         job,
@@ -124,7 +122,10 @@ export class MsAssistantService {
       key === MS_BUTTON_IDS.ASK ||
       key === MS_BUTTON_IDS.FAQ ||
       key === 'faqs & ask' ||
-      key === 'ask a question' ||
+      key === 'guide & ask' ||
+      key === 'run a client diagnostic' ||
+      key === 'client diagnostic' ||
+      key === 'diagnostic' ||
       key === 'browse faqs' ||
       key === 'common faqs' ||
       key === 'guide list'
@@ -133,7 +134,12 @@ export class MsAssistantService {
       return this.toJobs(buildFaqMenuResponse(), job);
     }
 
-    if (key === MS_BUTTON_IDS.TYPE_QUESTION || key === 'type my question') {
+    if (
+      key === MS_BUTTON_IDS.TYPE_QUESTION ||
+      key === 'type my question' ||
+      key === 'ask anything' ||
+      key === 'ask a question'
+    ) {
       await this.memory.setMode(waBusinessNumber, waId, 'qa');
       return this.toJobs(buildAskPromptResponse(), job);
     }
@@ -154,32 +160,29 @@ export class MsAssistantService {
       return this.toJobs(buildHandoffMenuResponse(), job);
     }
 
+    // Legacy team-browse ids → new domain menu
     if (
-      key === MS_HANDOFF_IDS.LEADERSHIP ||
-      key === 'leadership team' ||
-      key === 'leadership'
-    ) {
-      await this.memory.setMode(waBusinessNumber, waId, 'menu');
-      return this.toJobs(buildHandoffLeadershipResponse(), job);
-    }
-
-    if (
-      key === MS_HANDOFF_IDS.CORE ||
-      key === 'core team' ||
-      key === 'core' ||
+      key === 'ms_handoff_leadership' ||
+      key === 'ms_handoff_core' ||
+      key === 'ms_handoff_core_more' ||
+      key === 'ms_handoff_gtm' ||
       key === 'ms_handoff_more' ||
+      key === 'leadership team' ||
+      key === 'core team' ||
       key === 'more towers'
     ) {
       await this.memory.setMode(waBusinessNumber, waId, 'menu');
-      return this.toJobs(buildHandoffCoreResponse(), job);
+      return this.toJobs(buildHandoffMenuResponse(), job);
     }
 
     const topicId = resolved.trim();
-    const handoffId = resolveHandoffContactId(topicId) || resolveHandoffContactId(key);
+    const pillarId = resolveHandoffPillarId(topicId) || resolveHandoffPillarId(key);
+    const personId = resolveHandoffContactId(topicId) || resolveHandoffContactId(key);
     const canned =
       cannedAnswerForId(topicId) ||
       cannedAnswerForId(key) ||
-      (handoffId ? cannedAnswerForId(handoffId) : undefined) ||
+      (pillarId ? cannedAnswerForId(pillarId) : undefined) ||
+      (personId ? cannedAnswerForId(personId) : undefined) ||
       cannedFromFuzzyTitle(key);
 
     if (canned) {
@@ -301,6 +304,8 @@ function normalizeInteractiveKey(value: string): string {
 }
 
 function cannedFromFuzzyTitle(key: string): string | undefined {
+  const pillarId = resolveHandoffPillarId(key);
+  if (pillarId) return cannedAnswerForId(pillarId);
   const handoffId = resolveHandoffContactId(key);
   if (handoffId) return cannedAnswerForId(handoffId);
 
@@ -343,7 +348,11 @@ function looksLikeMenuChoice(text: string): boolean {
     key === 'more topics' ||
     key === 'guide & ask' ||
     key === 'faqs & ask' ||
+    key === 'run a client diagnostic' ||
+    key === 'client diagnostic' ||
+    key === 'diagnostic' ||
     key === 'ask a question' ||
+    key === 'ask anything' ||
     key === 'talk to a human' ||
     key === 'talk to human' ||
     key === 'talk to an expert' ||

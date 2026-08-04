@@ -28,11 +28,22 @@ export const MS_TOPIC_IDS = {
   SCALE: 'ms_topic_scale',
 } as const;
 
-/** Expert handoff menu / contact ids (canned — no RAG invent). */
+/**
+ * Expert handoff ids — menu is by KB offering domain (not org team labels).
+ * Person ids remain for alias resolution / single-contact cards.
+ */
 export const MS_HANDOFF_IDS = {
-  LEADERSHIP: 'ms_handoff_leadership',
-  CORE: 'ms_handoff_core',
-  // Leadership Team pillars
+  // Content-backed MS offering pillars (menu)
+  P_CYBER: 'ms_handoff_p_cyber',
+  P_TECH: 'ms_handoff_p_tech',
+  P_DATA_AI: 'ms_handoff_p_data_ai',
+  P_TAX_FINANCE: 'ms_handoff_p_tax_finance',
+  P_HR_PAYROLL: 'ms_handoff_p_hr_payroll',
+  P_LEARNING: 'ms_handoff_p_learning',
+  P_SUPPLY: 'ms_handoff_p_supply',
+  P_GCC: 'ms_handoff_p_gcc',
+  P_GTM: 'ms_handoff_p_gtm',
+  // People
   LD_CYBER: 'ms_handoff_ld_cyber',
   LD_HR: 'ms_handoff_ld_hr',
   LD_TAX: 'ms_handoff_ld_tax',
@@ -42,195 +53,368 @@ export const MS_HANDOFF_IDS = {
   LD_GCC_CAAS: 'ms_handoff_ld_gcc_caas',
   LD_AI_COE: 'ms_handoff_ld_ai_coe',
   LD_SR_MSL: 'ms_handoff_ld_sr_msl',
-  // Core Team pillars
   CT_AMS: 'ms_handoff_ct_ams',
+  CT_HRO: 'ms_handoff_ct_hro',
   CT_TFO: 'ms_handoff_ct_tfo',
-  CT_AI_TAX: 'ms_handoff_ct_ai_tax',
-  CT_MLS: 'ms_handoff_ct_mls',
   CT_LLM_GOV: 'ms_handoff_ct_llm_gov',
   CT_ACR_PAYROLL: 'ms_handoff_ct_acr_payroll',
   CT_PAYROLL: 'ms_handoff_ct_payroll',
-  CT_HRO: 'ms_handoff_ct_hro',
-  CT_DATA_AI: 'ms_handoff_ct_data_ai',
+  CT_MLS: 'ms_handoff_ct_mls',
+  CT_CYBER: 'ms_handoff_ct_cyber',
   CT_AI_SUPPLY: 'ms_handoff_ct_ai_supply',
+  CT_DATA_AI: 'ms_handoff_ct_data_ai',
+  CT_AI_TAX: 'ms_handoff_ct_ai_tax',
+  CT_ACTUARIAL: 'ms_handoff_ct_actuarial',
+  GTM_CORRIDOR: 'ms_handoff_gtm_corridor',
+  GTM_DEAL_HUB: 'ms_handoff_gtm_deal_hub',
 } as const;
 
-type HandoffTeam = 'Leadership Team' | 'Core Team';
+type HandoffTeam = 'Leadership Team' | 'Core Team' | 'GTM Team';
 
 type HandoffContact = {
   id: string;
-  pillar: string;
-  /** WhatsApp list row title (max 24 chars). */
-  title: string;
+  /** Specialty label within the KB pillar (for display). */
+  focus: string;
   contactName: string;
+  email: string;
+  designation: string;
   team: HandoffTeam;
   aliases?: string[];
-  solution?: string;
 };
 
-/** Approved directory — names only; never invent emails. */
+type HandoffPillar = {
+  id: string;
+  /** WhatsApp list title (max 24). */
+  title: string;
+  description: string;
+  /** Full KB offering domain name. */
+  kbDomain: string;
+  aliases: string[];
+  contactIds: string[];
+};
+
+/** Approved people directory — only listed emails may be shown. */
 export const HANDOFF_CONTACTS: HandoffContact[] = [
   {
     id: MS_HANDOFF_IDS.LD_CYBER,
-    pillar: 'Cyber',
-    title: 'Cyber',
+    focus: 'Cyber leadership',
     contactName: 'Murali Rao',
+    email: 'Murali.Rao@in.ey.com',
+    designation: 'Partner/Principal',
     team: 'Leadership Team',
-    aliases: ['cyber'],
+    aliases: ['murali rao'],
   },
   {
-    id: MS_HANDOFF_IDS.LD_HR,
-    pillar: 'HR',
-    title: 'HR',
-    contactName: 'Anurag Malik',
-    team: 'Leadership Team',
-    aliases: ['hr', 'human resources'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_TAX,
-    pillar: 'Tax',
-    title: 'Tax',
-    contactName: 'Garima Pande',
-    team: 'Leadership Team',
-    aliases: ['tax'],
+    id: MS_HANDOFF_IDS.CT_CYBER,
+    focus: 'Cyber delivery',
+    contactName: 'Raghavendra Bv',
+    email: 'Raghavendra.Bv@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['raghavendra'],
   },
   {
     id: MS_HANDOFF_IDS.LD_TECHNOLOGY,
-    pillar: 'Technology',
-    title: 'Technology',
+    focus: 'Technology leadership',
     contactName: 'Selva R.',
+    email: 'Selvakumar.Rajendran@in.ey.com',
+    designation: 'Partner/Principal',
     team: 'Leadership Team',
-    aliases: ['technology', 'tech'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_DATA_AI,
-    pillar: 'Data & AI',
-    title: 'Data & AI',
-    contactName: 'Alexy Thomas',
-    team: 'Leadership Team',
-    aliases: ['data & ai', 'data and ai'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_AI_BUSINESS,
-    pillar: 'AI in Business',
-    title: 'AI in Business',
-    contactName: 'Vijay Shankar',
-    team: 'Leadership Team',
-    aliases: ['ai in business'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_GCC_CAAS,
-    pillar: 'GCC CaaS',
-    title: 'GCC CaaS',
-    contactName: 'Manoj Marwah',
-    team: 'Leadership Team',
-    aliases: ['gcc', 'gcc caas', 'caas'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_AI_COE,
-    pillar: 'AI COE',
-    title: 'AI COE',
-    contactName: 'Hari Balaji',
-    team: 'Leadership Team',
-    aliases: ['ai coe', 'coe'],
-  },
-  {
-    id: MS_HANDOFF_IDS.LD_SR_MSL,
-    pillar: 'SR-MSL',
-    title: 'SR-MSL',
-    contactName: 'Rakesh Kaul Punjabi',
-    team: 'Leadership Team',
-    aliases: ['sr-msl', 'sr msl', 'msl'],
+    aliases: ['selva', 'selvakumar'],
   },
   {
     id: MS_HANDOFF_IDS.CT_AMS,
-    pillar: 'AMS',
-    title: 'AMS / SAP',
+    focus: 'AMS | SAP',
     contactName: 'Shanthi Mani',
+    email: 'Shanthi.Mani@in.ey.com',
+    designation: 'Partner/Principal',
     team: 'Core Team',
-    solution: 'SAP',
-    aliases: ['ams', 'sap', 'ams sap'],
+    aliases: ['shanthi', 'ams', 'sap', 'ams sap', 'jumpstart ams'],
   },
   {
-    id: MS_HANDOFF_IDS.CT_TFO,
-    pillar: 'Tax and Finance Operate',
-    title: 'Tax & Finance Operate',
-    contactName: 'Jitesh Bansal',
-    team: 'Core Team',
-    aliases: ['tfo', 'tax and finance operate', 'tax & finance operate'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_AI_TAX,
-    pillar: 'AI in Tax',
-    title: 'AI in Tax',
-    contactName: 'Nitish Jain',
-    team: 'Core Team',
-    aliases: ['ai in tax'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_MLS,
-    pillar: 'Managed Learning Services',
-    title: 'Managed Learning',
-    contactName: 'Ashish Jain',
-    team: 'Core Team',
-    aliases: ['mls', 'learning', 'managed learning', 'managed learning services'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_LLM_GOV,
-    pillar: 'LLM Governance',
-    title: 'LLM Governance',
-    contactName: 'Salil Shekharan',
-    team: 'Core Team',
-    aliases: ['llm governance', 'llm'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_ACR_PAYROLL,
-    pillar: 'ACR and Payroll',
-    title: 'ACR and Payroll',
-    contactName: 'Shobha Keni',
-    team: 'Core Team',
-    aliases: ['acr', 'acr and payroll', 'acr payroll'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_PAYROLL,
-    pillar: 'Payroll',
-    title: 'Payroll',
-    contactName: 'Vinayak Iyer',
-    team: 'Core Team',
-    aliases: ['payroll'],
-  },
-  {
-    id: MS_HANDOFF_IDS.CT_HRO,
-    pillar: 'HRO',
-    title: 'HRO',
-    contactName: 'Sanjeev Duggal',
-    team: 'Core Team',
-    aliases: ['hro', 'human resources outsourcing'],
+    id: MS_HANDOFF_IDS.LD_DATA_AI,
+    focus: 'Data & AI leadership',
+    contactName: 'Alexy Thomas',
+    email: 'Alexy.Thomas@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['alexy'],
   },
   {
     id: MS_HANDOFF_IDS.CT_DATA_AI,
-    pillar: 'Data and AI',
-    title: 'Data and AI',
+    focus: 'Data & AI delivery',
     contactName: 'Sivakumar Moorty',
+    email: 'Sivakumar.Moorty@in.ey.com',
+    designation: 'Partner/Principal',
     team: 'Core Team',
-    aliases: ['data and ai', 'data & ai', 'ai'],
+    aliases: ['sivakumar'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_AI_BUSINESS,
+    focus: 'AI in Business',
+    contactName: 'Vijay Shankar',
+    email: 'bvijay.shankar@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['vijay shankar', 'ai in business'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_AI_COE,
+    focus: 'AI COE',
+    contactName: 'Hari Balaji',
+    email: 'Hari.Balaji@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['hari balaji', 'ai coe', 'coe'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_LLM_GOV,
+    focus: 'LLM Governance',
+    contactName: 'Salil Shekharan',
+    email: 'Salil.Shekharan@in.ey.com',
+    designation: 'Partner',
+    team: 'Core Team',
+    aliases: ['salil', 'llm governance', 'llm'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_TAX,
+    focus: 'Tax leadership',
+    contactName: 'Garima Pande',
+    email: 'garima.pande@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['garima'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_TFO,
+    focus: 'Tax and Finance Operate (TFO)',
+    contactName: 'Jitesh Bansal',
+    email: 'jitesh.bansal@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['jitesh', 'tfo', 'tax and finance operate', 'finance operate'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_AI_TAX,
+    focus: 'AI in Tax',
+    contactName: 'Nitish Jain',
+    email: 'Nitish.Jain@in.ey.com',
+    designation: 'Partner',
+    team: 'Core Team',
+    aliases: ['nitish', 'ai in tax'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_ACTUARIAL,
+    focus: 'Actuarial (Tax & Finance adjacent)',
+    contactName: 'Swati Umre',
+    email: 'swati.umre@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['swati', 'actuarial'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_HR,
+    focus: 'HR leadership',
+    contactName: 'Anurag Malik',
+    email: 'anurag.malik@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['anurag'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_HRO,
+    focus: 'HRO',
+    contactName: 'Sanjeev Duggal',
+    email: 'Sanjeev.Duggal@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['sanjeev', 'hro', 'human resources outsourcing'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_ACR_PAYROLL,
+    focus: 'ACR & Payroll',
+    contactName: 'Shobha P Keni',
+    email: 'shobha.keni@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['shobha', 'acr', 'acr and payroll', 'acr & payroll'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_PAYROLL,
+    focus: 'Payroll',
+    contactName: 'Vinayak Iyer',
+    email: 'vinayak.iyer@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Core Team',
+    aliases: ['vinayak', 'payroll'],
+  },
+  {
+    id: MS_HANDOFF_IDS.CT_MLS,
+    focus: 'Managed Learning Services',
+    contactName: 'Ashish Jain',
+    email: 'Ashish.Jain7@in.ey.com',
+    designation: 'Partner',
+    team: 'Core Team',
+    aliases: ['ashish', 'mls', 'managed learning', 'managed learning services', 'learning'],
   },
   {
     id: MS_HANDOFF_IDS.CT_AI_SUPPLY,
-    pillar: 'AI in Supply Chain',
-    title: 'AI in Supply Chain',
+    focus: 'AI in Supply Chain',
     contactName: 'Sudhanshu S Singh',
+    email: 'Sudhanshu3.Singh@in.ey.com',
+    designation: 'Partner/Principal',
     team: 'Core Team',
-    aliases: ['ai in supply chain', 'supply chain'],
+    aliases: ['sudhanshu', 'ai in supply chain', 'supply chain'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_GCC_CAAS,
+    focus: 'GCC / CaaS',
+    contactName: 'Manoj Marwah',
+    email: 'manoj.marwah@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['manoj', 'gcc', 'gcc caas', 'caas', 'capability centre'],
+  },
+  {
+    id: MS_HANDOFF_IDS.GTM_CORRIDOR,
+    focus: 'Corridor',
+    contactName: 'Indraneel Roy',
+    email: 'Indraneel.Roy@in.ey.com',
+    designation: 'Partner',
+    team: 'GTM Team',
+    aliases: ['indraneel', 'corridor'],
+  },
+  {
+    id: MS_HANDOFF_IDS.GTM_DEAL_HUB,
+    focus: 'Deal Hub',
+    contactName: 'Partha Sinha',
+    email: 'Partha.Sinha@in.ey.com',
+    designation: 'Director',
+    team: 'GTM Team',
+    aliases: ['partha', 'deal hub'],
+  },
+  {
+    id: MS_HANDOFF_IDS.LD_SR_MSL,
+    focus: 'SR - MSL (pursuit routing)',
+    contactName: 'Rakesh Kaul Punjabi',
+    email: 'Rakesh.Kaul@in.ey.com',
+    designation: 'Partner/Principal',
+    team: 'Leadership Team',
+    aliases: ['rakesh', 'sr-msl', 'sr msl', 'sr - msl'],
   },
 ];
 
-function contactsForTeam(team: HandoffTeam): HandoffContact[] {
-  return HANDOFF_CONTACTS.filter((c) => c.team === team);
-}
+/**
+ * Menu pillars aligned to KB offering domains in 09-delivery-model-offerings.md
+ * (+ cyber/hrms/learning/tech platform docs). No invented content themes.
+ */
+export const HANDOFF_PILLARS: HandoffPillar[] = [
+  {
+    id: MS_HANDOFF_IDS.P_CYBER,
+    title: 'Cyber / SOC',
+    description: 'SOC, TDR, cyber platforms',
+    kbDomain: 'SOC and Cyber Managed Services',
+    aliases: ['cyber', 'soc', 'tdr', 'cybersecurity', 'security'],
+    contactIds: [MS_HANDOFF_IDS.LD_CYBER, MS_HANDOFF_IDS.CT_CYBER],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_TECH,
+    title: 'Technology / AMS',
+    description: 'Tech MS, AMS, SAP',
+    kbDomain: 'Technology Services / AMS (incl. SAP ERP)',
+    aliases: ['technology', 'tech', 'ams', 'sap', 'erp', 'oracle', 'microsoft', 'cloud', 'finops'],
+    contactIds: [MS_HANDOFF_IDS.LD_TECHNOLOGY, MS_HANDOFF_IDS.CT_AMS],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_DATA_AI,
+    title: 'Data and AI',
+    description: 'Data ops, AI, LLM gov',
+    kbDomain: 'Data and AI Managed Services',
+    aliases: ['data and ai', 'data & ai', 'data ai', 'ai', 'analytics', 'llm', 'ai coe', 'ai in business'],
+    contactIds: [
+      MS_HANDOFF_IDS.LD_DATA_AI,
+      MS_HANDOFF_IDS.CT_DATA_AI,
+      MS_HANDOFF_IDS.LD_AI_BUSINESS,
+      MS_HANDOFF_IDS.LD_AI_COE,
+      MS_HANDOFF_IDS.CT_LLM_GOV,
+    ],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_TAX_FINANCE,
+    title: 'Tax and Finance',
+    description: 'Tax, TFO, AI in Tax',
+    kbDomain: 'Tax and Finance Managed Services',
+    aliases: ['tax', 'finance', 'tfo', 'tax and finance', 'ai in tax', 'actuarial', 'close'],
+    contactIds: [
+      MS_HANDOFF_IDS.LD_TAX,
+      MS_HANDOFF_IDS.CT_TFO,
+      MS_HANDOFF_IDS.CT_AI_TAX,
+      MS_HANDOFF_IDS.CT_ACTUARIAL,
+    ],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_HR_PAYROLL,
+    title: 'HR and Payroll',
+    description: 'HR, HRO, payroll ops',
+    kbDomain: 'HR and Payroll Managed Services',
+    aliases: ['hr', 'hrms', 'hro', 'payroll', 'hr and payroll', 'human resources'],
+    contactIds: [
+      MS_HANDOFF_IDS.LD_HR,
+      MS_HANDOFF_IDS.CT_HRO,
+      MS_HANDOFF_IDS.CT_ACR_PAYROLL,
+      MS_HANDOFF_IDS.CT_PAYROLL,
+    ],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_LEARNING,
+    title: 'Managed Learning',
+    description: 'MLS / learning ops',
+    kbDomain: 'Managed Learning Services',
+    aliases: ['managed learning', 'mls', 'learning'],
+    contactIds: [MS_HANDOFF_IDS.CT_MLS],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_SUPPLY,
+    title: 'Supply Chain',
+    description: 'Supply chain & ops MS',
+    kbDomain: 'Supply Chain and Operations',
+    aliases: ['supply chain', 'ai in supply chain', 'operations ms'],
+    contactIds: [MS_HANDOFF_IDS.CT_AI_SUPPLY],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_GCC,
+    title: 'GCC / CaaS',
+    description: 'Capability centre MS',
+    kbDomain: 'Capability Centre-as-a-Service (GCC)',
+    aliases: ['gcc', 'caas', 'capability centre', 'gcc caas'],
+    contactIds: [MS_HANDOFF_IDS.LD_GCC_CAAS],
+  },
+  {
+    id: MS_HANDOFF_IDS.P_GTM,
+    title: 'GTM / Pursuit',
+    description: 'Corridor, Deal Hub, SR-MSL',
+    kbDomain: 'GTM / Pursuit routing (not an MS content theme)',
+    aliases: ['gtm', 'pursuit', 'corridor', 'deal hub', 'sr-msl', 'sr msl'],
+    contactIds: [
+      MS_HANDOFF_IDS.GTM_CORRIDOR,
+      MS_HANDOFF_IDS.GTM_DEAL_HUB,
+      MS_HANDOFF_IDS.LD_SR_MSL,
+    ],
+  },
+];
 
 function findHandoffContact(id: string): HandoffContact | undefined {
   return HANDOFF_CONTACTS.find((c) => c.id === id);
+}
+
+function findHandoffPillar(id: string): HandoffPillar | undefined {
+  return HANDOFF_PILLARS.find((p) => p.id === id);
+}
+
+function contactsForPillar(pillar: HandoffPillar): HandoffContact[] {
+  return pillar.contactIds
+    .map((cid) => findHandoffContact(cid))
+    .filter((c): c is HandoffContact => Boolean(c));
 }
 
 export const MS_FAQ_IDS = {
@@ -263,7 +447,7 @@ export function buildWelcomeResponse(): BotResponse {
     text: formatWhatsAppText(
       `${WA_EMOJI.welcome} Welcome to the *EY Managed Services Qualification Assistant*.\n\n` +
         'Recognise Managed Services (MS) opportunities from customer statements and convert them into value-led conversations.\n\n' +
-        'Choose *Type my question* to ask from the approved knowledge base, or pick a guided option below.\n' +
+        'Choose *Ask anything* for an open question, or pick a guided option below.\n' +
         'Type *menu* anytime to return here.\n\n' +
         `${WA_EMOJI.next} Choose an option:`,
     ),
@@ -274,28 +458,28 @@ export function buildWelcomeResponse(): BotResponse {
         rows: [
           {
             id: MS_BUTTON_IDS.TYPE_QUESTION,
-            title: 'Type my question',
-            description: 'Ask — answers from approved KB',
+            title: 'Ask anything',
+            description: 'Type a question',
           },
           {
             id: MS_BUTTON_IDS.SERVICES,
             title: 'Qualification lens',
-            description: '3 tests before positioning MS',
+            description: '3 tests before you position MS',
           },
           {
             id: MS_BUTTON_IDS.OFFERINGS,
             title: 'Triggers',
-            description: 'Customer discussion themes',
-          },
-          {
-            id: MS_BUTTON_IDS.ASK,
-            title: 'Guide & Ask',
-            description: 'Sample customer triggers',
+            description: 'Client signals worth acting on',
           },
           {
             id: MS_BUTTON_IDS.HANDOFF,
             title: 'Talk to an expert',
-            description: 'Named contacts by MS tower',
+            description: 'Named MS contact by tower',
+          },
+          {
+            id: MS_BUTTON_IDS.ASK,
+            title: 'Run a Client diagnostic',
+            description: 'Answer a few questions, get specifics',
           },
         ],
       },
@@ -307,78 +491,71 @@ export function buildMenuNudgeResponse(): BotResponse {
   return {
     mode: 'buttons',
     text: formatWhatsAppText(
-      `${WA_EMOJI.tip} Choose *Ask again* / *Type my question* to query the knowledge base, or open the main menu.\n\n` +
+      `${WA_EMOJI.tip} Choose *Ask again* / *Ask anything* to query the knowledge base, or open the main menu.\n\n` +
         'Answers come only from approved knowledge sources.\n' +
         'Type *menu* anytime to return. For routing, choose *Talk to an expert*.',
     ),
     buttons: [
-      { id: MS_BUTTON_IDS.TYPE_QUESTION, title: 'Type my question' },
+      { id: MS_BUTTON_IDS.TYPE_QUESTION, title: 'Ask anything' },
       { id: MS_BUTTON_IDS.HANDOFF, title: 'Talk to expert' },
       { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
     ],
   };
 }
 
+/** Expert menu by KB offering domain (max 10 rows incl. Main menu). */
 export function buildHandoffMenuResponse(): BotResponse {
   return {
-    mode: 'buttons',
+    mode: 'list',
     text: formatWhatsAppText(
       `${WA_EMOJI.people} *Talk to an expert*\n\n` +
-        'Choose a team. Named contacts are shown only from the approved directory — never invented.',
+        'Pick a *Managed Services offering domain* from the playbook. ' +
+        'Named contacts are shown only from the approved directory.',
     ),
-    buttons: [
-      { id: MS_HANDOFF_IDS.LEADERSHIP, title: 'Leadership Team' },
-      { id: MS_HANDOFF_IDS.CORE, title: 'Core Team' },
-      { id: MS_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
+    buttonTitle: 'MS domains',
+    sections: [
+      {
+        title: 'MS offering domains',
+        rows: [
+          ...HANDOFF_PILLARS.map((p) => ({
+            id: p.id,
+            title: p.title.slice(0, 24),
+            description: p.description.slice(0, 72),
+          })),
+          {
+            id: MS_BUTTON_IDS.MAIN_MENU,
+            title: 'Main menu',
+            description: 'Back to start',
+          },
+        ],
+      },
     ],
   };
 }
 
-/** Leadership Team pillar list (9 rows). */
+/** @deprecated Team browse removed — pillars are content-backed. */
 export function buildHandoffLeadershipResponse(): BotResponse {
-  return {
-    mode: 'list',
-    text: formatWhatsAppText(
-      `${WA_EMOJI.people} *Leadership Team*\n\nPick a pillar to see the named contact.`,
-    ),
-    buttonTitle: 'Leadership',
-    sections: [
-      {
-        title: 'Leadership Team',
-        rows: contactsForTeam('Leadership Team').map((c) => ({
-          id: c.id,
-          title: c.title,
-          description: c.contactName,
-        })),
-      },
-    ],
-  };
+  return buildHandoffMenuResponse();
 }
 
-/** Core Team pillar list (10 rows — WhatsApp list max). */
+/** @deprecated Team browse removed — pillars are content-backed. */
 export function buildHandoffCoreResponse(): BotResponse {
-  return {
-    mode: 'list',
-    text: formatWhatsAppText(
-      `${WA_EMOJI.people} *Core Team*\n\nPick a pillar to see the named contact.`,
-    ),
-    buttonTitle: 'Core Team',
-    sections: [
-      {
-        title: 'Core Team',
-        rows: contactsForTeam('Core Team').map((c) => ({
-          id: c.id,
-          title: c.title,
-          description: c.contactName,
-        })),
-      },
-    ],
-  };
+  return buildHandoffMenuResponse();
 }
 
-/** @deprecated Use buildHandoffCoreResponse — kept for older button ids. */
+/** @deprecated Team browse removed — pillars are content-backed. */
+export function buildHandoffCoreMoreResponse(): BotResponse {
+  return buildHandoffMenuResponse();
+}
+
+/** @deprecated Team browse removed — pillars are content-backed. */
+export function buildHandoffGtmResponse(): BotResponse {
+  return buildHandoffMenuResponse();
+}
+
+/** @deprecated */
 export function buildHandoffMoreResponse(): BotResponse {
-  return buildHandoffCoreResponse();
+  return buildHandoffMenuResponse();
 }
 
 export function buildServicesOverviewResponse(): BotResponse {
@@ -459,23 +636,24 @@ export function buildOfferingsResponse(): BotResponse {
 }
 
 export function buildFaqMenuResponse(): BotResponse {
+  // Theme-driven diagnostic (same structured options as before — Guide & Ask path).
   // Deduped: no repeat of qualification / conversation / when-not (those live under Triggers / Lens)
   return {
     mode: 'list',
     text: formatWhatsAppText(
-      `${WA_EMOJI.tip} *Guide & Ask*\n\n` +
-        'Sample customer triggers, or *Type my question*. You can also type freely anytime — answers only from approved knowledge.\n' +
+      `${WA_EMOJI.tip} *Client diagnostic*\n\n` +
+        'Pick a theme below for a structured path, or *Ask anything* for an open question.\n' +
         'Type *menu* anytime to return to the main menu.',
     ),
     buttonTitle: 'Choose',
     sections: [
       {
-        title: 'Ask',
+        title: 'Themes',
         rows: [
           {
             id: MS_BUTTON_IDS.TYPE_QUESTION,
-            title: 'Type my question',
-            description: 'Free-text from approved KB only',
+            title: 'Ask anything',
+            description: 'Open question from approved KB',
           },
           {
             id: MS_FAQ_IDS.COST,
@@ -517,9 +695,9 @@ export function buildAskPromptResponse(): BotResponse {
   return {
     mode: 'buttons',
     text: formatWhatsAppText(
-      `${WA_EMOJI.people} *Type my question*\n\n` +
+      `${WA_EMOJI.people} *Ask anything*\n\n` +
         'Send your question in plain text (or paste a customer statement).\n\n' +
-        'I will answer *only* from the approved Managed Services knowledge base, in a short structured format.\n\n' +
+        'Examples: who to talk to, credentials, how to position MS — I will answer *only* from the approved Managed Services knowledge base.\n\n' +
         'If nothing relevant is found, you will see:\n' +
         '_Information not available in the approved knowledge source._\n\n' +
         '_Type *menu* anytime to return to the main menu._',
@@ -539,17 +717,33 @@ const POST_NAV_BUTTONS = [
 ] as const;
 
 function formatHandoffContact(contact: HandoffContact): string {
-  const solutionLine = contact.solution ? `\n*Solution:* ${contact.solution}` : '';
-  const aliasLine =
-    contact.aliases?.length && contact.aliases.some((a) => a.toLowerCase() !== contact.pillar.toLowerCase())
-      ? `\n*Also route for:* ${contact.aliases.join(', ')}`
+  return (
+    `${WA_EMOJI.people} *${contact.focus}*\n\n` +
+    `*Name:* ${contact.contactName}\n` +
+    `*Email:* ${contact.email}\n` +
+    `*Designation:* ${contact.designation}\n` +
+    `*Org team:* ${contact.team}`
+  );
+}
+
+function formatHandoffPillar(pillar: HandoffPillar): string {
+  const people = contactsForPillar(pillar);
+  const blocks = people.map(
+    (c, i) =>
+      `*${i + 1}. ${c.contactName}* (${c.team})\n` +
+      `*Focus:* ${c.focus}\n` +
+      `*Email:* ${c.email}\n` +
+      `*Designation:* ${c.designation}`,
+  );
+  const note =
+    pillar.id === MS_HANDOFF_IDS.P_GTM
+      ? '\n\n_GTM / Pursuit is for deal routing — not a playbook content theme._'
       : '';
   return (
-    `${WA_EMOJI.people} *${contact.pillar}*\n\n` +
-    `*Contact:* ${contact.contactName}\n` +
-    `*Team:* ${contact.team}` +
-    solutionLine +
-    aliasLine
+    `${WA_EMOJI.people} *${pillar.kbDomain}*\n\n` +
+    '_Approved directory contacts for this MS offering:_\n\n' +
+    blocks.join('\n\n') +
+    note
   );
 }
 
@@ -720,6 +914,8 @@ export function cannedAnswerForId(id: string): string | undefined {
         ask: 'Can consumption be attributed to business owners, products and environments?',
       });
     default: {
+      const pillar = findHandoffPillar(id);
+      if (pillar) return formatHandoffPillar(pillar);
       const contact = findHandoffContact(id);
       if (contact) return formatHandoffContact(contact);
       return undefined;
@@ -727,7 +923,39 @@ export function cannedAnswerForId(id: string): string | undefined {
   }
 }
 
-/** Match free-text / list titles to an approved handoff contact id. */
+/** Match free-text to a KB offering pillar (preferred over single-person match). */
+export function resolveHandoffPillarId(raw: string): string | undefined {
+  const key = raw.trim().toLowerCase();
+  if (!key) return undefined;
+
+  for (const pillar of HANDOFF_PILLARS) {
+    if (pillar.id === raw.trim()) return pillar.id;
+    const needles = [
+      pillar.title.toLowerCase(),
+      pillar.kbDomain.toLowerCase(),
+      ...pillar.aliases.map((a) => a.toLowerCase()),
+    ];
+    if (needles.some((n) => n === key)) return pillar.id;
+  }
+
+  let best: { id: string; len: number } | undefined;
+  for (const pillar of HANDOFF_PILLARS) {
+    const needles = [
+      pillar.title.toLowerCase(),
+      pillar.kbDomain.toLowerCase(),
+      ...pillar.aliases.map((a) => a.toLowerCase()),
+    ];
+    for (const n of needles) {
+      if (n.length < 3) continue;
+      if (key.includes(n) || n.includes(key)) {
+        if (!best || n.length > best.len) best = { id: pillar.id, len: n.length };
+      }
+    }
+  }
+  return best?.id;
+}
+
+/** Match free-text to an approved person id (name / specialty aliases). */
 export function resolveHandoffContactId(raw: string): string | undefined {
   const key = raw.trim().toLowerCase();
   if (!key) return undefined;
@@ -735,22 +963,19 @@ export function resolveHandoffContactId(raw: string): string | undefined {
   for (const contact of HANDOFF_CONTACTS) {
     if (contact.id === raw.trim()) return contact.id;
     const needles = [
-      contact.pillar.toLowerCase(),
-      contact.title.toLowerCase(),
+      contact.focus.toLowerCase(),
+      contact.contactName.toLowerCase(),
       ...(contact.aliases ?? []).map((a) => a.toLowerCase()),
-      ...(contact.solution ? [contact.solution.toLowerCase()] : []),
     ];
-    if (needles.some((n) => n === key || key === n)) return contact.id;
+    if (needles.some((n) => n === key)) return contact.id;
   }
 
-  // Prefer longer / more specific alias contains matches (e.g. "ams sap" before "ai").
   let best: { id: string; len: number } | undefined;
   for (const contact of HANDOFF_CONTACTS) {
     const needles = [
-      contact.pillar.toLowerCase(),
-      contact.title.toLowerCase(),
+      contact.focus.toLowerCase(),
+      contact.contactName.toLowerCase(),
       ...(contact.aliases ?? []).map((a) => a.toLowerCase()),
-      ...(contact.solution ? [contact.solution.toLowerCase()] : []),
     ];
     for (const n of needles) {
       if (n.length < 3) continue;
@@ -804,7 +1029,11 @@ export function resolveMenuSelection(raw: string): string {
     'more topics': MS_BUTTON_IDS.MORE_TOPICS,
     'guide & ask': MS_BUTTON_IDS.ASK,
     'faqs & ask': MS_BUTTON_IDS.ASK,
-    'ask a question': MS_BUTTON_IDS.ASK,
+    'run a client diagnostic': MS_BUTTON_IDS.ASK,
+    'client diagnostic': MS_BUTTON_IDS.ASK,
+    diagnostic: MS_BUTTON_IDS.ASK,
+    'ask a question': MS_BUTTON_IDS.TYPE_QUESTION,
+    'ask anything': MS_BUTTON_IDS.TYPE_QUESTION,
     'talk to a human': MS_BUTTON_IDS.HANDOFF,
     'talk to human': MS_BUTTON_IDS.HANDOFF,
     'talk to an expert': MS_BUTTON_IDS.HANDOFF,
@@ -814,15 +1043,29 @@ export function resolveMenuSelection(raw: string): string {
     contact: MS_BUTTON_IDS.HANDOFF,
     contacts: MS_BUTTON_IDS.HANDOFF,
     'human handoff': MS_BUTTON_IDS.HANDOFF,
-    'leadership team': MS_HANDOFF_IDS.LEADERSHIP,
-    leadership: MS_HANDOFF_IDS.LEADERSHIP,
-    'core team': MS_HANDOFF_IDS.CORE,
-    core: MS_HANDOFF_IDS.CORE,
-    'more towers': MS_HANDOFF_IDS.CORE,
+    'leadership team': MS_BUTTON_IDS.HANDOFF,
+    leadership: MS_BUTTON_IDS.HANDOFF,
+    'core team': MS_BUTTON_IDS.HANDOFF,
+    core: MS_BUTTON_IDS.HANDOFF,
+    'more core contacts': MS_BUTTON_IDS.HANDOFF,
+    'more towers': MS_BUTTON_IDS.HANDOFF,
+    'gtm team': MS_HANDOFF_IDS.P_GTM,
+    gtm: MS_HANDOFF_IDS.P_GTM,
+    'cyber / soc': MS_HANDOFF_IDS.P_CYBER,
+    cyber: MS_HANDOFF_IDS.P_CYBER,
+    'technology / ams': MS_HANDOFF_IDS.P_TECH,
+    'data and ai': MS_HANDOFF_IDS.P_DATA_AI,
+    'tax and finance': MS_HANDOFF_IDS.P_TAX_FINANCE,
+    'hr and payroll': MS_HANDOFF_IDS.P_HR_PAYROLL,
+    'managed learning': MS_HANDOFF_IDS.P_LEARNING,
+    'supply chain': MS_HANDOFF_IDS.P_SUPPLY,
+    'gcc / caas': MS_HANDOFF_IDS.P_GCC,
+    'gtm / pursuit': MS_HANDOFF_IDS.P_GTM,
     'main menu': MS_BUTTON_IDS.MAIN_MENU,
     'guide list': MS_BUTTON_IDS.FAQ,
     'browse faqs': MS_BUTTON_IDS.FAQ,
     'type my question': MS_BUTTON_IDS.TYPE_QUESTION,
+    'ask again': MS_BUTTON_IDS.TYPE_QUESTION,
     'capacity & cost': MS_TOPIC_IDS.CAPACITY,
     'quality & vendors': MS_TOPIC_IDS.QUALITY,
     'tech, cloud & cyber': MS_TOPIC_IDS.TECH,

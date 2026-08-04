@@ -112,9 +112,15 @@ function createPrisma(): { prisma: PrismaClient; pool: pg.Pool } {
     }
   })();
 
+  // Azure Postgres can be slow from a laptop; give DDL/DML more room than defaults.
   const pool = new pg.Pool({
     connectionString,
     ssl: isLocalConnection ? false : { rejectUnauthorized: false },
+    connectionTimeoutMillis: 60_000,
+    idleTimeoutMillis: 120_000,
+  });
+  pool.on('connect', (client) => {
+    void client.query('SET statement_timeout = 180000');
   });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
