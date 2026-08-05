@@ -72,13 +72,9 @@ export class QdrantKnowledgeStore implements KnowledgeStore {
     const exists = await this.client.collectionExists(this.collection);
     if (!exists.exists) return [];
 
-    const results = await this.client.search(this.collection, {
-      vector,
-      limit: topK,
-      with_payload: true,
-    });
+    const results = await this.searchPoints(vector, topK);
 
-    return results.map((hit) => {
+    return results.map((hit: QdrantScoredHit) => {
       const payload = (hit.payload ?? {}) as Record<string, unknown>;
       return {
         text: String(payload['text'] ?? ''),
@@ -88,7 +84,53 @@ export class QdrantKnowledgeStore implements KnowledgeStore {
       };
     });
   }
+
+  /**
+   * @qdrant/js-client-rest 1.19+ removed top-level `search` in favor of `query`.
+   * Docker `npm install` can resolve either; support both shapes.
+   */
+  private async searchPoints(vector: number[], topK: number): Promise<QdrantScoredHit[]> {
+    const client = this.client as QdrantClientCompat;
+
+    if (typeof client.query === 'function') {
+      const res = await client.query(this.collection, {
+        query: vector,
+        limit: topK,
+        with_payload: true,
+      });
+      return res.points ?? [];
+    }
+
+    if (typeof client.search === 'function') {
+      return client.search(this.collection, {
+        vector,
+        limit: topK,
+        with_payload: true,
+      });
+    }
+
+    throw new Error(
+      '[MsAssistant] Qdrant client does not expose query/search. Check @qdrant/js-client-rest version.',
+    );
+  }
 }
+
+type QdrantScoredHit = {
+  payload?: Record<string, unknown> | null;
+  score?: number;
+};
+
+/** Minimal surface across @qdrant/js-client-rest 1.18 (search) and 1.19+ (query). */
+type QdrantClientCompat = QdrantClient & {
+  query?: (
+    collection: string,
+    args: { query: number[]; limit: number; with_payload: boolean },
+  ) => Promise<{ points?: QdrantScoredHit[] }>;
+  search?: (
+    collection: string,
+    args: { vector: number[]; limit: number; with_payload: boolean },
+  ) => Promise<QdrantScoredHit[]>;
+};
 
 /** Deterministic UUID from string for Qdrant point ids. */
 function hashToUuid(input: string): string {
