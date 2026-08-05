@@ -9,7 +9,7 @@ Curated contact index for chatbot expert routing (*Talk to an expert*). Menu pil
 | Cyber / SOC | SOC and Cyber Managed Services | Murali Rao; Raghavendra Bv |
 | Technology / AMS | Technology Services / AMS (incl. SAP ERP) | Selva R.; Shanthi Mani |
 | Data and AI | Data and AI Managed Services | Alexy Thomas; Sivakumar Moorty; Vijay Shankar (AI in Business); Hari Balaji (AI COE); Salil Shekharan (LLM Governance) |
-| Tax and Finance | Tax and Finance Managed Services | Garima Pande; Jitesh Bansal (TFO); Nitish Jain (AI in Tax); Swati Umre (Actuarial — adjacent) |
+| Tax and Finance | Tax and Finance Managed Services | Garima Pande; Jitesh Bansal (TFO); Nitish Jain (AI in Tax) |
 | HR and Payroll | HR and Payroll Managed Services | Anurag Malik; Sanjeev Duggal (HRO); Shobha P Keni (ACR & Payroll); Vinayak Iyer (Payroll) |
 | Managed Learning | Managed Learning Services | Ashish Jain |
 | Supply Chain | Supply Chain and Operations | Sudhanshu S Singh |
@@ -45,7 +45,6 @@ Curated contact index for chatbot expert routing (*Talk to an expert*). Menu pil
 | Garima Pande | garima.pande@in.ey.com | Partner/Principal | Leadership | Tax |
 | Jitesh Bansal | jitesh.bansal@in.ey.com | Partner/Principal | Core | TFO |
 | Nitish Jain | Nitish.Jain@in.ey.com | Partner | Core | AI in Tax |
-| Swati Umre | swati.umre@in.ey.com | Partner/Principal | Core | Actuarial |
 
 ### HR and Payroll
 | Name | Email | Designation | Org team | Focus |

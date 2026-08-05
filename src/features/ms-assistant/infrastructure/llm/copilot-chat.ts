@@ -6,9 +6,12 @@ import type { RetrievedChunk } from '../rag/knowledge-store';
 import type { BotResponse } from '../../domain/bot-response';
 import {
   buildAnswerUserContent,
+  buildNearMissUserContent,
   MS_ASSISTANT_SYSTEM_PROMPT,
+  MS_NEAR_MISS_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
+  type NearMissAllowList,
 } from './shared';
 
 /**
@@ -50,12 +53,22 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     chunks: RetrievedChunk[];
     memory: ConversationMemory;
   }): Promise<BotResponse> {
-    const userContent = buildAnswerUserContent(params);
+    return this.runPrompt(MS_ASSISTANT_SYSTEM_PROMPT, buildAnswerUserContent(params));
+  }
 
+  async suggestNearMiss(params: {
+    question: string;
+    chunks: RetrievedChunk[];
+    allowList: NearMissAllowList;
+  }): Promise<BotResponse> {
+    return this.runPrompt(MS_NEAR_MISS_SYSTEM_PROMPT, buildNearMissUserContent(params));
+  }
+
+  private async runPrompt(system: string, userContent: string): Promise<BotResponse> {
     await this.ensureStarted();
     const session = await this.client.createSession({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,
-      systemMessage: { mode: 'replace', content: MS_ASSISTANT_SYSTEM_PROMPT },
+      systemMessage: { mode: 'replace', content: system },
       availableTools: [],
       onPermissionRequest: approveAll,
     });

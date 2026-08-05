@@ -6,9 +6,12 @@ import type { RetrievedChunk } from '../rag/qdrant.store';
 import { createMsOpenAIClient } from './openai-client';
 import {
   buildAnswerUserContent,
+  buildNearMissUserContent,
   MS_ASSISTANT_SYSTEM_PROMPT,
+  MS_NEAR_MISS_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
+  type NearMissAllowList,
 } from './shared';
 
 export class MsAssistantLlm implements MsAssistantChat {
@@ -23,15 +26,32 @@ export class MsAssistantLlm implements MsAssistantChat {
     chunks: RetrievedChunk[];
     memory: ConversationMemory;
   }): Promise<BotResponse> {
-    const userContent = buildAnswerUserContent(params);
-
     const completion = await this.createChatCompletion({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,
       temperature: 0.2,
       preferJsonObject: true,
       messages: [
         { role: 'system', content: MS_ASSISTANT_SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
+        { role: 'user', content: buildAnswerUserContent(params) },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? '{}';
+    return parseBotResponse(raw);
+  }
+
+  async suggestNearMiss(params: {
+    question: string;
+    chunks: RetrievedChunk[];
+    allowList: NearMissAllowList;
+  }): Promise<BotResponse> {
+    const completion = await this.createChatCompletion({
+      model: this.config.MS_ASSISTANT_CHAT_MODEL,
+      temperature: 0.2,
+      preferJsonObject: true,
+      messages: [
+        { role: 'system', content: MS_NEAR_MISS_SYSTEM_PROMPT },
+        { role: 'user', content: buildNearMissUserContent(params) },
       ],
     });
 
