@@ -3,6 +3,9 @@ import {
   formatWhatsAppText,
   WA_EMOJI,
 } from '../infrastructure/formatter/whatsapp-format';
+import type { NearMissAllowList } from '../infrastructure/llm/shared';
+
+export type { NearMissAllowList };
 
 const GREETING_WORDS = new Set(['hi', 'hello', 'hey', 'start', 'hola', 'namaste', 'menu', 'home']);
 
@@ -64,7 +67,6 @@ export const MS_HANDOFF_IDS = {
   CT_AI_SUPPLY: 'ms_handoff_ct_ai_supply',
   CT_DATA_AI: 'ms_handoff_ct_data_ai',
   CT_AI_TAX: 'ms_handoff_ct_ai_tax',
-  CT_ACTUARIAL: 'ms_handoff_ct_actuarial',
   GTM_CORRIDOR: 'ms_handoff_gtm_corridor',
   GTM_DEAL_HUB: 'ms_handoff_gtm_deal_hub',
 } as const;
@@ -204,15 +206,6 @@ export const HANDOFF_CONTACTS: HandoffContact[] = [
     aliases: ['nitish', 'ai in tax'],
   },
   {
-    id: MS_HANDOFF_IDS.CT_ACTUARIAL,
-    focus: 'Actuarial (Tax & Finance adjacent)',
-    contactName: 'Swati Umre',
-    email: 'swati.umre@in.ey.com',
-    designation: 'Partner/Principal',
-    team: 'Core Team',
-    aliases: ['swati', 'actuarial'],
-  },
-  {
     id: MS_HANDOFF_IDS.LD_HR,
     focus: 'HR leadership',
     contactName: 'Anurag Malik',
@@ -344,12 +337,11 @@ export const HANDOFF_PILLARS: HandoffPillar[] = [
     title: 'Tax and Finance',
     description: 'Tax, TFO, AI in Tax',
     kbDomain: 'Tax and Finance Managed Services',
-    aliases: ['tax', 'finance', 'tfo', 'tax and finance', 'ai in tax', 'actuarial', 'close'],
+    aliases: ['tax', 'finance', 'tfo', 'tax and finance', 'ai in tax', 'close'],
     contactIds: [
       MS_HANDOFF_IDS.LD_TAX,
       MS_HANDOFF_IDS.CT_TFO,
       MS_HANDOFF_IDS.CT_AI_TAX,
-      MS_HANDOFF_IDS.CT_ACTUARIAL,
     ],
   },
   {
@@ -402,6 +394,64 @@ export const HANDOFF_PILLARS: HandoffPillar[] = [
     ],
   },
 ];
+
+/**
+ * Approved topics + named owners the model may suggest when exact KB coverage is missing.
+ * Built from handoff pillars/contacts plus a few playbook-adjacent labels — never open-ended.
+ */
+export function buildNearMissAllowList(): NearMissAllowList {
+  const topics: NearMissAllowList['topics'] = HANDOFF_PILLARS.filter(
+    (p) => p.id !== MS_HANDOFF_IDS.P_GTM,
+  ).map((p) => ({
+    label: p.title,
+    detail: p.kbDomain,
+  }));
+
+  // Playbook-adjacent labels partners commonly ask about (still closed / curated).
+  topics.push(
+    {
+      label: 'SAP AMS',
+      detail: 'Technology Services / AMS (incl. SAP ERP)',
+    },
+    {
+      label: 'SAP AMS — planning & consolidation (SAC, BPC, Group Reporting)',
+      detail: 'Adjacent Technology / AMS angle for planning/consolidation questions',
+    },
+    {
+      label: 'Finance operations under TFO',
+      detail: 'Tax and Finance Operate (TFO)',
+    },
+    {
+      label: 'Cloud / FinOps Managed Services',
+      detail: 'Technology / Cloud cost and FinOps conversation themes',
+    },
+    {
+      label: 'Qualification lens (3 tests)',
+      detail: 'Run/Operate Scope, Measurable Service Delivery, Transition Feasibility',
+    },
+    {
+      label: 'Triggers (client signals)',
+      detail: 'Capacity, quality, tech, finance/HR scale discussion themes',
+    },
+  );
+
+  const owners: NearMissAllowList['owners'] = [];
+  for (const pillar of HANDOFF_PILLARS) {
+    if (pillar.id === MS_HANDOFF_IDS.P_GTM) continue;
+    for (const cid of pillar.contactIds) {
+      const c = HANDOFF_CONTACTS.find((x) => x.id === cid);
+      if (!c) continue;
+      owners.push({
+        name: c.contactName,
+        space: pillar.title,
+        email: c.email,
+        focus: c.focus,
+      });
+    }
+  }
+
+  return { topics, owners };
+}
 
 function findHandoffContact(id: string): HandoffContact | undefined {
   return HANDOFF_CONTACTS.find((c) => c.id === id);
@@ -698,8 +748,7 @@ export function buildAskPromptResponse(): BotResponse {
       `${WA_EMOJI.people} *Ask anything*\n\n` +
         'Send your question in plain text (or paste a customer statement).\n\n' +
         'Examples: who to talk to, credentials, how to position MS — I will answer *only* from the approved Managed Services knowledge base.\n\n' +
-        'If nothing relevant is found, you will see:\n' +
-        '_Information not available in the approved knowledge source._\n\n' +
+        'If nothing exact is found, I will suggest the closest Managed Services areas we already run and offer expert routing.\n\n' +
         '_Type *menu* anytime to return to the main menu._',
     ),
     buttons: [

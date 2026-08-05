@@ -11,6 +11,7 @@ import {
   resolveMenuSelection,
   resolveHandoffPillarId,
   truncateWhatsAppBody,
+  buildNearMissAllowList,
   MS_BUTTON_IDS,
   MS_TOPIC_IDS,
   MS_FAQ_IDS,
@@ -109,7 +110,7 @@ describe('ms-assistant greeting', () => {
   });
 
   it('maps handoff contacts under content-backed pillars', () => {
-    expect(HANDOFF_CONTACTS).toHaveLength(23);
+    expect(HANDOFF_CONTACTS).toHaveLength(22);
     expect(HANDOFF_PILLARS).toHaveLength(9);
 
     const cyber = cannedAnswerForId(MS_HANDOFF_IDS.P_CYBER) ?? '';
@@ -127,7 +128,7 @@ describe('ms-assistant greeting', () => {
     const tax = cannedAnswerForId(MS_HANDOFF_IDS.P_TAX_FINANCE) ?? '';
     expect(tax).toMatch(/jitesh\.bansal@in\.ey\.com/i);
     expect(tax).toMatch(/Nitish\.Jain@in\.ey\.com/i);
-    expect(tax).toMatch(/swati\.umre@in\.ey\.com/i);
+    expect(tax).not.toMatch(/swati\.umre@in\.ey\.com/i);
 
     expect(resolveHandoffPillarId('cyber')).toBe(MS_HANDOFF_IDS.P_CYBER);
     expect(resolveHandoffPillarId('sap')).toBe(MS_HANDOFF_IDS.P_TECH);
@@ -135,6 +136,11 @@ describe('ms-assistant greeting', () => {
     expect(resolveMenuSelection('Talk to an expert')).toBe(MS_BUTTON_IDS.HANDOFF);
     expect(resolveMenuSelection('Data and AI')).toBe(MS_HANDOFF_IDS.P_DATA_AI);
     expect(offeringQueryForId(MS_FAQ_IDS.CLOUD_COST)).toMatch(/FinOps/i);
+
+    const allow = buildNearMissAllowList();
+    expect(allow.topics.some((t) => /SAP AMS/i.test(t.label))).toBe(true);
+    expect(allow.owners.some((o) => o.name === 'Shanthi Mani')).toBe(true);
+    expect(allow.owners.some((o) => /swati/i.test(o.name))).toBe(false);
   });
 
   it('truncates long answers on sentence boundaries', () => {

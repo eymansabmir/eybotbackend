@@ -5,13 +5,15 @@ import type { BotResponse } from '../domain/bot-response';
 import { botResponseToOutboundJobs } from '../infrastructure/formatter/to-outbound';
 import {
   enforceGroundedReply,
+  enforceNearMissReply,
+  isUnavailableKbMarker,
   sanitizeUserQuestion,
   UNAVAILABLE_KB_MESSAGE,
   type MsAssistantChat,
 } from '../infrastructure/llm/shared';
 import { RedisConversationMemory } from '../infrastructure/memory/redis-memory';
 import type { MsEmbeddings } from '../infrastructure/rag/embeddings.types';
-import type { KnowledgeStore } from '../infrastructure/rag/knowledge-store';
+import type { KnowledgeStore, RetrievedChunk } from '../infrastructure/rag/knowledge-store';
 import {
   MS_BUTTON_IDS,
   buildAnswerWithNav,
@@ -19,6 +21,7 @@ import {
   buildFaqMenuResponse,
   buildHandoffMenuResponse,
   buildMenuNudgeResponse,
+  buildNearMissAllowList,
   buildOfferingsResponse,
   buildServicesOverviewResponse,
   buildWelcomeResponse,
@@ -206,7 +209,7 @@ export class MsAssistantService {
 
   /**
    * Free-text / theme path: retrieve approved chunks, then LLM may ONLY paraphrase those chunks.
-   * No chunks → fixed unavailable message (never invent).
+   * On miss → LLM near-miss from closed allow-list + retrieved chunks as supporting context.
    */
   private async answerFromKnowledge(
     job: InboundJob,
@@ -232,29 +235,29 @@ export class MsAssistantService {
     const filtered = chunks.filter(
       (c) => c.text && c.score >= this.config.MS_ASSISTANT_MIN_SCORE,
     );
+    const retrievalContext = chunks.filter((c) => Boolean(c.text));
+
+    let replyText: string;
 
     if (filtered.length === 0) {
-      await this.memory.appendTurn(
-        waBusinessNumber,
-        waId,
-        { role: 'assistant', content: UNAVAILABLE_KB_MESSAGE, at: Date.now() },
-        { mode: opts.mode },
-      );
-      return this.toJobs(buildAnswerWithNav(UNAVAILABLE_KB_MESSAGE), job);
+      replyText = await this.buildNearMissReply(safeQuestion, retrievalContext);
+    } else {
+      const response = await this.llm.answer({
+        question: safeQuestion,
+        chunks: filtered,
+        memory,
+      });
+
+      replyText =
+        response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
+          ? response.text
+          : (response.text ?? '');
+
+      replyText = enforceGroundedReply(replyText, filtered);
+      if (isUnavailableKbMarker(replyText)) {
+        replyText = await this.buildNearMissReply(safeQuestion, filtered);
+      }
     }
-
-    const response = await this.llm.answer({
-      question: safeQuestion,
-      chunks: filtered,
-      memory,
-    });
-
-    let replyText =
-      response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
-        ? response.text
-        : (response.text ?? UNAVAILABLE_KB_MESSAGE);
-
-    replyText = enforceGroundedReply(replyText, filtered);
 
     const updated = await this.memory.appendTurn(
       waBusinessNumber,
@@ -275,6 +278,24 @@ export class MsAssistantService {
       .catch((err) => logger.warn({ err }, 'MsAssistantService: summary refresh failed'));
 
     return this.toJobs(buildAnswerWithNav(replyText), job);
+  }
+
+  private async buildNearMissReply(
+    question: string,
+    chunks: RetrievedChunk[],
+  ): Promise<string> {
+    const allowList = buildNearMissAllowList();
+    try {
+      const response = await this.llm.suggestNearMiss({ question, chunks, allowList });
+      const text =
+        response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
+          ? response.text
+          : (response.text ?? '');
+      return enforceNearMissReply(text, allowList) ?? UNAVAILABLE_KB_MESSAGE;
+    } catch (err) {
+      logger.warn({ err }, 'MsAssistantService: near-miss LLM failed');
+      return UNAVAILABLE_KB_MESSAGE;
+    }
   }
 
   private toJobs(response: BotResponse | BotResponse[], job: InboundJob): OutboundJob[] {
