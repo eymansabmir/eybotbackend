@@ -36,11 +36,11 @@ describe('ms-assistant greeting', () => {
     const ids = welcome.sections.flatMap((s) => s.rows.map((r) => r.id));
     expect(ids).toEqual([
       MS_BUTTON_IDS.TYPE_QUESTION,
+      MS_BUTTON_IDS.SURVEY,
       MS_BUTTON_IDS.SERVICES,
       MS_BUTTON_IDS.OFFERINGS,
       MS_BUTTON_IDS.HANDOFF,
       MS_BUTTON_IDS.ASK,
-      MS_BUTTON_IDS.SURVEY,
     ]);
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.TYPE_QUESTION)?.title).toBe(
       'Ask anything',
@@ -52,14 +52,15 @@ describe('ms-assistant greeting', () => {
       'Talk to an expert',
     );
     const survey = welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.SURVEY);
-    expect(survey?.title).toBe('Take the survey');
+    expect(survey?.title).toBe('Client Opportunity Scan');
     expect(survey?.description).toBe('Get a personalised report');
   });
 
-  it('returns survey link for Take the survey', () => {
+  it('returns survey link for Client Opportunity Scan', () => {
     const answer = cannedAnswerForId(MS_BUTTON_IDS.SURVEY) ?? '';
     expect(answer).toMatch(/Please click on below link to start the survey/i);
     expect(answer).toContain('https://globaleysurvey.ey.com/jfe/form/SV_1Cjy5whgPyBoH7U');
+    expect(resolveMenuSelection('Client Opportunity Scan')).toBe(MS_BUTTON_IDS.SURVEY);
     expect(resolveMenuSelection('Take the survey')).toBe(MS_BUTTON_IDS.SURVEY);
   });
 
