@@ -40,6 +40,7 @@ describe('ms-assistant greeting', () => {
       MS_BUTTON_IDS.OFFERINGS,
       MS_BUTTON_IDS.HANDOFF,
       MS_BUTTON_IDS.ASK,
+      MS_BUTTON_IDS.SURVEY,
     ]);
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.TYPE_QUESTION)?.title).toBe(
       'Ask anything',
@@ -50,6 +51,16 @@ describe('ms-assistant greeting', () => {
     expect(welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.HANDOFF)?.title).toBe(
       'Talk to an expert',
     );
+    const survey = welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.SURVEY);
+    expect(survey?.title).toBe('Take the survey');
+    expect(survey?.description).toBe('Get a personalised report');
+  });
+
+  it('returns survey link for Take the survey', () => {
+    const answer = cannedAnswerForId(MS_BUTTON_IDS.SURVEY) ?? '';
+    expect(answer).toMatch(/Please click on below link to start the survey/i);
+    expect(answer).toContain('https://globaleysurvey.ey.com/jfe/form/SV_1Cjy5whgPyBoH7U');
+    expect(resolveMenuSelection('Take the survey')).toBe(MS_BUTTON_IDS.SURVEY);
   });
 
   it('builds Ask anything prompt for open-ended KB Q&A', () => {
@@ -127,7 +138,9 @@ describe('ms-assistant greeting', () => {
 
     const tax = cannedAnswerForId(MS_HANDOFF_IDS.P_TAX_FINANCE) ?? '';
     expect(tax).toMatch(/jitesh\.bansal@in\.ey\.com/i);
-    expect(tax).toMatch(/Nitish\.Jain@in\.ey\.com/i);
+    expect(tax).toMatch(/garima\.pande@in\.ey\.com/i);
+    expect(tax).toMatch(/rahul\.patni@ey\.com/i);
+    expect(tax).not.toMatch(/Nitish\.Jain@in\.ey\.com/i);
     expect(tax).not.toMatch(/swati\.umre@in\.ey\.com/i);
 
     expect(resolveHandoffPillarId('cyber')).toBe(MS_HANDOFF_IDS.P_CYBER);

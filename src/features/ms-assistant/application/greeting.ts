@@ -18,7 +18,11 @@ export const MS_BUTTON_IDS = {
   TYPE_QUESTION: 'ms_type_question',
   FAQ: 'ms_faq',
   HANDOFF: 'ms_handoff',
+  SURVEY: 'ms_survey',
 } as const;
+
+export const MS_SURVEY_URL =
+  'https://globaleysurvey.ey.com/jfe/form/SV_1Cjy5whgPyBoH7U';
 
 /** Playbook topic ids (menu-driven). */
 export const MS_TOPIC_IDS = {
@@ -66,7 +70,7 @@ export const MS_HANDOFF_IDS = {
   CT_CYBER: 'ms_handoff_ct_cyber',
   CT_AI_SUPPLY: 'ms_handoff_ct_ai_supply',
   CT_DATA_AI: 'ms_handoff_ct_data_ai',
-  CT_AI_TAX: 'ms_handoff_ct_ai_tax',
+  CT_DIGITAL_TAX: 'ms_handoff_ct_digital_tax',
   GTM_CORRIDOR: 'ms_handoff_gtm_corridor',
   GTM_DEAL_HUB: 'ms_handoff_gtm_deal_hub',
 } as const;
@@ -180,30 +184,30 @@ export const HANDOFF_CONTACTS: HandoffContact[] = [
   },
   {
     id: MS_HANDOFF_IDS.LD_TAX,
-    focus: 'Tax leadership',
+    focus: 'Global Compliance and Reporting',
     contactName: 'Garima Pande',
     email: 'garima.pande@in.ey.com',
-    designation: 'Partner/Principal',
+    designation: 'Partner and National Leader, Global Compliance and Reporting, EY India',
     team: 'Leadership Team',
-    aliases: ['garima'],
+    aliases: ['garima', 'gcr', 'global compliance', 'global compliance and reporting'],
   },
   {
     id: MS_HANDOFF_IDS.CT_TFO,
     focus: 'Tax and Finance Operate (TFO)',
     contactName: 'Jitesh Bansal',
     email: 'jitesh.bansal@in.ey.com',
-    designation: 'Partner/Principal',
-    team: 'Core Team',
+    designation: 'Partner and National Leader, Tax and Finance Operate, EY India',
+    team: 'Leadership Team',
     aliases: ['jitesh', 'tfo', 'tax and finance operate', 'finance operate'],
   },
   {
-    id: MS_HANDOFF_IDS.CT_AI_TAX,
-    focus: 'AI in Tax',
-    contactName: 'Nitish Jain',
-    email: 'Nitish.Jain@in.ey.com',
-    designation: 'Partner',
-    team: 'Core Team',
-    aliases: ['nitish', 'ai in tax'],
+    id: MS_HANDOFF_IDS.CT_DIGITAL_TAX,
+    focus: 'Digital Tax',
+    contactName: 'Rahul Patni',
+    email: 'rahul.patni@ey.com',
+    designation: 'Partner and National Leader, Digital Tax, EY India',
+    team: 'Leadership Team',
+    aliases: ['rahul', 'rahul patni', 'digital tax', 'patni'],
   },
   {
     id: MS_HANDOFF_IDS.LD_HR,
@@ -299,7 +303,7 @@ export const HANDOFF_CONTACTS: HandoffContact[] = [
 
 /**
  * Menu pillars aligned to KB offering domains in 09-delivery-model-offerings.md
- * (+ cyber/hrms/learning/tech platform docs). No invented content themes.
+ * (+ cyber/hrms/learning/tech platform/TFO tax docs). No invented content themes.
  */
 export const HANDOFF_PILLARS: HandoffPillar[] = [
   {
@@ -335,13 +339,22 @@ export const HANDOFF_PILLARS: HandoffPillar[] = [
   {
     id: MS_HANDOFF_IDS.P_TAX_FINANCE,
     title: 'Tax and Finance',
-    description: 'Tax, TFO, AI in Tax',
+    description: 'TFO, GCR, Digital Tax',
     kbDomain: 'Tax and Finance Managed Services',
-    aliases: ['tax', 'finance', 'tfo', 'tax and finance', 'ai in tax', 'close'],
+    aliases: [
+      'tax',
+      'finance',
+      'tfo',
+      'tax and finance',
+      'digital tax',
+      'gcr',
+      'global compliance',
+      'close',
+    ],
     contactIds: [
-      MS_HANDOFF_IDS.LD_TAX,
       MS_HANDOFF_IDS.CT_TFO,
-      MS_HANDOFF_IDS.CT_AI_TAX,
+      MS_HANDOFF_IDS.LD_TAX,
+      MS_HANDOFF_IDS.CT_DIGITAL_TAX,
     ],
   },
   {
@@ -530,6 +543,11 @@ export function buildWelcomeResponse(): BotResponse {
             id: MS_BUTTON_IDS.ASK,
             title: 'Run a Client diagnostic',
             description: 'Answer a few questions, get specifics',
+          },
+          {
+            id: MS_BUTTON_IDS.SURVEY,
+            title: 'Take the survey',
+            description: 'Get a personalised report',
           },
         ],
       },
@@ -857,6 +875,11 @@ function fourPartTrigger(opts: {
 /** Instant menu answers from the playbook (no Copilot). */
 export function cannedAnswerForId(id: string): string | undefined {
   switch (id) {
+    case MS_BUTTON_IDS.SURVEY:
+      return (
+        'Please click on below link to start the survey:\n\n' +
+        MS_SURVEY_URL
+      );
     case MS_TOPIC_IDS.QUALIFY:
     case MS_BUTTON_IDS.SERVICES:
       return (
@@ -1083,6 +1106,8 @@ export function resolveMenuSelection(raw: string): string {
     diagnostic: MS_BUTTON_IDS.ASK,
     'ask a question': MS_BUTTON_IDS.TYPE_QUESTION,
     'ask anything': MS_BUTTON_IDS.TYPE_QUESTION,
+    'take the survey': MS_BUTTON_IDS.SURVEY,
+    survey: MS_BUTTON_IDS.SURVEY,
     'talk to a human': MS_BUTTON_IDS.HANDOFF,
     'talk to human': MS_BUTTON_IDS.HANDOFF,
     'talk to an expert': MS_BUTTON_IDS.HANDOFF,
