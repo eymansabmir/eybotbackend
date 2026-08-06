@@ -374,6 +374,7 @@ function looksLikeMenuChoice(text: string): boolean {
     key === 'diagnostic' ||
     key === 'ask a question' ||
     key === 'ask anything' ||
+    key === 'client opportunity scan' ||
     key === 'take the survey' ||
     key === 'survey' ||
     key === 'talk to a human' ||

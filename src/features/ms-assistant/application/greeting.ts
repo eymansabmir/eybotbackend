@@ -525,6 +525,11 @@ export function buildWelcomeResponse(): BotResponse {
             description: 'Type a question',
           },
           {
+            id: MS_BUTTON_IDS.SURVEY,
+            title: 'Client Opportunity Scan',
+            description: 'Get a personalised report',
+          },
+          {
             id: MS_BUTTON_IDS.SERVICES,
             title: 'Qualification lens',
             description: '3 tests before you position MS',
@@ -543,11 +548,6 @@ export function buildWelcomeResponse(): BotResponse {
             id: MS_BUTTON_IDS.ASK,
             title: 'Run a Client diagnostic',
             description: 'Answer a few questions, get specifics',
-          },
-          {
-            id: MS_BUTTON_IDS.SURVEY,
-            title: 'Take the survey',
-            description: 'Get a personalised report',
           },
         ],
       },
@@ -1106,6 +1106,7 @@ export function resolveMenuSelection(raw: string): string {
     diagnostic: MS_BUTTON_IDS.ASK,
     'ask a question': MS_BUTTON_IDS.TYPE_QUESTION,
     'ask anything': MS_BUTTON_IDS.TYPE_QUESTION,
+    'client opportunity scan': MS_BUTTON_IDS.SURVEY,
     'take the survey': MS_BUTTON_IDS.SURVEY,
     survey: MS_BUTTON_IDS.SURVEY,
     'talk to a human': MS_BUTTON_IDS.HANDOFF,
