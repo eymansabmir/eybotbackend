@@ -25,7 +25,7 @@ Managed Services offering domains include:
 - Capability Centre-as-a-Service
 - HR and Payroll
 - Procurement
-- Tax and Finance
+- Tax and Finance (see Tax and Finance Operate / TFO knowledge for operate model, coverage, levers and triggers)
 - Risk and Compliance
 - Technology Services
 - SOC and Cyber
