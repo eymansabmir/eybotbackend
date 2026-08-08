@@ -53,7 +53,7 @@ describe('ms-assistant greeting', () => {
     );
     const survey = welcome.sections[0]?.rows.find((r) => r.id === MS_BUTTON_IDS.SURVEY);
     expect(survey?.title).toBe('Client Opportunity Scan');
-    expect(survey?.description).toBe('Get a personalised report');
+    expect(survey?.description).toBe('Fill details to get an actionable report over email');
   });
 
   it('returns survey link for Client Opportunity Scan', () => {
