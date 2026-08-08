@@ -527,7 +527,7 @@ export function buildWelcomeResponse(): BotResponse {
           {
             id: MS_BUTTON_IDS.SURVEY,
             title: 'Client Opportunity Scan',
-            description: 'Get a personalised report',
+            description: 'Fill details to get an actionable report over email',
           },
           {
             id: MS_BUTTON_IDS.SERVICES,
