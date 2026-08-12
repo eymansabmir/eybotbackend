@@ -17,7 +17,8 @@ export interface IWhatsAppSender {
  *  - Parsing incoming webhook payloads (normalizer — Meta shape today)
  *  - Deduplicating inbound messages (deduplicator)
  *
- * Provider is selected with WHATSAPP_PROVIDER (meta | interakt | stub).
+ * Provider is selected via FEATURE_FLAGS (BSP_PROVIDER_META / BSP_PROVIDER_INTERAKT),
+ * or WHATSAPP_PROVIDER as a manual override.
  * It does NOT own any workers or queues — those belong to WorkerPlugin.
  */
 export interface IWhatsAppPlugin {

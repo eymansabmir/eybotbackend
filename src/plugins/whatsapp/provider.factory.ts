@@ -1,4 +1,5 @@
 import { env } from '../../config/env';
+import { isFeatureEnabled } from '../../config/feature-flags';
 import type { IWhatsAppSender } from './whatsapp.interface';
 import { DirectWhatsAppSender, StubWhatsAppSender } from './sender';
 import { WhatsAppAPIService } from './whatsapp-api.service';
@@ -16,21 +17,38 @@ export interface WhatsAppProviderBundle {
   interaktApi?: InteraktAPIService;
 }
 
-function resolveProviderName(): WhatsAppProviderName {
-  if (env.WHATSAPP_PROVIDER) return env.WHATSAPP_PROVIDER;
+/**
+ * Resolve outbound WhatsApp provider.
+ *
+ * Precedence:
+ * 1. WHATSAPP_PROVIDER env (manual override)
+ * 2. FEATURE_FLAGS.BSP_PROVIDER_META
+ * 3. FEATURE_FLAGS.BSP_PROVIDER_INTERAKT
+ * 4. stub
+ *
+ * Enable only one BSP_* flag at a time. If both are on, Meta wins and a warning is logged.
+ */
+export function resolveWhatsAppProviderName(): WhatsAppProviderName {
+  if (env.WHATSAPP_PROVIDER) {
+    return env.WHATSAPP_PROVIDER;
+  }
 
-  // Backward compatible: Meta when fully configured, otherwise stub.
-  if (env.WHATSAPP_API_URL && env.WHATSAPP_API_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID) {
-    return 'meta';
+  const metaOn = isFeatureEnabled('BSP_PROVIDER_META');
+  const interaktOn = isFeatureEnabled('BSP_PROVIDER_INTERAKT');
+
+  if (metaOn && interaktOn) {
+    logger.warn(
+      'Both BSP_PROVIDER_META and BSP_PROVIDER_INTERAKT are enabled — using Meta. Enable only one flag.',
+    );
   }
-  if (env.INTERAKT_API_KEY) {
-    return 'interakt';
-  }
+
+  if (metaOn) return 'meta';
+  if (interaktOn) return 'interakt';
   return 'stub';
 }
 
 export function createWhatsAppProvider(): WhatsAppProviderBundle {
-  const provider = resolveProviderName();
+  const provider = resolveWhatsAppProviderName();
 
   if (provider === 'meta') {
     const apiUrl = env.WHATSAPP_API_URL;

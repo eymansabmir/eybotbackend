@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  /**
+   * Deployment slice for feature flags (src/config/feature-flags.ts).
+   * Use `uat` when NODE_ENV=production but the host is still UAT.
+   */
+  APP_ENV: z.enum(['dev', 'uat', 'prod']).optional(),
   PORT: z.string().default('3000'),
   MONGODB_URI: z.string().optional(),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
@@ -9,7 +14,7 @@ const envSchema = z.object({
   /** Azure Redis Cluster / Enterprise — use ioredis Cluster client (MOVED redirects). */
   REDIS_CLUSTER: z.enum(['true', 'false']).optional(),
   RABBITMQ_URL: z.string().url().optional(),
-  /** WhatsApp channel provider: meta (Cloud API), interakt, or stub */
+  /** WhatsApp channel provider — optional override of FEATURE_FLAGS BSP_PROVIDER_* */
   WHATSAPP_PROVIDER: z.enum(['meta', 'interakt', 'stub']).optional(),
   WHATSAPP_API_URL: z.string().url().optional(),
   WHATSAPP_API_TOKEN: z.string().optional(),

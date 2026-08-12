@@ -50,7 +50,7 @@ COPY --chown=node:node --from=builder /app/node_modules/.bin/prisma ./node_modul
 # Knowledge markdown for optional reindex-bundled / local docs in image
 COPY --chown=node:node knowledge ./knowledge
 
-# Run migrations on startup, then start the app
+# Run migrations (always) and optional MS KB ingest (RUN_MS_KB_INGEST=true) on startup
 COPY --chown=node:node docker-entrypoint.sh ./
 USER root
 RUN chmod +x docker-entrypoint.sh

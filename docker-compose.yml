@@ -47,6 +47,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - MS_ASSISTANT_VECTOR_STORE=pgvector
+      # First deploy / after knowledge/ changes: set true (or in .env). Wipes + rebuilds vectors.
+      - RUN_MS_KB_INGEST=${RUN_MS_KB_INGEST:-false}
     ports:
       - "3000:3000"
     depends_on:
