@@ -4,16 +4,22 @@
  */
 export type FeatureFlagEnv = 'dev' | 'uat' | 'prod';
 
-/** Per-environment on/off (or extend later to string/enum payloads). */
+/** Per-environment defaults when no FEATURE_* env override is set. */
 export type EnvToggle = Record<FeatureFlagEnv, boolean>;
 
 /**
- * Central feature-flag registry.
+ * Central feature-flag registry — **defaults only**.
  *
- * Add new flags here as `{ flagKey: { dev, uat, prod } }`.
- * Prefer capability / provider switches over ad-hoc env branching in call sites.
+ * At runtime each flag resolves as:
+ *   1. `FEATURE_<FLAG_NAME>` env var if set (true/false/1/0/yes/no) → no redeploy needed
+ *   2. else the `{ dev, uat, prod }` default below for current APP_ENV
  *
- * Usage:
+ * Example (.env / Azure App Settings / docker-compose):
+ *   APP_ENV=uat
+ *   FEATURE_BSP_PROVIDER_INTERAKT=true
+ *   FEATURE_BSP_PROVIDER_META=false
+ *
+ * Usage in code:
  *   if (isFeatureEnabled('BSP_PROVIDER_META')) { ... }
  */
 export const FEATURE_FLAGS = {
@@ -33,6 +39,22 @@ export const FEATURE_FLAGS = {
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 
+const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+const FALSY = new Set(['0', 'false', 'no', 'off']);
+
+/** Env var name for a flag override, e.g. FEATURE_BSP_PROVIDER_META */
+export function featureFlagEnvVar(flag: FeatureFlagKey): string {
+  return `FEATURE_${flag}`;
+}
+
+function parseEnvBoolean(raw: string | undefined): boolean | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (TRUTHY.has(normalized)) return true;
+  if (FALSY.has(normalized)) return false;
+  return undefined;
+}
+
 /** Map NODE_ENV / APP_ENV → flag slice. Prefer APP_ENV when set. */
 export function resolveAppEnv(
   source: { APP_ENV?: string; NODE_ENV?: string } = process.env,
@@ -44,25 +66,30 @@ export function resolveAppEnv(
 
   const nodeEnv = source.NODE_ENV?.trim().toLowerCase();
   if (nodeEnv === 'production') return 'prod';
-  // development | test | anything else → local/dev slice
   return 'dev';
 }
 
-/** Whether a flag is on for the current (or overridden) deployment slice. */
+/**
+ * Whether a flag is on for this process.
+ * Env override wins; otherwise uses code default for APP_ENV (or passed appEnv in tests).
+ */
 export function isFeatureEnabled(
   flag: FeatureFlagKey,
   appEnv: FeatureFlagEnv = resolveAppEnv(),
+  envSource: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  const override = parseEnvBoolean(envSource[featureFlagEnvVar(flag)]);
+  if (override !== undefined) return override;
   return FEATURE_FLAGS[flag][appEnv];
 }
 
-/** Snapshot of every flag resolved for one environment (handy for diagnostics). */
+/** Snapshot of every flag as resolved at runtime (includes FEATURE_* overrides). */
 export function getFeatureFlagSnapshot(
   appEnv: FeatureFlagEnv = resolveAppEnv(),
+  envSource: NodeJS.ProcessEnv = process.env,
 ): Record<FeatureFlagKey, boolean> {
   const keys = Object.keys(FEATURE_FLAGS) as FeatureFlagKey[];
-  return Object.fromEntries(keys.map((key) => [key, FEATURE_FLAGS[key][appEnv]])) as Record<
-    FeatureFlagKey,
-    boolean
-  >;
+  return Object.fromEntries(
+    keys.map((key) => [key, isFeatureEnabled(key, appEnv, envSource)]),
+  ) as Record<FeatureFlagKey, boolean>;
 }

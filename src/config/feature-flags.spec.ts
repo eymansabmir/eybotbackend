@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEATURE_FLAGS,
+  featureFlagEnvVar,
   getFeatureFlagSnapshot,
   isFeatureEnabled,
   resolveAppEnv,
@@ -18,16 +19,29 @@ describe('feature-flags', () => {
     expect(resolveAppEnv({ NODE_ENV: 'test' })).toBe('dev');
   });
 
-  it('reads the correct env slice for a flag', () => {
-    expect(isFeatureEnabled('BSP_PROVIDER_INTERAKT', 'dev')).toBe(
+  it('reads code defaults for an env slice when no FEATURE_* override', () => {
+    const env = {};
+    expect(isFeatureEnabled('BSP_PROVIDER_INTERAKT', 'dev', env)).toBe(
       FEATURE_FLAGS.BSP_PROVIDER_INTERAKT.dev,
     );
-    expect(isFeatureEnabled('BSP_PROVIDER_META', 'prod')).toBe(FEATURE_FLAGS.BSP_PROVIDER_META.prod);
+    expect(isFeatureEnabled('BSP_PROVIDER_META', 'prod', env)).toBe(
+      FEATURE_FLAGS.BSP_PROVIDER_META.prod,
+    );
   });
 
-  it('returns a full snapshot for an env', () => {
-    const snap = getFeatureFlagSnapshot('dev');
-    expect(snap.BSP_PROVIDER_META).toBe(FEATURE_FLAGS.BSP_PROVIDER_META.dev);
-    expect(snap.BSP_PROVIDER_INTERAKT).toBe(FEATURE_FLAGS.BSP_PROVIDER_INTERAKT.dev);
+  it('FEATURE_* env var overrides code defaults (no redeploy)', () => {
+    const env = {
+      [featureFlagEnvVar('BSP_PROVIDER_META')]: 'true',
+      [featureFlagEnvVar('BSP_PROVIDER_INTERAKT')]: 'false',
+    };
+    expect(isFeatureEnabled('BSP_PROVIDER_META', 'dev', env)).toBe(true);
+    expect(isFeatureEnabled('BSP_PROVIDER_INTERAKT', 'dev', env)).toBe(false);
+  });
+
+  it('returns a full snapshot with overrides applied', () => {
+    const env = { [featureFlagEnvVar('BSP_PROVIDER_META')]: '1' };
+    const snap = getFeatureFlagSnapshot('prod', env);
+    expect(snap.BSP_PROVIDER_META).toBe(true);
+    expect(snap.BSP_PROVIDER_INTERAKT).toBe(FEATURE_FLAGS.BSP_PROVIDER_INTERAKT.prod);
   });
 });
