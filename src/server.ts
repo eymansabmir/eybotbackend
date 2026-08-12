@@ -56,6 +56,7 @@ import {
   MsAssistantService,
   MS_ASSISTANT_SERVICE,
 } from './features/ms-assistant';
+import { getAssistantPrompts } from './features/ms-assistant/bot-profiles';
 import { RedisConversationMemory } from './features/ms-assistant/infrastructure/memory/redis-memory';
 import { createMsEmbeddings, createMsLlm } from './features/ms-assistant/providers';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
@@ -168,11 +169,13 @@ async function startServer(): Promise<void> {
             vectorStore: msAssistantConfig.MS_ASSISTANT_VECTOR_STORE,
             qdrant: msAssistantConfig.QDRANT_URL,
             collection: msAssistantConfig.QDRANT_COLLECTION,
+            botProfile: msAssistantConfig.MS_ASSISTANT_BOT_PROFILE,
+            knowledgeDir: msAssistantConfig.MS_ASSISTANT_KNOWLEDGE_DIR,
             llm: msAssistantConfig.MS_ASSISTANT_LLM_PROVIDER,
             embeddings: msAssistantConfig.MS_ASSISTANT_EMBED_PROVIDER,
             model: msAssistantConfig.MS_ASSISTANT_CHAT_MODEL,
           },
-          'Managed Services Assistant ready (fallback when no intent match)',
+          `${getAssistantPrompts(msAssistantConfig.MS_ASSISTANT_BOT_PROFILE).displayName} ready (fallback when no intent match)`,
         );
       } catch (err) {
         logger.error({ err }, 'Managed Services Assistant failed to initialize');

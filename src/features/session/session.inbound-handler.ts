@@ -368,14 +368,38 @@ export class SessionInboundHandler implements IInboundHandler {
           sessionId = activeSession.id;
         }
       } else {
-        // Strict zombie check: prevent interactions with old messages from starting new flows.
-        if (message.contextMessageId) {
+        // Match flow by advanced trigger config or legacy keywords
+        logger.debug({ waId, waBusinessNumber }, 'SessionInboundHandler: matching flow for new session');
+
+        const inboundText = text ?? '';
+        const matchedFlow =
+          selectFlowByTrigger(scopedFlows, inboundText) ??
+          selectFlowByTrigger(unboundFlows, inboundText);
+
+        if (matchedFlow) {
+          const started = await this.startNewSession(
+            orgId,
+            waId,
+            waBusinessNumber,
+            matchedFlow,
+            contact,
+          );
+          outboundMessages.push(...started.outboundMessages);
+          sessionId = started.sessionId;
+        } else if (this.msAssistant?.enabled) {
+          logger.info(
+            { waId, orgId, waBusinessNumber, contextMessageId: message.contextMessageId },
+            'SessionInboundHandler: no intent match, routing to GenAI',
+          );
+          return await this.msAssistant.handleInbound(job);
+        } else if (message.contextMessageId) {
+          // Strict zombie check when GenAI fallback is unavailable: block stale replies
+          // to completed journeys from accidentally starting new flows.
           logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
-          
-          // Fetch last session to identify which flow's fallback to use
+
           const lastSession = await this.sessionRepo.findLastSession(waBusinessNumber, waId);
           let finishedJourneyMessage = 'You already finished this flow. To start the flow again, please type the trigger keyword.';
-          
+
           if (lastSession) {
             try {
               const flow = await this.flowRepo.findById(lastSession.flowId);
@@ -395,45 +419,6 @@ export class SessionInboundHandler implements IInboundHandler {
             orgId,
           }];
         }
-
-        // Match flow by advanced trigger config or legacy keywords
-        logger.debug({ waId, waBusinessNumber }, 'SessionInboundHandler: matching flow for new session');
-
-        const inboundText = text ?? '';
-        const matchedFlow =
-          selectFlowByTrigger(scopedFlows, inboundText) ??
-          selectFlowByTrigger(unboundFlows, inboundText);
-
-        if (!matchedFlow) {
-          logger.info(
-            {
-              waId,
-              orgId,
-              text,
-              scopedFlowCount: scopedFlows.length,
-              unboundFlowCount: unboundFlows.length,
-            },
-            'SessionInboundHandler: no flow matched trigger conditions'
-          );
-          if (this.msAssistant?.enabled) {
-            logger.info(
-              { waId, orgId, waBusinessNumber },
-              'SessionInboundHandler: no intent match, routing to GenAI',
-            );
-            return await this.msAssistant.handleInbound(job);
-          }
-          return [];
-        }
-
-        const started = await this.startNewSession(
-          orgId,
-          waId,
-          waBusinessNumber,
-          matchedFlow,
-          contact,
-        );
-        outboundMessages.push(...started.outboundMessages);
-        sessionId = started.sessionId;
       }
 
       return outboundMessages.map(msg => ({

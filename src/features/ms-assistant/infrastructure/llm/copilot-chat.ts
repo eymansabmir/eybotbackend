@@ -1,14 +1,13 @@
 import { approveAll, CopilotClient } from '@github/copilot-sdk';
 import type { MsAssistantConfig } from '../../config';
 import { resolveMsAssistantApiKey } from '../../config';
+import { getAssistantPrompts } from '../../bot-profiles';
 import type { ConversationMemory } from '../memory/redis-memory';
 import type { RetrievedChunk } from '../rag/knowledge-store';
 import type { BotResponse } from '../../domain/bot-response';
 import {
   buildAnswerUserContent,
   buildNearMissUserContent,
-  MS_ASSISTANT_SYSTEM_PROMPT,
-  MS_NEAR_MISS_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
   type NearMissAllowList,
@@ -38,6 +37,10 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     });
   }
 
+  private get prompts() {
+    return getAssistantPrompts(this.config.MS_ASSISTANT_BOT_PROFILE);
+  }
+
   private ensureStarted(): Promise<void> {
     if (!this.startPromise) {
       this.startPromise = this.client.start().catch((err) => {
@@ -53,7 +56,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     chunks: RetrievedChunk[];
     memory: ConversationMemory;
   }): Promise<BotResponse> {
-    return this.runPrompt(MS_ASSISTANT_SYSTEM_PROMPT, buildAnswerUserContent(params));
+    return this.runPrompt(this.prompts.systemPrompt, buildAnswerUserContent(params));
   }
 
   async suggestNearMiss(params: {
@@ -61,7 +64,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     chunks: RetrievedChunk[];
     allowList: NearMissAllowList;
   }): Promise<BotResponse> {
-    return this.runPrompt(MS_NEAR_MISS_SYSTEM_PROMPT, buildNearMissUserContent(params));
+    return this.runPrompt(this.prompts.nearMissSystemPrompt, buildNearMissUserContent(params));
   }
 
   private async runPrompt(system: string, userContent: string): Promise<BotResponse> {
@@ -100,7 +103,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
       systemMessage: {
         mode: 'replace',
         content:
-          'Summarize this EY Managed Services WhatsApp chat in 2-3 short bullets. No fluff.',
+          `Summarize this ${this.prompts.displayName} WhatsApp chat in 2-3 short bullets. No fluff.`,
       },
       availableTools: [],
       onPermissionRequest: approveAll,

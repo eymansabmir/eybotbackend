@@ -11,7 +11,24 @@ const RESERVED_ORG_ROUTE_VALUES = new Set(['webhook']);
 type ResolvedInboundContext = {
   orgId: string;
   credentialId?: string;
+  skipCredentialLookup?: boolean;
 };
+
+/** /api/v1/workspaces/:orgId/whatsapp/:credentialId/webhook */
+export function parseWorkspaceWebhookPath(pathname: string): {
+  orgId?: string;
+  credentialId?: string;
+} {
+  const match = pathname.match(/\/workspaces\/([^/]+)\/whatsapp\/([^/]+)(?:\/webhook)?\/?$/i);
+  if (!match) return {};
+  return { orgId: match[1], credentialId: match[2] };
+}
+
+export function resolveRequestWebhookPath(req: Request): string {
+  const base = req.baseUrl ?? '';
+  const path = req.path ?? '';
+  return `${base}${path}`.replace(/\?.*$/, '');
+}
 
 export class WhatsAppWebhookController {
   constructor(
@@ -44,13 +61,11 @@ export class WhatsAppWebhookController {
 
       const context = await this.resolveInboundContext(req, payload);
       if (!context) {
-        console.log("STEP 1.1: Webhook context resolution failed (Unknown Org/Credential or status update)");
-        // Meta retries non-2xx responses aggressively; ack and drop unknown-account traffic.
+        console.log("STEP 1.1: Webhook context resolution failed (unknown org/credential)");
         res.status(200).json({ status: 'ignored' });
         return;
       }
 
-      // Return 200 immediately — Meta requires a fast response
       res.status(200).json({ status: 'accepted' });
       console.log("STEP 2: Webhook context resolved, passing to worker queue", context);
       logger.debug({ payload }, 'WhatsApp webhook payload received');
@@ -58,7 +73,6 @@ export class WhatsAppWebhookController {
       const message = this.whatsappPlugin.normalizer.normalize(context.orgId, payload);
       const value = payload.entry?.[0]?.changes?.[0]?.value;
 
-      // Handle status update callbacks (delivered/read receipts from Meta)
       if (value?.statuses?.length) {
         for (const s of value.statuses) {
           if (s.status !== 'delivered' && s.status !== 'read') continue;
@@ -84,9 +98,22 @@ export class WhatsAppWebhookController {
         return;
       }
 
-      const job: InboundJob = { orgId: context.orgId, credentialId: context.credentialId, message };
+      const job: InboundJob = {
+        orgId: context.orgId,
+        credentialId: context.credentialId,
+        skipCredentialLookup: context.skipCredentialLookup,
+        message,
+      };
       await this.workerPlugin.publish(EXCHANGES.INBOUND, job);
-      logger.info({ messageId: message.messageId, orgId: context.orgId, credentialId: context.credentialId }, 'Inbound message enqueued');
+      logger.info(
+        {
+          messageId: message.messageId,
+          orgId: context.orgId,
+          credentialId: context.credentialId,
+          skipCredentialLookup: context.skipCredentialLookup,
+        },
+        'Inbound message enqueued',
+      );
     } catch (err) {
       logger.error({ err }, 'Error processing WhatsApp webhook');
       if (!res.headersSent) {
@@ -95,24 +122,51 @@ export class WhatsAppWebhookController {
     }
   };
 
-  private async resolveInboundContext(req: Request, payload: WhatsAppWebhookPayload): Promise<ResolvedInboundContext | undefined> {
+  private async resolveInboundContext(
+    req: Request,
+    payload: WhatsAppWebhookPayload,
+  ): Promise<ResolvedInboundContext | undefined> {
+    const pathIds = parseWorkspaceWebhookPath(resolveRequestWebhookPath(req));
     const routeOrgId = typeof req.params['orgId'] === 'string' ? req.params['orgId'].trim() : '';
 
     const waBusinessNumber =
       payload.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ??
       payload.entry?.[0]?.changes?.[0]?.value?.metadata?.display_phone_number;
 
+    if (pathIds.orgId && pathIds.credentialId) {
+      const credential = await this.credentialRepo.findById(pathIds.orgId, pathIds.credentialId);
+      if (credential?.isActive && !credential.revokedAt && credential.type === 'WHATSAPP_CLOUD') {
+        return { orgId: pathIds.orgId, credentialId: credential.id };
+      }
+
+      logger.info(
+        { orgId: pathIds.orgId, credentialId: pathIds.credentialId, waBusinessNumber },
+        'Meta webhook: workspace path resolved — skipCredentialLookup (GenAI / flows without DB credential row)',
+      );
+      return {
+        orgId: pathIds.orgId,
+        credentialId: pathIds.credentialId,
+        skipCredentialLookup: true,
+      };
+    }
+
     if (routeOrgId && !RESERVED_ORG_ROUTE_VALUES.has(routeOrgId.toLowerCase())) {
       if (!waBusinessNumber) {
         return { orgId: routeOrgId };
       }
 
-      const scopedCredential = await this.credentialRepo.findActiveWhatsAppByBusinessNumberForOrg(routeOrgId, waBusinessNumber);
+      const scopedCredential = await this.credentialRepo.findActiveWhatsAppByBusinessNumberForOrg(
+        routeOrgId,
+        waBusinessNumber,
+      );
       if (scopedCredential) {
         return { orgId: routeOrgId, credentialId: scopedCredential.id };
       }
 
-      logger.warn({ routeOrgId, waBusinessNumber }, 'Route orgId does not own incoming business number, falling back to global resolution');
+      logger.warn(
+        { routeOrgId, waBusinessNumber },
+        'Route orgId does not own incoming business number, falling back to global resolution',
+      );
     }
 
     if (!waBusinessNumber) {

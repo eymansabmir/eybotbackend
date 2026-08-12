@@ -218,6 +218,40 @@ describe('SessionInboundHandler routing', () => {
     expect(result[0]?.payload).toEqual({ message: 'started' });
   });
 
+  it('routes stale context replies to GenAI when assistant is enabled', async () => {
+    const { handler, msAssistant, enginePlugin } = createHandler({
+      flows: [makeFlow('flow-a', 'book order')],
+      msAssistant: { enabled: true },
+    });
+
+    const result = await handler.process(
+      makeJob({ text: 'Vehicle specs', contextMessageId: 'wamid.old-list-message' }),
+    );
+
+    expect(msAssistant!.handleInbound).toHaveBeenCalledTimes(1);
+    expect(enginePlugin.startFlow).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0]?.payload).toEqual({ message: 'genai reply' });
+  });
+
+  it('returns finished-journey message for stale context when assistant is disabled', async () => {
+    const { handler, sessionRepo } = createHandler({
+      flows: [makeFlow('flow-a', 'book order')],
+      msAssistant: { enabled: false, handleInbound: vi.fn() },
+    });
+
+    (sessionRepo.findLastSession as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const result = await handler.process(
+      makeJob({ text: 'hello', contextMessageId: 'wamid.old-list-message' }),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.payload).toEqual({
+      message: 'You already finished this flow. To start the flow again, please type the trigger keyword.',
+    });
+  });
+
   it('resumes active session and does not call GenAI', async () => {
     const flow = makeFlow('flow-active', 'book order');
     const activeSession = {

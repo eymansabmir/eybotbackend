@@ -25,14 +25,14 @@ export type EnvToggle = Record<FeatureFlagEnv, boolean>;
 export const FEATURE_FLAGS = {
   /** Use Meta WhatsApp Cloud API as the BSP channel */
   BSP_PROVIDER_META: {
-    dev: false,
-    uat: false,
+    dev: true,
+    uat: true,
     prod: false,
   },
   /** Use Interakt as the BSP channel */
   BSP_PROVIDER_INTERAKT: {
-    dev: true,
-    uat: true,
+    dev: false,
+    uat: false,
     prod: false,
   },
 } as const satisfies Record<string, EnvToggle>;

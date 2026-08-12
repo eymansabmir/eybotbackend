@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BOT_PROFILES, resolveBotProfile, type BotProfileId } from './bot-profiles';
 
 const msAssistantEnvSchema = z.object({
   MANAGED_SERVICES_ASSISTANT_ENABLED: z.enum(['true', 'false']).optional(),
@@ -30,20 +31,30 @@ const msAssistantEnvSchema = z.object({
   MS_ASSISTANT_MEMORY_MAX_TURNS: z.coerce.number().int().min(2).max(40).default(8),
   /** Higher = stricter grounding (fewer weak RAG hits → unavailable message). */
   MS_ASSISTANT_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.32),
-  MS_ASSISTANT_KNOWLEDGE_DIR: z.string().default('knowledge/managed-services'),
+  /** managed-services | honda-mechanic — selects prompts, menu, and default knowledge dir. */
+  MS_ASSISTANT_BOT_PROFILE: z.enum(['managed-services', 'honda-mechanic']).default('managed-services'),
+  MS_ASSISTANT_KNOWLEDGE_DIR: z.string().optional(),
   MS_ASSISTANT_JSON_OBJECT: z.enum(['true', 'false']).default('true'),
 });
 
 export type MsAssistantConfig = z.infer<typeof msAssistantEnvSchema> & {
   enabled: boolean;
+  MS_ASSISTANT_BOT_PROFILE: BotProfileId;
+  MS_ASSISTANT_KNOWLEDGE_DIR: string;
 };
 
 export function loadMsAssistantConfig(
   envSource: NodeJS.ProcessEnv = process.env,
 ): MsAssistantConfig {
   const parsed = msAssistantEnvSchema.parse(envSource);
+  const botProfile = resolveBotProfile(parsed.MS_ASSISTANT_BOT_PROFILE);
+  const knowledgeDir =
+    parsed.MS_ASSISTANT_KNOWLEDGE_DIR ?? BOT_PROFILES[botProfile].knowledgeDir;
+
   return {
     ...parsed,
+    MS_ASSISTANT_BOT_PROFILE: botProfile,
+    MS_ASSISTANT_KNOWLEDGE_DIR: knowledgeDir,
     enabled: parsed.MANAGED_SERVICES_ASSISTANT_ENABLED === 'true',
   };
 }

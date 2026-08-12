@@ -1,6 +1,7 @@
 import type { InboundJob, OutboundJob } from '../../../plugins/worker/jobs';
 import { logger } from '../../../utils/logger';
 import type { MsAssistantConfig } from '../config';
+import { getAssistantPrompts, isHondaMechanicProfile } from '../bot-profiles';
 import type { BotResponse } from '../domain/bot-response';
 import { botResponseToOutboundJobs } from '../infrastructure/formatter/to-outbound';
 import {
@@ -8,7 +9,6 @@ import {
   enforceNearMissReply,
   isUnavailableKbMarker,
   sanitizeUserQuestion,
-  UNAVAILABLE_KB_MESSAGE,
   type MsAssistantChat,
 } from '../infrastructure/llm/shared';
 import { RedisConversationMemory } from '../infrastructure/memory/redis-memory';
@@ -33,6 +33,18 @@ import {
   resolveHandoffPillarId,
   resolveMenuSelection,
 } from './greeting';
+import {
+  HONDA_BUTTON_IDS,
+  buildHondaAnswerWithNav,
+  buildHondaAskPromptResponse,
+  buildHondaMenuNudgeResponse,
+  buildHondaNearMissAllowList,
+  buildHondaNearMissReply,
+  buildHondaWelcomeResponse,
+  hondaCannedMenuResponse,
+  looksLikeHondaMenuChoice,
+  resolveHondaMenuSelection,
+} from './greeting-honda';
 
 export type MsAssistantProgressPublisher = (jobs: OutboundJob[]) => Promise<void>;
 
@@ -51,7 +63,18 @@ export class MsAssistantService {
     return this.config.enabled;
   }
 
+  private get isHonda(): boolean {
+    return isHondaMechanicProfile(this.config.MS_ASSISTANT_BOT_PROFILE);
+  }
+
   async handleInbound(job: InboundJob): Promise<OutboundJob[]> {
+    if (this.isHonda) {
+      return this.handleHondaInbound(job);
+    }
+    return this.handleManagedServicesInbound(job);
+  }
+
+  private async handleManagedServicesInbound(job: InboundJob): Promise<OutboundJob[]> {
     const { message, orgId } = job;
     const { waId, waBusinessNumber } = message;
     const interactiveId = message.interactiveOptionId?.trim();
@@ -93,6 +116,79 @@ export class MsAssistantService {
         job,
       );
     }
+  }
+
+  private async handleHondaInbound(job: InboundJob): Promise<OutboundJob[]> {
+    const { message, orgId } = job;
+    const { waId, waBusinessNumber } = message;
+    const interactiveId = message.interactiveOptionId?.trim();
+    const text = (message.text ?? '').trim();
+
+    try {
+      if (interactiveId) {
+        return await this.handleHondaInteractive(job, interactiveId);
+      }
+
+      if (message.type === 'button' || message.type === 'interactive' || looksLikeHondaMenuChoice(text)) {
+        return await this.handleHondaInteractive(job, text);
+      }
+
+      if (isGreetingText(text) || isMenuNavText(text)) {
+        await this.memory.setMode(waBusinessNumber, waId, 'menu');
+        return this.toJobs(buildHondaWelcomeResponse(), job);
+      }
+
+      if (!text) {
+        return this.toJobs(buildHondaMenuNudgeResponse(), job);
+      }
+
+      if (/self\s*start|not starting|won'?t start|no start|starter relay|horn.*headlamp/i.test(text)) {
+        await this.memory.setMode(waBusinessNumber, waId, 'menu');
+        const canned = hondaCannedMenuResponse(HONDA_BUTTON_IDS.SELF_START);
+        if (canned) return this.toJobs(canned, job);
+      }
+
+      return await this.answerFromKnowledge(job, text, { mode: 'qa' });
+    } catch (err) {
+      logger.error({ err, waId, orgId }, 'MsAssistantService: handleHondaInbound failed');
+      return this.toJobs(
+        {
+          mode: 'buttons',
+          text: '⚠️ Something went wrong preparing that reply. Please try again from the menu.',
+          buttons: [
+            { id: HONDA_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
+            { id: HONDA_BUTTON_IDS.TROUBLESHOOT, title: 'Troubleshooting' },
+            { id: HONDA_BUTTON_IDS.TYPE_QUESTION, title: 'Ask anything' },
+          ],
+        },
+        job,
+      );
+    }
+  }
+
+  private async handleHondaInteractive(job: InboundJob, interactiveId: string): Promise<OutboundJob[]> {
+    const { waId, waBusinessNumber } = job.message;
+    const resolved = resolveHondaMenuSelection(interactiveId);
+    const key = normalizeInteractiveKey(resolved);
+
+    if (key === HONDA_BUTTON_IDS.MAIN_MENU || key === 'main menu') {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(buildHondaWelcomeResponse(), job);
+    }
+
+    if (key === HONDA_BUTTON_IDS.TYPE_QUESTION || key === 'ask anything') {
+      await this.memory.setMode(waBusinessNumber, waId, 'qa');
+      return this.toJobs(buildHondaAskPromptResponse(), job);
+    }
+
+    const canned = hondaCannedMenuResponse(resolved) ?? hondaCannedMenuResponse(key);
+    if (canned) {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(canned, job);
+    }
+
+    await this.memory.setMode(waBusinessNumber, waId, 'menu');
+    return this.toJobs(buildHondaWelcomeResponse(), job);
   }
 
   private async handleInteractive(job: InboundJob, interactiveId: string): Promise<OutboundJob[]> {
@@ -228,7 +324,7 @@ export class MsAssistantService {
 
     const memory = await this.memory.get(waBusinessNumber, waId);
 
-    await this.emitProgress(job, 'Fetching information from approved knowledge…');
+    await this.emitProgress(job, 'Looking up workshop data…');
 
     const vector = await this.embeddings.embedOne(safeQuestion);
     const chunks = await this.store.search(vector, this.config.MS_ASSISTANT_TOP_K);
@@ -277,24 +373,42 @@ export class MsAssistantService {
       })
       .catch((err) => logger.warn({ err }, 'MsAssistantService: summary refresh failed'));
 
-    return this.toJobs(buildAnswerWithNav(replyText), job);
+    return this.toJobs(this.buildAnswerWithNav(replyText), job);
+  }
+
+  private buildAnswerWithNav(text: string): BotResponse {
+    return this.isHonda ? buildHondaAnswerWithNav(text) : buildAnswerWithNav(text);
+  }
+
+  private buildNearMissAllowListForProfile() {
+    return this.isHonda ? buildHondaNearMissAllowList() : buildNearMissAllowList();
+  }
+
+  private unavailableFallbackMessage(): string {
+    return getAssistantPrompts(this.config.MS_ASSISTANT_BOT_PROFILE).unavailableMessage;
   }
 
   private async buildNearMissReply(
     question: string,
     chunks: RetrievedChunk[],
   ): Promise<string> {
-    const allowList = buildNearMissAllowList();
+    const allowList = this.buildNearMissAllowListForProfile();
+    const fallback = this.unavailableFallbackMessage();
+
+    if (this.isHonda) {
+      return buildHondaNearMissReply(question);
+    }
+
     try {
       const response = await this.llm.suggestNearMiss({ question, chunks, allowList });
       const text =
         response.mode === 'text' || response.mode === 'buttons' || response.mode === 'list'
           ? response.text
           : (response.text ?? '');
-      return enforceNearMissReply(text, allowList) ?? UNAVAILABLE_KB_MESSAGE;
+      return enforceNearMissReply(text, allowList) ?? fallback;
     } catch (err) {
       logger.warn({ err }, 'MsAssistantService: near-miss LLM failed');
-      return UNAVAILABLE_KB_MESSAGE;
+      return fallback;
     }
   }
 
@@ -304,7 +418,7 @@ export class MsAssistantService {
       waId: job.message.waId,
       waBusinessNumber: job.message.waBusinessNumber,
       orgId: job.orgId,
-      sessionId: `ms-assistant:${job.message.waId}`,
+      sessionId: `${this.isHonda ? 'honda-mechanic' : 'ms-assistant'}:${job.message.waId}`,
     };
     return list.flatMap((item) => botResponseToOutboundJobs(item, ctx));
   }

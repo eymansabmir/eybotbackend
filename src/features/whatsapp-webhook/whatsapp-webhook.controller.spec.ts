@@ -234,4 +234,67 @@ describe('WhatsAppWebhookController.handle', () => {
       message: normalized,
     });
   });
+
+  it('resolves workspace webhook path without DB credential (GenAI path)', async () => {
+    const normalized = {
+      messageId: 'wamid.workspace',
+      waId: '918448728057',
+      waBusinessNumber: '986914541176866',
+      text: 'hello',
+      type: 'text',
+      timestamp: Date.now(),
+      orgId: 'cmiy8k8yr0000rw1frp6qpanp',
+    };
+
+    const whatsappPlugin = {
+      normalizer: { normalize: vi.fn().mockReturnValue(normalized) },
+      deduplicator: { isDuplicate: vi.fn().mockResolvedValue(false) },
+    } as unknown as IWhatsAppPlugin;
+
+    const workerPlugin = {
+      publish: vi.fn().mockResolvedValue(undefined),
+    } as unknown as IWorkerPlugin;
+
+    const credentialRepo = {
+      findById: vi.fn().mockResolvedValue(null),
+      findActiveWhatsAppByBusinessNumber: vi.fn(),
+    } as unknown as ICredentialRepository;
+
+    const controller = new WhatsAppWebhookController(whatsappPlugin, workerPlugin, credentialRepo);
+
+    const req = {
+      baseUrl: '/api/v1/workspaces/cmiy8k8yr0000rw1frp6qpanp/whatsapp/mcaida4rvgxhd50lqccu5yt8',
+      path: '/webhook',
+      params: {},
+      body: {
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  metadata: { phone_number_id: '986914541176866' },
+                  contacts: [{ wa_id: '918448728057' }],
+                  messages: [{ id: 'wamid.workspace', type: 'text', text: { body: 'hello' } }],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as Request;
+    const res = createResponseMock();
+
+    await controller.handle(req, res, vi.fn());
+
+    expect(credentialRepo.findById).toHaveBeenCalledWith(
+      'cmiy8k8yr0000rw1frp6qpanp',
+      'mcaida4rvgxhd50lqccu5yt8',
+    );
+    expect(workerPlugin.publish).toHaveBeenCalledWith(INBOUND_EXCHANGE, {
+      orgId: 'cmiy8k8yr0000rw1frp6qpanp',
+      credentialId: 'mcaida4rvgxhd50lqccu5yt8',
+      skipCredentialLookup: true,
+      message: normalized,
+    });
+  });
 });

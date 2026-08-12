@@ -1,14 +1,13 @@
 import OpenAI from 'openai';
 import type { MsAssistantConfig } from '../../config';
 import type { BotResponse } from '../../domain/bot-response';
+import { getAssistantPrompts } from '../../bot-profiles';
 import type { ConversationMemory } from '../memory/redis-memory';
 import type { RetrievedChunk } from '../rag/qdrant.store';
 import { createMsOpenAIClient } from './openai-client';
 import {
   buildAnswerUserContent,
   buildNearMissUserContent,
-  MS_ASSISTANT_SYSTEM_PROMPT,
-  MS_NEAR_MISS_SYSTEM_PROMPT,
   parseBotResponse,
   type MsAssistantChat,
   type NearMissAllowList,
@@ -21,6 +20,10 @@ export class MsAssistantLlm implements MsAssistantChat {
     this.client = createMsOpenAIClient(config);
   }
 
+  private get prompts() {
+    return getAssistantPrompts(this.config.MS_ASSISTANT_BOT_PROFILE);
+  }
+
   async answer(params: {
     question: string;
     chunks: RetrievedChunk[];
@@ -31,7 +34,7 @@ export class MsAssistantLlm implements MsAssistantChat {
       temperature: 0.2,
       preferJsonObject: true,
       messages: [
-        { role: 'system', content: MS_ASSISTANT_SYSTEM_PROMPT },
+        { role: 'system', content: this.prompts.systemPrompt },
         { role: 'user', content: buildAnswerUserContent(params) },
       ],
     });
@@ -50,7 +53,7 @@ export class MsAssistantLlm implements MsAssistantChat {
       temperature: 0.2,
       preferJsonObject: true,
       messages: [
-        { role: 'system', content: MS_NEAR_MISS_SYSTEM_PROMPT },
+        { role: 'system', content: this.prompts.nearMissSystemPrompt },
         { role: 'user', content: buildNearMissUserContent(params) },
       ],
     });
@@ -74,7 +77,7 @@ export class MsAssistantLlm implements MsAssistantChat {
         {
           role: 'system',
           content:
-            'Summarize this EY Managed Services WhatsApp chat in 2-3 short bullets. No fluff.',
+            `Summarize this ${this.prompts.displayName} WhatsApp chat in 2-3 short bullets. No fluff.`,
         },
         { role: 'user', content: transcript },
       ],
