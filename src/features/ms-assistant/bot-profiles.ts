@@ -1,4 +1,4 @@
-export type BotProfileId = 'managed-services' | 'honda-mechanic';
+export type BotProfileId = 'managed-services' | 'honda-mechanic' | 'morth';
 
 export type AssistantPrompts = {
   systemPrompt: string;
@@ -65,6 +65,49 @@ const HONDA_UNAVAILABLE =
   '* Parts & consumables\n' +
   '* Self-start decision tree';
 
+const MORTH_UNAVAILABLE =
+  'That detail is not in the MoRTH / Parivahan guide yet.\n\n' +
+  'Try asking about:\n' +
+  '* Pay traffic challan\n' +
+  '* Apply for NOC\n' +
+  '* Duplicate RC\n' +
+  '* Transfer ownership\n' +
+  '* State transfer\n' +
+  '* Official portal links';
+
+const MORTH_SYSTEM_PROMPT = `You are a MoRTH / Parivahan citizen-services guide on WhatsApp helping users with vehicle registration and traffic challan tasks.
+
+## Tone & audience
+- Write for a citizen trying to complete a government service online.
+- Be clear and step-by-step — numbered steps, portal names, and official URLs from retrieved knowledge only.
+- Never mention "knowledge base" or "approved source".
+- Do not invent fees, timelines, documents, or RTO rules not in retrieved knowledge.
+
+## Grounding (mandatory)
+- Answer ONLY from "Retrieved knowledge" in the user message.
+- If knowledge cannot answer, reply with EXACTLY:
+  ${UNAVAILABLE_KB_MARKER}
+- Prefer official Parivahan / Vahan / eChallan portals cited in knowledge.
+
+## Reply format (WhatsApp)
+* *Service:* what the user is trying to do
+* *Portal:* official URL (if in knowledge)
+* *Steps:* numbered list (max 8 steps)
+* *Note:* only if in knowledge (e.g. seller initiates ownership transfer)
+
+Keep under 150 words unless listing steps.
+
+You MUST respond with a single JSON object:
+{ "mode": "text", "text": string }`;
+
+const MORTH_NEAR_MISS_SYSTEM_PROMPT = `You help citizens when exact MoRTH / Parivahan guidance is missing.
+
+## Hard rules
+- Suggest only topics from APPROVED_TOPICS.
+- Do not invent portal URLs, fees, or procedures.
+
+Respond as JSON only: { "mode": "text", "text": string }`;
+
 const MS_SYSTEM_PROMPT = `You are the EY Managed Services Qualification Assistant for EY partners on WhatsApp.
 
 ## Absolute grounding (mandatory)
@@ -116,10 +159,18 @@ export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
     nearMissSystemPrompt: HONDA_NEAR_MISS_SYSTEM_PROMPT,
     unavailableMessage: HONDA_UNAVAILABLE,
   },
+  morth: {
+    displayName: 'MoRTH Parivahan Assistant',
+    knowledgeDir: 'knowledge/morth',
+    systemPrompt: MORTH_SYSTEM_PROMPT,
+    nearMissSystemPrompt: MORTH_NEAR_MISS_SYSTEM_PROMPT,
+    unavailableMessage: MORTH_UNAVAILABLE,
+  },
 };
 
 export function resolveBotProfile(profile?: string): BotProfileId {
   if (profile === 'honda-mechanic') return 'honda-mechanic';
+  if (profile === 'morth') return 'morth';
   return 'managed-services';
 }
 
@@ -129,4 +180,13 @@ export function getAssistantPrompts(profile?: string): AssistantPrompts {
 
 export function isHondaMechanicProfile(profile?: string): boolean {
   return resolveBotProfile(profile) === 'honda-mechanic';
+}
+
+export function isMorthProfile(profile?: string): boolean {
+  return resolveBotProfile(profile) === 'morth';
+}
+
+export function isMenuDrivenProfile(profile?: string): boolean {
+  const id = resolveBotProfile(profile);
+  return id === 'honda-mechanic' || id === 'morth';
 }

@@ -1,7 +1,7 @@
 import type { InboundJob, OutboundJob } from '../../../plugins/worker/jobs';
 import { logger } from '../../../utils/logger';
 import type { MsAssistantConfig } from '../config';
-import { getAssistantPrompts, isHondaMechanicProfile } from '../bot-profiles';
+import { getAssistantPrompts, isHondaMechanicProfile, isMorthProfile } from '../bot-profiles';
 import type { BotResponse } from '../domain/bot-response';
 import { botResponseToOutboundJobs } from '../infrastructure/formatter/to-outbound';
 import {
@@ -45,6 +45,19 @@ import {
   looksLikeHondaMenuChoice,
   resolveHondaMenuSelection,
 } from './greeting-honda';
+import {
+  MORTH_BUTTON_IDS,
+  buildMorthAnswerWithNav,
+  buildMorthAskPromptResponse,
+  buildMorthMenuNudgeResponse,
+  buildMorthNearMissAllowList,
+  buildMorthNearMissReply,
+  buildMorthWelcomeResponse,
+  looksLikeMorthMenuChoice,
+  morthCannedMenuResponse,
+  morthKeywordRoute,
+  resolveMorthMenuSelection,
+} from './greeting-morth';
 
 export type MsAssistantProgressPublisher = (jobs: OutboundJob[]) => Promise<void>;
 
@@ -67,9 +80,16 @@ export class MsAssistantService {
     return isHondaMechanicProfile(this.config.MS_ASSISTANT_BOT_PROFILE);
   }
 
+  private get isMorth(): boolean {
+    return isMorthProfile(this.config.MS_ASSISTANT_BOT_PROFILE);
+  }
+
   async handleInbound(job: InboundJob): Promise<OutboundJob[]> {
     if (this.isHonda) {
       return this.handleHondaInbound(job);
+    }
+    if (this.isMorth) {
+      return this.handleMorthInbound(job);
     }
     return this.handleManagedServicesInbound(job);
   }
@@ -189,6 +209,80 @@ export class MsAssistantService {
 
     await this.memory.setMode(waBusinessNumber, waId, 'menu');
     return this.toJobs(buildHondaWelcomeResponse(), job);
+  }
+
+  private async handleMorthInbound(job: InboundJob): Promise<OutboundJob[]> {
+    const { message, orgId } = job;
+    const { waId, waBusinessNumber } = message;
+    const interactiveId = message.interactiveOptionId?.trim();
+    const text = (message.text ?? '').trim();
+
+    try {
+      if (interactiveId) {
+        return await this.handleMorthInteractive(job, interactiveId);
+      }
+
+      if (message.type === 'button' || message.type === 'interactive' || looksLikeMorthMenuChoice(text)) {
+        return await this.handleMorthInteractive(job, text);
+      }
+
+      if (isGreetingText(text) || isMenuNavText(text)) {
+        await this.memory.setMode(waBusinessNumber, waId, 'menu');
+        return this.toJobs(buildMorthWelcomeResponse(), job);
+      }
+
+      if (!text) {
+        return this.toJobs(buildMorthMenuNudgeResponse(), job);
+      }
+
+      const routed = morthKeywordRoute(text);
+      if (routed) {
+        await this.memory.setMode(waBusinessNumber, waId, 'menu');
+        const canned = morthCannedMenuResponse(routed);
+        if (canned) return this.toJobs(canned, job);
+      }
+
+      return await this.answerFromKnowledge(job, text, { mode: 'qa' });
+    } catch (err) {
+      logger.error({ err, waId, orgId }, 'MsAssistantService: handleMorthInbound failed');
+      return this.toJobs(
+        {
+          mode: 'buttons',
+          text: '⚠️ Something went wrong preparing that reply. Please try again from the menu.',
+          buttons: [
+            { id: MORTH_BUTTON_IDS.MAIN_MENU, title: 'Main Menu' },
+            { id: MORTH_BUTTON_IDS.CHALLAN, title: 'Pay challan' },
+            { id: MORTH_BUTTON_IDS.TYPE_QUESTION, title: 'Ask anything' },
+          ],
+        },
+        job,
+      );
+    }
+  }
+
+  private async handleMorthInteractive(job: InboundJob, interactiveId: string): Promise<OutboundJob[]> {
+    const { waId, waBusinessNumber } = job.message;
+    const resolved = resolveMorthMenuSelection(interactiveId);
+    const key = normalizeInteractiveKey(resolved);
+
+    if (key === MORTH_BUTTON_IDS.MAIN_MENU || key === 'main menu') {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(buildMorthWelcomeResponse(), job);
+    }
+
+    if (key === MORTH_BUTTON_IDS.TYPE_QUESTION || key === 'ask anything') {
+      await this.memory.setMode(waBusinessNumber, waId, 'qa');
+      return this.toJobs(buildMorthAskPromptResponse(), job);
+    }
+
+    const canned = morthCannedMenuResponse(resolved) ?? morthCannedMenuResponse(key);
+    if (canned) {
+      await this.memory.setMode(waBusinessNumber, waId, 'menu');
+      return this.toJobs(canned, job);
+    }
+
+    await this.memory.setMode(waBusinessNumber, waId, 'menu');
+    return this.toJobs(buildMorthWelcomeResponse(), job);
   }
 
   private async handleInteractive(job: InboundJob, interactiveId: string): Promise<OutboundJob[]> {
@@ -324,7 +418,14 @@ export class MsAssistantService {
 
     const memory = await this.memory.get(waBusinessNumber, waId);
 
-    await this.emitProgress(job, 'Looking up workshop data…');
+    await this.emitProgress(
+      job,
+      this.isMorth
+        ? 'Looking up Parivahan guidance…'
+        : this.isHonda
+          ? 'Looking up workshop data…'
+          : 'Fetching information from approved knowledge…',
+    );
 
     const vector = await this.embeddings.embedOne(safeQuestion);
     const chunks = await this.store.search(vector, this.config.MS_ASSISTANT_TOP_K);
@@ -377,11 +478,15 @@ export class MsAssistantService {
   }
 
   private buildAnswerWithNav(text: string): BotResponse {
-    return this.isHonda ? buildHondaAnswerWithNav(text) : buildAnswerWithNav(text);
+    if (this.isHonda) return buildHondaAnswerWithNav(text);
+    if (this.isMorth) return buildMorthAnswerWithNav(text);
+    return buildAnswerWithNav(text);
   }
 
   private buildNearMissAllowListForProfile() {
-    return this.isHonda ? buildHondaNearMissAllowList() : buildNearMissAllowList();
+    if (this.isHonda) return buildHondaNearMissAllowList();
+    if (this.isMorth) return buildMorthNearMissAllowList();
+    return buildNearMissAllowList();
   }
 
   private unavailableFallbackMessage(): string {
@@ -397,6 +502,9 @@ export class MsAssistantService {
 
     if (this.isHonda) {
       return buildHondaNearMissReply(question);
+    }
+    if (this.isMorth) {
+      return buildMorthNearMissReply(question);
     }
 
     try {
@@ -418,7 +526,7 @@ export class MsAssistantService {
       waId: job.message.waId,
       waBusinessNumber: job.message.waBusinessNumber,
       orgId: job.orgId,
-      sessionId: `${this.isHonda ? 'honda-mechanic' : 'ms-assistant'}:${job.message.waId}`,
+      sessionId: `${this.isHonda ? 'honda-mechanic' : this.isMorth ? 'morth' : 'ms-assistant'}:${job.message.waId}`,
     };
     return list.flatMap((item) => botResponseToOutboundJobs(item, ctx));
   }
