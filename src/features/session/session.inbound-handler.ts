@@ -177,30 +177,31 @@ export class SessionInboundHandler implements IInboundHandler {
             if (matchedOption) {
               userInput = matchedOption.id;
             } else if (!activeSession.waitingFor?.defaultBranchKey) {
-              // Not a valid choice and no default branch -> Invalid Input
-              return [{
-                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-                messageType: NodeType.SEND_TEXT,
-                payload: { message: invalidInputMessage },
-              }];
+              return this.tryGenAiFallbackOrInvalid(
+                job,
+                activeSession,
+                invalidInputMessage,
+                'choice_input_mismatch',
+              );
             }
           } else if (!isButtonOrList) {
-            // Non-textual, non-button input (image, voice, etc.) is always invalid for choice nodes
-            return [{
-              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-              messageType: NodeType.SEND_TEXT,
-              payload: { message: invalidInputMessage },
-            }];
+            return this.tryGenAiFallbackOrInvalid(
+              job,
+              activeSession,
+              invalidInputMessage,
+              'choice_expected_button_or_list',
+            );
           }
         } else if (expectedType === 'location') {
           if (message.location) {
             userInput = JSON.stringify(message.location);
           } else {
-            return [{
-              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-              messageType: NodeType.SEND_TEXT,
-              payload: { message: invalidInputMessage },
-            }];
+            return this.tryGenAiFallbackOrInvalid(
+              job,
+              activeSession,
+              invalidInputMessage,
+              'location_expected',
+            );
           }
         } else if (expectedType === 'file') {
           const hasMediaInput = Boolean(message.mediaId || message.mediaUrl);
@@ -210,22 +211,24 @@ export class SessionInboundHandler implements IInboundHandler {
             if (textFallback.length > 0) {
               userInput = textFallback;
             } else {
-              return [{
-                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-                messageType: NodeType.SEND_TEXT,
-                payload: { message: invalidInputMessage },
-              }];
+              return this.tryGenAiFallbackOrInvalid(
+                job,
+                activeSession,
+                invalidInputMessage,
+                'file_expected',
+              );
             }
           }
 
           if (hasMediaInput) {
             const uploadUrl = await this.processMediaUpload(message, waId, activeSession.id!);
             if (!uploadUrl) {
-              return [{
-                waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-                messageType: NodeType.SEND_TEXT,
-              payload: { message: flow.settings.invalidInputMessage || 'I could not process that file. Please try again.' },
-            }];
+              return this.tryGenAiFallbackOrInvalid(
+                job,
+                activeSession,
+                flow.settings.invalidInputMessage || 'I could not process that file. Please try again.',
+                'file_upload_failed',
+              );
             }
             userInput = uploadUrl;
           }
@@ -234,11 +237,12 @@ export class SessionInboundHandler implements IInboundHandler {
           const hasCaption = actualType !== 'text' && text && text !== actualType;
 
           if (!isTextualMessage && !hasCaption) {
-            return [{
-              waId, waBusinessNumber, orgId, sessionId: activeSession.id,
-              messageType: NodeType.SEND_TEXT,
-              payload: { message: invalidInputMessage },
-            }];
+            return this.tryGenAiFallbackOrInvalid(
+              job,
+              activeSession,
+              invalidInputMessage,
+              'text_expected',
+            );
           }
         } else if (activeSession.waitingFor?.type === 'media_conditional') {
           const currentNode = flowToExecute.nodes.find((n) => n.id === activeSession.currentNodeId);
@@ -272,6 +276,9 @@ export class SessionInboundHandler implements IInboundHandler {
 
           if (!matchedConfig) {
             logger.info({ waId, sessionId: activeSession.id, type: message.type, retries }, 'SessionInboundHandler: media_conditional rejected unexpected type');
+            if (this.canFallbackToGenAi()) {
+              return this.routeToGenAiFromSession(job, activeSession, 'media_type_mismatch');
+            }
             return handleInvalidAttempt(currentInvalidMessage);
           }
 
@@ -293,6 +300,9 @@ export class SessionInboundHandler implements IInboundHandler {
 
               if (!isAllowed) {
                 logger.info({ waId, sessionId: activeSession.id, ext, mime, retries }, 'SessionInboundHandler: media_conditional rejected unsupported subtype');
+                if (this.canFallbackToGenAi()) {
+                  return this.routeToGenAiFromSession(job, activeSession, 'media_subtype_mismatch');
+                }
                 return handleInvalidAttempt(currentInvalidMessage);
               }
             }
@@ -351,7 +361,11 @@ export class SessionInboundHandler implements IInboundHandler {
           sessionId = result.session.id!;
           logger.info({ sessionId, isFinished: result.isFinished }, 'SessionInboundHandler: session resumed');
         } catch (err) {
-          logger.error({ err, sessionId: activeSession.id, flowId: activeSession.flowId }, 'SessionInboundHandler: resume failed, marking current session as error');
+          logger.error({ err, sessionId: activeSession.id, flowId: activeSession.flowId }, 'SessionInboundHandler: resume failed');
+
+          if (this.canFallbackToGenAi()) {
+            return this.routeToGenAiFromSession(job, activeSession, 'resume_failed');
+          }
 
           await this.sessionRepo.update(activeSession.id!, {
             status: 'error',
@@ -439,6 +453,55 @@ export class SessionInboundHandler implements IInboundHandler {
         logger.warn({ err, waId, lockKey }, 'SessionInboundHandler: lock release failed');
       }
     }
+  }
+
+  private canFallbackToGenAi(): boolean {
+    return Boolean(this.msAssistant?.enabled);
+  }
+
+  /**
+   * Release the static flow session and hand off to GenAI (knowledge-base assistant).
+   */
+  private async routeToGenAiFromSession(
+    job: InboundJob,
+    activeSession: { id?: string },
+    reason: string,
+  ): Promise<OutboundJob[]> {
+    const sessionId = activeSession.id;
+    logger.info(
+      { sessionId, reason, waId: job.message.waId, orgId: job.orgId },
+      'SessionInboundHandler: releasing active session, routing to GenAI',
+    );
+
+    if (sessionId) {
+      await this.sessionRepo.update(sessionId, {
+        isCurrent: false,
+        waitingFor: undefined,
+      });
+    }
+
+    return this.msAssistant!.handleInbound(job);
+  }
+
+  private async tryGenAiFallbackOrInvalid(
+    job: InboundJob,
+    activeSession: { id?: string },
+    invalidMessage: string,
+    reason: string,
+  ): Promise<OutboundJob[]> {
+    if (this.canFallbackToGenAi()) {
+      return this.routeToGenAiFromSession(job, activeSession, reason);
+    }
+
+    const { waId, waBusinessNumber } = job.message;
+    return [{
+      waId,
+      waBusinessNumber,
+      orgId: job.orgId,
+      sessionId: activeSession.id,
+      messageType: NodeType.SEND_TEXT,
+      payload: { message: invalidMessage },
+    }];
   }
 
   private async resolveMatchingCredential(

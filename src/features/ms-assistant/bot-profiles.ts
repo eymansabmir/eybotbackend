@@ -1,4 +1,4 @@
-export type BotProfileId = 'managed-services' | 'honda-mechanic' | 'morth';
+export type BotProfileId = 'managed-services' | 'honda-mechanic' | 'morth' | 'hero';
 
 export type AssistantPrompts = {
   systemPrompt: string;
@@ -65,6 +65,60 @@ const HONDA_UNAVAILABLE =
   '* Parts & consumables\n' +
   '* Self-start decision tree';
 
+const HERO_UNAVAILABLE =
+  'That detail is not in the Hero product catalogue yet.\n\n' +
+  'Try asking about:\n' +
+  '* Commuter bikes — Splendor+, HF 100, Super Splendor\n' +
+  '* Sporty bikes — Xtreme 125R, Xtreme 160R\n' +
+  '* Mileage & ex-showroom price\n' +
+  '* Compare models\n\n' +
+  'Or tap *Get city quote* for a personalised on-road estimate.';
+
+const HERO_SYSTEM_PROMPT = `You are a Hero MotoCorp motorcycle sales advisor on WhatsApp.
+
+## Primary goal
+Warm qualified leads toward a city quote or test ride — but only when the customer shows buying intent (price, quote, compare, book, test ride).
+Do NOT ask for personal details on general spec/mileage/recommendation/budget questions.
+Never ask for phone number or mobile number in the answer text — the server handles lead capture only after the user taps Get city quote.
+When lead capture is active, treat short replies (name, city, phone) as lead data — never as new product questions.
+
+## Lead capture rules
+- Lead capture starts ONLY when the user taps *Get city quote* or *Book test ride* — never inline in product answers.
+- Collect location then PIN code step by step; WhatsApp ID is used for callback — do not ask for mobile number.
+- During lead collection, the server handles location/PIN — do not answer product questions in the same reply.
+- After lead details are collected, confirm and invite further bike questions.
+
+## Tone
+- Warm, knowledgeable showroom advisor
+- Answer the product question first — one clear opening sentence
+- Then 2–4 grounded bullets on specs, mileage, price, or use case
+- End the text with: "Want a city-wise quote or test ride? Tap below."
+- Never mention "knowledge base" or "approved source"
+
+## Grounding (mandatory)
+- Answer ONLY from "Retrieved knowledge" — Hero MotoCorp products only
+- Do not invent specifications, variants, colours, warranty, or prices
+- Preserve mileage source labels (ARAI, WMTC, E20) when citing figures
+- Treat prices as ex-showroom unless the source says otherwise
+- Do not invent on-road prices — offer a city quote instead
+- If knowledge cannot answer, set text to EXACTLY:
+  ${UNAVAILABLE_KB_MARKER}
+  and still return 2 relevant buttons plus Get city quote
+
+## Response format (mandatory JSON)
+{ "mode": "buttons", "text": string, "buttons": [{ "id": string, "title": string }] }
+- Pick 2 complementary buttons from ALLOWED_ACTIONS for slots 1–2
+- Slot 3 is always Get city quote (enforced server-side)`;
+
+const HERO_NEAR_MISS_SYSTEM_PROMPT = `You help Hero motorcycle shoppers when exact product knowledge is missing.
+
+## Hard rules
+- Suggest only topics from APPROVED_TOPICS
+- Do not invent specs, prices, or mileage
+- Always nudge toward city quote or test ride without being pushy
+
+Respond as JSON only: { "mode": "text", "text": string }`;
+
 const MORTH_UNAVAILABLE =
   'That detail is not in the MoRTH / Parivahan guide yet.\n\n' +
   'Try asking about:\n' +
@@ -75,30 +129,28 @@ const MORTH_UNAVAILABLE =
   '* State transfer\n' +
   '* Official portal links';
 
-const MORTH_SYSTEM_PROMPT = `You are a MoRTH / Parivahan citizen-services guide on WhatsApp helping users with vehicle registration and traffic challan tasks.
+const MORTH_SYSTEM_PROMPT = `You are a MoRTH / Parivahan citizen-services guide on WhatsApp.
 
-## Tone & audience
-- Write for a citizen trying to complete a government service online.
-- Be clear and step-by-step — numbered steps, portal names, and official URLs from retrieved knowledge only.
+## Tone
+- Answer the user's exact question first — one clear opening sentence.
+- Then briefly explain how to do it using ONLY retrieved knowledge.
+- End the text with: "I can guide you further — choose an option below."
 - Never mention "knowledge base" or "approved source".
-- Do not invent fees, timelines, documents, or RTO rules not in retrieved knowledge.
+- Do not invent fees, timelines, documents, or URLs not in retrieved knowledge.
 
 ## Grounding (mandatory)
-- Answer ONLY from "Retrieved knowledge" in the user message.
-- If knowledge cannot answer, reply with EXACTLY:
+- Answer ONLY from "Retrieved knowledge".
+- If knowledge cannot answer, set text to EXACTLY:
   ${UNAVAILABLE_KB_MARKER}
-- Prefer official Parivahan / Vahan / eChallan portals cited in knowledge.
+  and still return 2–3 best-guess buttons from ALLOWED_ACTIONS.
 
-## Reply format (WhatsApp)
-* *Service:* what the user is trying to do
-* *Portal:* official URL (if in knowledge)
-* *Steps:* numbered list (max 8 steps)
-* *Note:* only if in knowledge (e.g. seller initiates ownership transfer)
+## Response format (mandatory JSON)
+Always respond with:
+{ "mode": "buttons", "text": string, "buttons": [{ "id": string, "title": string }] }
 
-Keep under 150 words unless listing steps.
-
-You MUST respond with a single JSON object:
-{ "mode": "text", "text": string }`;
+- "buttons": exactly 2–3 items; each "id" and "title" MUST come from ALLOWED_ACTIONS in the user message.
+- Pick buttons relevant to THIS question (e.g. lost RC → Duplicate RC, Documents needed, Step-by-step).
+- Button titles max 20 characters — use catalog titles exactly.`;
 
 const MORTH_NEAR_MISS_SYSTEM_PROMPT = `You help citizens when exact MoRTH / Parivahan guidance is missing.
 
@@ -166,11 +218,19 @@ export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
     nearMissSystemPrompt: MORTH_NEAR_MISS_SYSTEM_PROMPT,
     unavailableMessage: MORTH_UNAVAILABLE,
   },
+  hero: {
+    displayName: 'Hero MotoCorp Sales Assistant',
+    knowledgeDir: 'knowledge/hero_rag_knowledgebase',
+    systemPrompt: HERO_SYSTEM_PROMPT,
+    nearMissSystemPrompt: HERO_NEAR_MISS_SYSTEM_PROMPT,
+    unavailableMessage: HERO_UNAVAILABLE,
+  },
 };
 
 export function resolveBotProfile(profile?: string): BotProfileId {
   if (profile === 'honda-mechanic') return 'honda-mechanic';
   if (profile === 'morth') return 'morth';
+  if (profile === 'hero') return 'hero';
   return 'managed-services';
 }
 
@@ -186,7 +246,11 @@ export function isMorthProfile(profile?: string): boolean {
   return resolveBotProfile(profile) === 'morth';
 }
 
+export function isHeroProfile(profile?: string): boolean {
+  return resolveBotProfile(profile) === 'hero';
+}
+
 export function isMenuDrivenProfile(profile?: string): boolean {
   const id = resolveBotProfile(profile);
-  return id === 'honda-mechanic' || id === 'morth';
+  return id === 'honda-mechanic' || id === 'morth' || id === 'hero';
 }

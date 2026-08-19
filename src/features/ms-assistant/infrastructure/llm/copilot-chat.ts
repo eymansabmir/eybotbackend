@@ -55,6 +55,7 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     question: string;
     chunks: RetrievedChunk[];
     memory: ConversationMemory;
+    extraInstructions?: string;
   }): Promise<BotResponse> {
     return this.runPrompt(this.prompts.systemPrompt, buildAnswerUserContent(params));
   }

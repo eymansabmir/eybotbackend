@@ -281,4 +281,102 @@ describe('SessionInboundHandler routing', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.payload).toEqual({ message: 'resumed' });
   });
+
+  it('releases active choice session and routes to GenAI when free text does not match options', async () => {
+    const flow = makeFlow('flow-active', 'book order');
+    const activeSession = {
+      id: 'session-choice',
+      flowId: 'flow-active',
+      currentNodeId: 'choice-node',
+      variables: {},
+      history: [],
+      waitingFor: {
+        type: 'choice',
+        options: [{ id: 'opt-1', label: 'Option A', branchKey: 'a' }],
+      },
+      renudgeAttempts: 0,
+    };
+
+    const { handler, msAssistant, enginePlugin, flowRepo, sessionRepo } = createHandler({
+      flows: [flow],
+      activeSession,
+      msAssistant: { enabled: true },
+    });
+
+    (flowRepo.findByIdOrFail as ReturnType<typeof vi.fn>).mockResolvedValue(flow);
+
+    const result = await handler.process(makeJob({ text: 'What is Splendor mileage?' }));
+
+    expect(msAssistant!.handleInbound).toHaveBeenCalledTimes(1);
+    expect(enginePlugin.resumeFlow).not.toHaveBeenCalled();
+    expect(sessionRepo.update).toHaveBeenCalledWith('session-choice', {
+      isCurrent: false,
+      waitingFor: undefined,
+    });
+    expect(result[0]?.payload).toEqual({ message: 'genai reply' });
+  });
+
+  it('returns invalid input for choice mismatch when GenAI is disabled', async () => {
+    const flow = makeFlow('flow-active', 'book order');
+    flow.settings.invalidInputMessage = 'Please pick an option.';
+    const activeSession = {
+      id: 'session-choice',
+      flowId: 'flow-active',
+      currentNodeId: 'choice-node',
+      variables: {},
+      history: [],
+      waitingFor: {
+        type: 'choice',
+        options: [{ id: 'opt-1', label: 'Option A', branchKey: 'a' }],
+      },
+      renudgeAttempts: 0,
+    };
+
+    const { handler, msAssistant, enginePlugin, flowRepo } = createHandler({
+      flows: [flow],
+      activeSession,
+      msAssistant: { enabled: false, handleInbound: vi.fn() },
+    });
+
+    (flowRepo.findByIdOrFail as ReturnType<typeof vi.fn>).mockResolvedValue(flow);
+
+    const result = await handler.process(makeJob({ text: 'random question' }));
+
+    expect(msAssistant!.handleInbound).not.toHaveBeenCalled();
+    expect(enginePlugin.resumeFlow).not.toHaveBeenCalled();
+    expect(result[0]?.payload).toEqual({ message: 'Please pick an option.' });
+  });
+
+  it('routes to GenAI when resumeFlow throws and assistant is enabled', async () => {
+    const flow = makeFlow('flow-active', 'book order');
+    const activeSession = {
+      id: 'session-1',
+      flowId: 'flow-active',
+      currentNodeId: 'start',
+      variables: {},
+      history: [],
+      waitingFor: { type: 'text' },
+      renudgeAttempts: 0,
+    };
+
+    const { handler, msAssistant, enginePlugin, flowRepo, sessionRepo } = createHandler({
+      flows: [flow],
+      activeSession,
+      msAssistant: { enabled: true },
+      enginePlugin: {
+        resumeFlow: vi.fn().mockRejectedValue(new Error('engine boom')),
+      },
+    });
+
+    (flowRepo.findByIdOrFail as ReturnType<typeof vi.fn>).mockResolvedValue(flow);
+
+    const result = await handler.process(makeJob({ text: 'hello' }));
+
+    expect(msAssistant!.handleInbound).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.update).toHaveBeenCalledWith('session-1', {
+      isCurrent: false,
+      waitingFor: undefined,
+    });
+    expect(result[0]?.payload).toEqual({ message: 'genai reply' });
+  });
 });

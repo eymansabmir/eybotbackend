@@ -9,6 +9,13 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+  rabbitmq:
+    image: 'rabbitmq:3-management-alpine'
+    restart: always
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    
 
   # Optional: only needed when MS_ASSISTANT_VECTOR_STORE=qdrant (default is pgvector on DATABASE_URL).
   qdrant:
