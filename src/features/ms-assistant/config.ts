@@ -31,8 +31,8 @@ const msAssistantEnvSchema = z.object({
   MS_ASSISTANT_MEMORY_MAX_TURNS: z.coerce.number().int().min(2).max(40).default(8),
   /** Higher = stricter grounding (fewer weak RAG hits → unavailable message). */
   MS_ASSISTANT_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.32),
-  /** managed-services | honda-mechanic | morth — selects prompts, menu, and default knowledge dir. */
-  MS_ASSISTANT_BOT_PROFILE: z.enum(['managed-services', 'honda-mechanic', 'morth']).default('managed-services'),
+  /** managed-services | honda-mechanic | morth | hero — selects prompts, menu, and default knowledge dir. */
+  MS_ASSISTANT_BOT_PROFILE: z.enum(['managed-services', 'honda-mechanic', 'morth', 'hero']).default('managed-services'),
   MS_ASSISTANT_KNOWLEDGE_DIR: z.string().optional(),
   MS_ASSISTANT_JSON_OBJECT: z.enum(['true', 'false']).default('true'),
 });

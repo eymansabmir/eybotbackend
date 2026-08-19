@@ -28,6 +28,7 @@ export class MsAssistantLlm implements MsAssistantChat {
     question: string;
     chunks: RetrievedChunk[];
     memory: ConversationMemory;
+    extraInstructions?: string;
   }): Promise<BotResponse> {
     const completion = await this.createChatCompletion({
       model: this.config.MS_ASSISTANT_CHAT_MODEL,
