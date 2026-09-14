@@ -58,7 +58,7 @@ import {
 } from './features/ms-assistant';
 import { getAssistantPrompts } from './features/ms-assistant/bot-profiles';
 import { RedisConversationMemory } from './features/ms-assistant/infrastructure/memory/redis-memory';
-import { createMsEmbeddings, createMsLlm } from './features/ms-assistant/providers';
+import { createMsEmbeddings, createMsLlm, createMsTranscriber } from './features/ms-assistant/providers';
 import { PrismaCampaignRepository } from './features/campaign/campaign.repository';
 import { PrismaCampaignRecipientRepository } from './features/campaign/campaign-recipient.repository';
 import { OpenAIPlugin } from './plugins/openai/openai.plugin';
@@ -162,6 +162,9 @@ async function startServer(): Promise<void> {
               );
             }
           },
+          whatsappPlugin,
+          storagePlugin,
+          createMsTranscriber(msAssistantConfig),
         );
         registry.registerValue(MS_ASSISTANT_SERVICE, msAssistant);
         logger.info(

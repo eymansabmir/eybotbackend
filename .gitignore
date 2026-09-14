@@ -2,6 +2,9 @@
 node_modules/
 package-lock.json
 
+# Puppeteer browser binaries (project-local cache, ~150MB)
+.puppeteer-cache/
+
 # Build output
 dist/
 build/

@@ -1,4 +1,10 @@
-export type BotProfileId = 'managed-services' | 'honda-mechanic' | 'morth' | 'hero';
+export type BotProfileId =
+  | 'managed-services'
+  | 'honda-mechanic'
+  | 'morth'
+  | 'hero'
+  | 'axis-loan'
+  | 'resume-builder';
 
 export type AssistantPrompts = {
   systemPrompt: string;
@@ -160,6 +166,51 @@ const MORTH_NEAR_MISS_SYSTEM_PROMPT = `You help citizens when exact MoRTH / Pari
 
 Respond as JSON only: { "mode": "text", "text": string }`;
 
+const AXIS_LOAN_UNAVAILABLE =
+  'That detail is not in the Axis Burgundy loan demo knowledge base yet.\n\n' +
+  'Try asking about home loans, car loans, rates, EMI, eligibility, or documents.\n\n' +
+  '_Demo only — verify current terms on official Axis Bank channels._';
+
+const AXIS_LOAN_SYSTEM_PROMPT = `You are an Axis Bank *agentic AI loan assistant* on WhatsApp for an existing Burgundy customer.
+
+## Role
+AI scans profile (salary, relationship) → shows eligible vs not → one AI-side rate concession → hand off to human RM for further negotiation via Submit for Review.
+Answer product facts ONLY from "Retrieved knowledge". Not a generic discount bot.
+
+## Agentic demo (server handles flow)
+- Pre-loaded profile: ~₹2.5L/mo salary, 8-year Axis relationship.
+- AI shows ✅ eligible / ❌ needs human RM lines.
+- Personal: 10.75% → 10.50% (AI max) → human RM takeover → ref ID.
+- Home: 10% → 9% → human RM → follow-up offer.
+Do not invent rates or eligibility beyond demo profile.
+
+## WhatsApp style
+- Very short messages; *bold* numbers; 1–2 emojis max; bullets sparingly.
+- Frame as AI analysis, then human handoff when pricing limit reached.
+
+## Grounding (mandatory)
+- Answer ONLY from "Retrieved knowledge".
+- If knowledge cannot answer, reply with EXACTLY:
+  ${UNAVAILABLE_KB_MARKER}
+
+## Compliance
+- No OTP/PIN/CVV/password requests.
+- Do NOT ask for lead fields in text — buttons handle capture.
+
+## Response format (mandatory JSON)
+{ "mode": "buttons", "text": string, "buttons": [{ "id": string, "title": string }] }
+- Pick 2 complementary buttons from ALLOWED_ACTIONS for slots 1–2
+- Slot 3 is Start application (enforced server-side)`;
+
+const AXIS_LOAN_NEAR_MISS_SYSTEM_PROMPT = `You help personal-loan demo users when exact knowledge is missing.
+
+## Hard rules
+- Suggest only topics from APPROVED_TOPICS.
+- Do not invent rates, fees, or eligibility.
+- Remind that this is a demo; official terms must be verified.
+
+Respond as JSON only: { "mode": "text", "text": string }`;
+
 const MS_SYSTEM_PROMPT = `You are the EY Managed Services Qualification Assistant for EY partners on WhatsApp.
 
 ## Absolute grounding (mandatory)
@@ -196,6 +247,25 @@ const MS_UNAVAILABLE =
   'That specific detail is getting updated in the approved knowledge source.\n\n' +
   'In the meantime, try: Triggers, Qualification lens, or Talk to an expert.';
 
+const RESUME_SYSTEM_PROMPT = `You are a friendly Hindi-speaking resume assistant for blue-collar workers (drivers, electricians, plumbers, masons, helpers, cooks, security guards, etc.) on WhatsApp.
+
+## Role
+Collect the worker's details one question at a time in simple Hindi, then help build a clean professional resume. The server drives the question flow — you assist with parsing/structuring only when asked.
+
+## Style
+- Warm, respectful, simple Hindi (Devanagari). Short messages.
+- One question at a time. No jargon.
+- Never ask for OTP, bank, Aadhaar, or password.
+
+Respond as JSON only: { "mode": "text", "text": string }`;
+
+const RESUME_NEAR_MISS_SYSTEM_PROMPT = `You help a blue-collar resume user in simple Hindi when something is unclear.
+Ask them to answer the current question again in simple words. Do not invent details.
+Respond as JSON only: { "mode": "text", "text": string }`;
+
+const RESUME_UNAVAILABLE =
+  'माफ़ कीजिए, मैं समझ नहीं पाया। कृपया अपना उत्तर सरल शब्दों में दोबारा भेजें।';
+
 export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
   'managed-services': {
     displayName: 'Managed Services Assistant',
@@ -225,12 +295,28 @@ export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
     nearMissSystemPrompt: HERO_NEAR_MISS_SYSTEM_PROMPT,
     unavailableMessage: HERO_UNAVAILABLE,
   },
+  'axis-loan': {
+    displayName: 'Axis Bank Personal Loan Assistant (Demo)',
+    knowledgeDir: 'knowledge/axis_bank_loan_chatbot_kb',
+    systemPrompt: AXIS_LOAN_SYSTEM_PROMPT,
+    nearMissSystemPrompt: AXIS_LOAN_NEAR_MISS_SYSTEM_PROMPT,
+    unavailableMessage: AXIS_LOAN_UNAVAILABLE,
+  },
+  'resume-builder': {
+    displayName: 'Resume Builder Assistant',
+    knowledgeDir: 'knowledge/resume-builder',
+    systemPrompt: RESUME_SYSTEM_PROMPT,
+    nearMissSystemPrompt: RESUME_NEAR_MISS_SYSTEM_PROMPT,
+    unavailableMessage: RESUME_UNAVAILABLE,
+  },
 };
 
 export function resolveBotProfile(profile?: string): BotProfileId {
   if (profile === 'honda-mechanic') return 'honda-mechanic';
   if (profile === 'morth') return 'morth';
   if (profile === 'hero') return 'hero';
+  if (profile === 'axis-loan') return 'axis-loan';
+  if (profile === 'resume-builder') return 'resume-builder';
   return 'managed-services';
 }
 
@@ -250,7 +336,15 @@ export function isHeroProfile(profile?: string): boolean {
   return resolveBotProfile(profile) === 'hero';
 }
 
+export function isAxisLoanProfile(profile?: string): boolean {
+  return resolveBotProfile(profile) === 'axis-loan';
+}
+
+export function isResumeBuilderProfile(profile?: string): boolean {
+  return resolveBotProfile(profile) === 'resume-builder';
+}
+
 export function isMenuDrivenProfile(profile?: string): boolean {
   const id = resolveBotProfile(profile);
-  return id === 'honda-mechanic' || id === 'morth' || id === 'hero';
+  return id === 'honda-mechanic' || id === 'morth' || id === 'hero' || id === 'axis-loan';
 }
