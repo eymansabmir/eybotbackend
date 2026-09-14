@@ -236,6 +236,7 @@ model User {
   email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  role          String?   @default("CLIENTMEMBER")
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
   accounts      Account[]
