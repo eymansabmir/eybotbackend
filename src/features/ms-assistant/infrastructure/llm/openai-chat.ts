@@ -87,6 +87,24 @@ export class MsAssistantLlm implements MsAssistantChat {
     return completion.choices[0]?.message?.content?.trim() || memory.summary;
   }
 
+  async complete(params: {
+    system: string;
+    user: string;
+    temperature?: number;
+    preferJsonObject?: boolean;
+  }): Promise<string> {
+    const completion = await this.createChatCompletion({
+      model: this.config.MS_ASSISTANT_CHAT_MODEL,
+      temperature: params.temperature ?? 0.3,
+      preferJsonObject: params.preferJsonObject ?? false,
+      messages: [
+        { role: 'system', content: params.system },
+        { role: 'user', content: params.user },
+      ],
+    });
+    return completion.choices[0]?.message?.content?.trim() ?? '';
+  }
+
   private async createChatCompletion(params: {
     model: string;
     temperature: number;

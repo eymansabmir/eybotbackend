@@ -19,3 +19,5 @@ export function createMsLlm(config: MsAssistantConfig): MsAssistantChat {
   }
   return new CopilotMsAssistantLlm(config);
 }
+
+export { createMsTranscriber } from './infrastructure/stt/transcriber';

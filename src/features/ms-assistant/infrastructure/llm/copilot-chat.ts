@@ -90,6 +90,32 @@ export class CopilotMsAssistantLlm implements MsAssistantChat {
     }
   }
 
+  async complete(params: {
+    system: string;
+    user: string;
+    temperature?: number;
+    preferJsonObject?: boolean;
+  }): Promise<string> {
+    await this.ensureStarted();
+    const session = await this.client.createSession({
+      model: this.config.MS_ASSISTANT_CHAT_MODEL,
+      systemMessage: { mode: 'replace', content: params.system },
+      availableTools: [],
+      onPermissionRequest: approveAll,
+    });
+
+    try {
+      const event = await session.sendAndWait({ prompt: params.user }, 120_000);
+      return event?.data?.content?.trim() ?? '';
+    } finally {
+      try {
+        await this.client.deleteSession(session.sessionId);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+
   async summarizeIfNeeded(memory: ConversationMemory): Promise<string | undefined> {
     if (memory.turns.length < 5) return memory.summary;
 

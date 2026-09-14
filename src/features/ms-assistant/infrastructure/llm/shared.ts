@@ -115,6 +115,17 @@ export interface MsAssistantChat {
     allowList: NearMissAllowList;
   }): Promise<BotResponse>;
   summarizeIfNeeded(memory: ConversationMemory): Promise<string | undefined>;
+  /**
+   * General-purpose single-shot completion returning raw text.
+   * Used by non-RAG flows (e.g. resume builder structuring). Optional so older
+   * mocks/impls remain valid; callers must handle `undefined`.
+   */
+  complete?(params: {
+    system: string;
+    user: string;
+    temperature?: number;
+    preferJsonObject?: boolean;
+  }): Promise<string>;
 }
 
 /** Strip common injection wrappers; keep the user's business question. */

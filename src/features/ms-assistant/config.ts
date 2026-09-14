@@ -31,8 +31,21 @@ const msAssistantEnvSchema = z.object({
   MS_ASSISTANT_MEMORY_MAX_TURNS: z.coerce.number().int().min(2).max(40).default(8),
   /** Higher = stricter grounding (fewer weak RAG hits → unavailable message). */
   MS_ASSISTANT_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.32),
-  /** managed-services | honda-mechanic | morth | hero — selects prompts, menu, and default knowledge dir. */
-  MS_ASSISTANT_BOT_PROFILE: z.enum(['managed-services', 'honda-mechanic', 'morth', 'hero']).default('managed-services'),
+  /** managed-services | honda-mechanic | morth | hero | axis-loan | resume-builder — selects prompts, menu, and default knowledge dir. */
+  MS_ASSISTANT_BOT_PROFILE: z
+    .enum(['managed-services', 'honda-mechanic', 'morth', 'hero', 'axis-loan', 'resume-builder'])
+    .default('managed-services'),
+  /** Optional dedicated speech-to-text (Whisper) key — required to transcribe Hindi voice notes. */
+  MS_ASSISTANT_STT_API_KEY: z.string().optional(),
+  MS_ASSISTANT_STT_BASE_URL: z.string().url().optional(),
+  MS_ASSISTANT_STT_MODEL: z.string().default('whisper-1'),
+  MS_ASSISTANT_STT_LANGUAGE: z.string().default('hi'),
+  /** Demo customer salutation for Axis Burgundy bot (e.g. Mr. Sharma). */
+  MS_ASSISTANT_AXIS_CUSTOMER_NAME: z.string().optional(),
+  /** Seconds before simulated internal-review follow-up (default 24h; use 60 for quick demo). */
+  MS_ASSISTANT_AXIS_ESCALATION_WAIT_SEC: z.coerce.number().int().min(10).default(86_400),
+  MS_ASSISTANT_AXIS_WELCOME_IMAGE_URL: z.string().url().optional(),
+  MS_ASSISTANT_AXIS_FOLLOWUP_IMAGE_URL: z.string().url().optional(),
   MS_ASSISTANT_KNOWLEDGE_DIR: z.string().optional(),
   MS_ASSISTANT_JSON_OBJECT: z.enum(['true', 'false']).default('true'),
 });
