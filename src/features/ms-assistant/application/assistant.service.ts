@@ -2,7 +2,7 @@ import { Readable } from 'stream';
 import type { InboundJob, OutboundJob } from '../../../plugins/worker/jobs';
 import { logger } from '../../../utils/logger';
 import type { MsAssistantConfig } from '../config';
-import { getAssistantPrompts, isAxisLoanProfile, isHondaMechanicProfile, isHeroProfile, isMorthProfile, isResumeBuilderProfile } from '../bot-profiles';
+import { getAssistantPrompts, isAxisLoanProfile, isHondaMechanicProfile, isHeroProfile, isHrProfile, isMorthProfile, isResumeBuilderProfile } from '../bot-profiles';
 import type { IWhatsAppPlugin } from '../../../plugins/whatsapp/whatsapp.interface';
 import type { IStoragePlugin } from '../../../plugins/storage/storage.interface';
 import type { AudioTranscriber } from '../infrastructure/stt/transcriber';
@@ -204,6 +204,29 @@ import {
   looksLikeAxisMenuChoice,
   resolveAxisMenuSelection,
 } from './greeting-axis-loan';
+import {
+  HR_BUTTON_IDS,
+  buildHrAskPromptResponse,
+  buildHrCatalogResponse,
+  buildHrLlmExtraInstructions,
+  buildHrMenuNudgeResponse,
+  buildHrNearMissAllowList,
+  buildHrNearMissReply,
+  buildHrNearMissResponse,
+  buildHrWelcomeResponse,
+  enforceHrBotResponse,
+  expandHrSearchQuery,
+  filterHrRetrievedChunks,
+  hrActionQuery,
+  inferHrTopicFromActionId,
+  inferHrTopicFromChunks,
+  isHrCatalogQuery,
+  isHrJourneyFollowUp,
+  looksLikeHrMenuChoice,
+  matchedHrPolicyIds,
+  resolveHrMenuSelection,
+  resolveHrRetrievalTopic,
+} from './greeting-hr';
 
 export type MsAssistantProgressPublisher = (jobs: OutboundJob[]) => Promise<void>;
 
@@ -254,6 +277,10 @@ export class MsAssistantService {
     return isResumeBuilderProfile(this.config.MS_ASSISTANT_BOT_PROFILE);
   }
 
+  private get isHr(): boolean {
+    return isHrProfile(this.config.MS_ASSISTANT_BOT_PROFILE);
+  }
+
   async handleInbound(job: InboundJob): Promise<OutboundJob[]> {
     if (this.isHonda) {
       return this.handleHondaInbound(job);
@@ -269,6 +296,9 @@ export class MsAssistantService {
     }
     if (this.isResumeBuilder) {
       return this.handleResumeBuilderInbound(job);
+    }
+    if (this.isHr) {
+      return this.handleHrInbound(job);
     }
     return this.handleManagedServicesInbound(job);
   }
@@ -1007,6 +1037,85 @@ export class MsAssistantService {
     return this.toJobs(buildMorthWelcomeResponse(), job);
   }
 
+  private async handleHrInbound(job: InboundJob): Promise<OutboundJob[]> {
+    const { message, orgId } = job;
+    const { waId, waBusinessNumber } = message;
+    const interactiveId = message.interactiveOptionId?.trim();
+    const text = (message.text ?? '').trim();
+
+    try {
+      if (interactiveId || message.type === 'button' || message.type === 'interactive') {
+        return await this.handleHrInteractive(job, interactiveId || text);
+      }
+
+      if (looksLikeHrMenuChoice(text)) {
+        return await this.handleHrInteractive(job, text);
+      }
+
+      if (isGreetingText(text) || isMenuNavText(text)) {
+        await this.memory.setMode(waBusinessNumber, waId, 'qa');
+        return this.toJobs(buildHrWelcomeResponse(), job);
+      }
+
+      if (!text) {
+        return this.toJobs(buildHrMenuNudgeResponse(), job);
+      }
+
+      if (isHrCatalogQuery(text)) {
+        await this.memory.patchHrTopic(waBusinessNumber, waId, undefined);
+        await this.memory.setMode(waBusinessNumber, waId, 'qa');
+        return this.toJobs(buildHrCatalogResponse(), job);
+      }
+
+      return await this.answerFromKnowledge(job, text, { mode: 'qa' });
+    } catch (err) {
+      logger.error({ err, waId, orgId }, 'MsAssistantService: handleHrInbound failed');
+      return this.toJobs(
+        {
+          mode: 'text',
+          text: '⚠️ Something went wrong. Please try asking your people-policy question again.',
+        },
+        job,
+      );
+    }
+  }
+
+  private async handleHrInteractive(job: InboundJob, interactiveId: string): Promise<OutboundJob[]> {
+    const { waId, waBusinessNumber } = job.message;
+    const resolved = resolveHrMenuSelection(interactiveId);
+    const key = normalizeInteractiveKey(resolved);
+
+    if (key === HR_BUTTON_IDS.MAIN_MENU || key === 'main menu') {
+      await this.memory.patchHrTopic(waBusinessNumber, waId, undefined);
+      await this.memory.setMode(waBusinessNumber, waId, 'qa');
+      return this.toJobs(buildHrWelcomeResponse(), job);
+    }
+
+    if (key === HR_BUTTON_IDS.TYPE_QUESTION || key === 'ask anything') {
+      await this.memory.setMode(waBusinessNumber, waId, 'qa');
+      return this.toJobs(buildHrAskPromptResponse(), job);
+    }
+
+    const memory = await this.memory.get(waBusinessNumber, waId);
+    const policyTopic = inferHrTopicFromActionId(key);
+    const topicId = policyTopic ?? memory.hrTopicId;
+    if (policyTopic) {
+      await this.memory.patchHrTopic(waBusinessNumber, waId, policyTopic);
+    }
+
+    const actionQuery = hrActionQuery(key, topicId);
+    if (actionQuery) {
+      return this.answerFromKnowledge(job, actionQuery, {
+        mode: 'qa',
+        excludeButtonId: key,
+        hrTopicId: topicId ?? policyTopic,
+      });
+    }
+
+    await this.memory.setMode(waBusinessNumber, waId, 'qa');
+    return this.toJobs(buildHrNearMissResponse(resolved, key), job);
+  }
+
   private async handleHeroInbound(job: InboundJob): Promise<OutboundJob[]> {
     const { message, orgId } = job;
     const { waId, waBusinessNumber } = message;
@@ -1298,10 +1407,13 @@ export class MsAssistantService {
   private async answerFromKnowledge(
     job: InboundJob,
     question: string,
-    opts: { mode: 'qa' | 'menu'; excludeButtonId?: string } = { mode: 'qa' },
+    opts: { mode: 'qa' | 'menu'; excludeButtonId?: string; hrTopicId?: string } = { mode: 'qa' },
   ): Promise<OutboundJob[]> {
     if (this.isMorth) {
       return this.answerFromKnowledgeMorth(job, question, opts);
+    }
+    if (this.isHr) {
+      return this.answerFromKnowledgeHr(job, question, opts);
     }
     if (this.isHero) {
       return this.answerFromKnowledgeHero(job, question, opts);
@@ -1444,6 +1556,135 @@ export class MsAssistantService {
             excludeButtonId,
           );
         }
+      }
+    }
+
+    const replyText =
+      botResponse.mode === 'text' || botResponse.mode === 'buttons' || botResponse.mode === 'list'
+        ? botResponse.text
+        : '';
+
+    const updated = await this.memory.appendTurn(
+      waBusinessNumber,
+      waId,
+      { role: 'assistant', content: replyText, at: Date.now() },
+      { mode: opts.mode },
+    );
+
+    void this.llm
+      .summarizeIfNeeded(updated)
+      .then(async (summary) => {
+        if (!summary) return;
+        const current = await this.memory.get(waBusinessNumber, waId);
+        await this.memory.save(waBusinessNumber, waId, { ...current, summary });
+      })
+      .catch((err) => logger.warn({ err }, 'MsAssistantService: summary refresh failed'));
+
+    return this.toJobs(botResponse, job);
+  }
+
+  private async answerFromKnowledgeHr(
+    job: InboundJob,
+    question: string,
+    opts: {
+      mode: 'qa' | 'menu';
+      excludeButtonId?: string;
+      hrTopicId?: string;
+    } = { mode: 'qa' },
+  ): Promise<OutboundJob[]> {
+    const { waId, waBusinessNumber } = job.message;
+    const safeQuestion = sanitizeUserQuestion(question);
+    const { excludeButtonId, hrTopicId } = opts;
+
+    await this.memory.appendTurn(
+      waBusinessNumber,
+      waId,
+      { role: 'user', content: safeQuestion, at: Date.now() },
+      { mode: opts.mode },
+    );
+
+    const memory = await this.memory.get(waBusinessNumber, waId);
+    const topicId = resolveHrRetrievalTopic(
+      safeQuestion,
+      { hrTopicId, excludeButtonId },
+      memory.hrTopicId,
+    );
+
+    await this.emitProgress(job, 'Looking up people policies…');
+
+    const searchQuery = expandHrSearchQuery(safeQuestion);
+    const vector = await this.embeddings.embedOne(searchQuery);
+    const topK = topicId
+      ? this.config.MS_ASSISTANT_TOP_K
+      : Math.max(this.config.MS_ASSISTANT_TOP_K, 10);
+    const chunks = await this.store.search(vector, topK);
+    const filtered = filterHrRetrievedChunks(
+      chunks,
+      this.config.MS_ASSISTANT_MIN_SCORE,
+      topicId,
+      safeQuestion,
+    );
+    const retrievedText = filtered.map((c) => c.text).join('\n\n');
+
+    let botResponse: BotResponse;
+
+    if (filtered.length === 0) {
+      botResponse = buildHrNearMissResponse(safeQuestion, excludeButtonId ?? topicId);
+    } else {
+      const response = await this.llm.answer({
+        question: safeQuestion,
+        chunks: filtered,
+        memory,
+        extraInstructions: buildHrLlmExtraInstructions(excludeButtonId, retrievedText, safeQuestion),
+      });
+
+      if (response.mode === 'buttons' && response.buttons?.length) {
+        const groundedText = enforceGroundedReply(response.text, filtered);
+        if (isUnavailableKbMarker(groundedText)) {
+          botResponse = buildHrNearMissResponse(safeQuestion, excludeButtonId ?? topicId);
+        } else {
+          botResponse = enforceHrBotResponse(
+            { ...response, text: groundedText },
+            safeQuestion,
+            excludeButtonId,
+            retrievedText,
+          );
+        }
+      } else {
+        const replyText = enforceGroundedReply(
+          response.mode === 'text' ? response.text : (response.text ?? ''),
+          filtered,
+        );
+        if (isUnavailableKbMarker(replyText)) {
+          botResponse = buildHrNearMissResponse(safeQuestion, excludeButtonId ?? topicId);
+        } else {
+          botResponse = enforceHrBotResponse(
+            { mode: 'text', text: replyText },
+            safeQuestion,
+            excludeButtonId,
+            retrievedText,
+          );
+        }
+      }
+    }
+
+    if (isHrCatalogQuery(safeQuestion)) {
+      await this.memory.patchHrTopic(waBusinessNumber, waId, undefined);
+    } else if (hrTopicId) {
+      await this.memory.patchHrTopic(waBusinessNumber, waId, hrTopicId);
+    } else {
+      const fromButton = inferHrTopicFromActionId(excludeButtonId ?? '');
+      const fromQuestion = matchedHrPolicyIds(safeQuestion);
+      if (fromButton) {
+        await this.memory.patchHrTopic(waBusinessNumber, waId, fromButton);
+      } else if (fromQuestion.length === 1) {
+        await this.memory.patchHrTopic(waBusinessNumber, waId, fromQuestion[0]);
+      } else if (topicId && isHrJourneyFollowUp(safeQuestion)) {
+        await this.memory.patchHrTopic(
+          waBusinessNumber,
+          waId,
+          inferHrTopicFromChunks(filtered) ?? topicId,
+        );
       }
     }
 
@@ -1669,6 +1910,7 @@ export class MsAssistantService {
   private buildNearMissAllowListForProfile() {
     if (this.isHonda) return buildHondaNearMissAllowList();
     if (this.isMorth) return buildMorthNearMissAllowList();
+    if (this.isHr) return buildHrNearMissAllowList();
     if (this.isHero) return buildHeroNearMissAllowList();
     if (this.isAxisLoan) return buildAxisNearMissAllowList();
     return buildNearMissAllowList();
@@ -1690,6 +1932,9 @@ export class MsAssistantService {
     }
     if (this.isMorth) {
       return buildMorthNearMissReply(question);
+    }
+    if (this.isHr) {
+      return buildHrNearMissReply(question);
     }
     if (this.isHero) {
       return buildHeroNearMissReply(question);
@@ -2056,13 +2301,15 @@ export class MsAssistantService {
           ? 'honda-mechanic'
           : this.isMorth
             ? 'morth'
-            : this.isHero
-              ? 'hero-sales'
-              : this.isAxisLoan
-                ? 'axis-loan'
-                : this.isResumeBuilder
-                  ? 'resume-builder'
-                  : 'ms-assistant'
+            : this.isHr
+              ? 'hr-assistant'
+              : this.isHero
+                ? 'hero-sales'
+                : this.isAxisLoan
+                  ? 'axis-loan'
+                  : this.isResumeBuilder
+                    ? 'resume-builder'
+                    : 'ms-assistant'
       }:${job.message.waId}`,
     };
     return list.flatMap((item) => botResponseToOutboundJobs(item, ctx));

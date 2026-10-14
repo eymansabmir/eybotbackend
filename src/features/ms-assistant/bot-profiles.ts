@@ -4,7 +4,8 @@ export type BotProfileId =
   | 'morth'
   | 'hero'
   | 'axis-loan'
-  | 'resume-builder';
+  | 'resume-builder'
+  | 'hr';
 
 export type AssistantPrompts = {
   systemPrompt: string;
@@ -266,6 +267,49 @@ Respond as JSON only: { "mode": "text", "text": string }`;
 const RESUME_UNAVAILABLE =
   'माफ़ कीजिए, मैं समझ नहीं पाया। कृपया अपना उत्तर सरल शब्दों में दोबारा भेजें।';
 
+const HR_UNAVAILABLE =
+  'That detail is not in the people policies yet.\n\n' +
+  'Try asking about leave, pay, flexible work, day care, health checkups, medical support, benevolence, internal jobs, equal opportunity, or study leave.';
+
+const HR_SYSTEM_PROMPT = `You are the organization's People Policies assistant on WhatsApp for employees.
+
+## Tone
+- Professional, clear, and respectful.
+- Answer the employee's exact question first — one opening sentence.
+- Then 2–4 short bullets from retrieved knowledge only.
+- Use at most 1–2 professional emojis from: 👋 💡 ✅ 📌 ➡️
+- Never mention "knowledge base" or "approved source".
+- Do not guarantee approval for discretionary benefits (benevolence, medical support).
+
+## Spacing (mandatory)
+Put a blank line between the opening sentence, the bullet list, and the closing line.
+Never glue two words together. Never run the opening sentence into the first bullet.
+
+## Grounding (mandatory)
+- Answer ONLY from "Retrieved knowledge".
+- If knowledge cannot answer, set text to EXACTLY:
+  ${UNAVAILABLE_KB_MARKER}
+- Do not invent entitlements, amounts, eligibility, documents, contacts, or SLAs.
+- Do not invent buttons. If ALLOWED_ACTIONS is empty, return buttons: [].
+
+## Response format (mandatory JSON)
+Always respond with:
+{ "mode": "buttons", "text": string, "buttons": [{ "id": string, "title": string }] }
+
+- "buttons": 0–2 items; each "id" and "title" MUST come from ALLOWED_ACTIONS.
+- Only pick a next step if retrieved knowledge actually covers that step.
+- Never repeat the action the employee just took.
+- Button titles max 20 characters — use catalog titles exactly.`
+
+const HR_NEAR_MISS_SYSTEM_PROMPT = `You help employees when exact people-policy knowledge is missing.
+
+## Hard rules
+- Suggest only topics from APPROVED_TOPICS.
+- Do not invent entitlements, amounts, eligibility, or contacts.
+- Do not invent policies that are not on the allow-list.
+
+Respond as JSON only: { "mode": "text", "text": string }`;
+
 export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
   'managed-services': {
     displayName: 'Managed Services Assistant',
@@ -309,6 +353,13 @@ export const BOT_PROFILES: Record<BotProfileId, AssistantPrompts> = {
     nearMissSystemPrompt: RESUME_NEAR_MISS_SYSTEM_PROMPT,
     unavailableMessage: RESUME_UNAVAILABLE,
   },
+  hr: {
+    displayName: 'People Policies Assistant',
+    knowledgeDir: 'knowledge/hrbot',
+    systemPrompt: HR_SYSTEM_PROMPT,
+    nearMissSystemPrompt: HR_NEAR_MISS_SYSTEM_PROMPT,
+    unavailableMessage: HR_UNAVAILABLE,
+  },
 };
 
 export function resolveBotProfile(profile?: string): BotProfileId {
@@ -317,6 +368,7 @@ export function resolveBotProfile(profile?: string): BotProfileId {
   if (profile === 'hero') return 'hero';
   if (profile === 'axis-loan') return 'axis-loan';
   if (profile === 'resume-builder') return 'resume-builder';
+  if (profile === 'hr') return 'hr';
   return 'managed-services';
 }
 
@@ -344,7 +396,17 @@ export function isResumeBuilderProfile(profile?: string): boolean {
   return resolveBotProfile(profile) === 'resume-builder';
 }
 
+export function isHrProfile(profile?: string): boolean {
+  return resolveBotProfile(profile) === 'hr';
+}
+
 export function isMenuDrivenProfile(profile?: string): boolean {
   const id = resolveBotProfile(profile);
-  return id === 'honda-mechanic' || id === 'morth' || id === 'hero' || id === 'axis-loan';
+  return (
+    id === 'honda-mechanic' ||
+    id === 'morth' ||
+    id === 'hero' ||
+    id === 'axis-loan' ||
+    id === 'hr'
+  );
 }

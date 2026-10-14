@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { MsAssistantChat } from '../infrastructure/llm/shared';
 import type { ResumeState, ResumeFieldKey } from './resume-builder';
 import { logger } from '../../../utils/logger';
-import { JEEVIKA_LOGO_DATA_URI, BRLPS_FULL_NAME, BRLPS_SCHEME } from './jeevika-logo';
+import { RESUME_PDF_LOGO_DATA_URI } from './resume-pdf-branding';
 
 const WorkItemSchema = z.object({
   role: z.string().optional(),
@@ -211,16 +211,11 @@ export function buildResumeHtml(resume: StructuredResume): string {
   html, body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #22303c; }
   .page { width: 210mm; min-height: 297mm; background: #ffffff; }
   .gov-banner {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 34px; background: #ffffff; border-bottom: 3px solid #0b3d5c;
+    padding: 10px 24px 12px; background: #ffffff; border-bottom: 3px solid #0b3d5c;
   }
-  .gov-banner img { width: 54px; height: 54px; object-fit: contain; flex: 0 0 auto; }
-  .gov-banner .org { line-height: 1.3; }
-  .gov-banner .org .sub {
-    font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase; color: #7b8a99;
+  .gov-banner img {
+    display: block; width: 100%; max-height: 72px; object-fit: contain; object-position: left center;
   }
-  .gov-banner .org .name { font-size: 13.5px; font-weight: 700; color: #0b3d5c; }
-  .gov-banner .org .scheme { font-size: 10.5px; font-weight: 600; color: #14618a; }
   .header {
     background: linear-gradient(135deg, #0b3d5c 0%, #14618a 100%);
     color: #fff; padding: 26px 34px; display: flex; align-items: center; gap: 22px;
@@ -258,18 +253,12 @@ export function buildResumeHtml(resume: StructuredResume): string {
   .job-meta { font-size: 11.5px; color: #7b8a99; margin: 2px 0 4px; }
   .job-desc { font-size: 12.5px; line-height: 1.55; color: #33475b; }
   .edu { font-size: 13px; line-height: 1.55; color: #33475b; }
-  .footer { text-align: center; font-size: 9.5px; color: #9aa7b2; padding: 10px 0 16px; }
 </style>
 </head>
 <body>
   <div class="page">
     <div class="gov-banner">
-      <img src="${JEEVIKA_LOGO_DATA_URI}" alt="JEEVIKA" />
-      <div class="org">
-        <div class="sub">Government of Bihar</div>
-        <div class="name">${esc(BRLPS_FULL_NAME)}</div>
-        <div class="scheme">Powered by ${esc(BRLPS_SCHEME)} — Rural Livelihoods Mission</div>
-      </div>
+      <img src="${RESUME_PDF_LOGO_DATA_URI}" alt="Skill Development, Employment, Entrepreneurship and Innovation, Government of Maharashtra" />
     </div>
     <div class="header">
       <div class="avatar">${esc(initials(resume.fullName))}</div>
@@ -292,7 +281,6 @@ export function buildResumeHtml(resume: StructuredResume): string {
         ${resume.education ? `<section><h2>Education</h2><div class="edu">${esc(resume.education)}</div></section>` : ''}
       </div>
     </div>
-    <div class="footer">Prepared under the ${esc(BRLPS_SCHEME)} scheme • ${esc(BRLPS_FULL_NAME)}</div>
   </div>
 </body>
 </html>`;

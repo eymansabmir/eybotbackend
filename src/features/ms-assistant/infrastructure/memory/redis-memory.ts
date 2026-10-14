@@ -26,6 +26,8 @@ export interface ConversationMemory {
   axisNegotiation?: BurgundyNegotiationState;
   axisDiscovery?: BurgundyDiscoveryState;
   resumeState?: ResumeState;
+  /** Active people-policy topic for journey buttons (eligibility, apply, etc.). */
+  hrTopicId?: string;
 }
 
 export class RedisConversationMemory {
@@ -62,6 +64,7 @@ export class RedisConversationMemory {
         axisNegotiation: parsed.axisNegotiation ?? EMPTY_BURGUNDY_NEGOTIATION,
         axisDiscovery: parsed.axisDiscovery ?? EMPTY_BURGUNDY_DISCOVERY,
         resumeState: parsed.resumeState ?? EMPTY_RESUME_STATE,
+        hrTopicId: parsed.hrTopicId,
       };
     } catch {
       return {
@@ -90,6 +93,7 @@ export class RedisConversationMemory {
       axisNegotiation: memory.axisNegotiation,
       axisDiscovery: memory.axisDiscovery,
       resumeState: memory.resumeState,
+      hrTopicId: memory.hrTopicId,
     };
     await this.redis.set(
       this.key(waBusinessNumber, waId),
@@ -115,6 +119,7 @@ export class RedisConversationMemory {
       axisNegotiation: current.axisNegotiation,
       axisDiscovery: current.axisDiscovery,
       resumeState: current.resumeState,
+      hrTopicId: current.hrTopicId,
     };
     await this.save(waBusinessNumber, waId, next);
     return next;
@@ -180,6 +185,17 @@ export class RedisConversationMemory {
   ): Promise<ConversationMemory> {
     const current = await this.get(waBusinessNumber, waId);
     const next = { ...current, resumeState };
+    await this.save(waBusinessNumber, waId, next);
+    return next;
+  }
+
+  async patchHrTopic(
+    waBusinessNumber: string,
+    waId: string,
+    hrTopicId: string | undefined,
+  ): Promise<ConversationMemory> {
+    const current = await this.get(waBusinessNumber, waId);
+    const next = { ...current, hrTopicId };
     await this.save(waBusinessNumber, waId, next);
     return next;
   }
