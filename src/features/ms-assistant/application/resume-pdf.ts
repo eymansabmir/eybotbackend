@@ -211,30 +211,35 @@ export function buildResumeHtml(resume: StructuredResume): string {
   html, body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #22303c; }
   .page { width: 210mm; min-height: 297mm; background: #ffffff; }
   .gov-banner {
-    padding: 12px 24px 14px; background: ${RESUME_PDF_HEADER_BACKGROUND};
-    border-bottom: 3px solid #1a3578;
+    padding: 12px 24px 20px; background: ${RESUME_PDF_HEADER_BACKGROUND};
+    border-bottom: 3px solid #1a3578; color: #ffffff;
   }
   .gov-banner img {
     display: block; width: 100%; max-height: 72px; object-fit: contain; object-position: left center;
   }
-  .header {
-    background: linear-gradient(135deg, #0b3d5c 0%, #14618a 100%);
-    color: #fff; padding: 26px 34px; display: flex; align-items: center; gap: 22px;
+  .gov-banner .candidate {
+    display: flex; align-items: center; gap: 18px; margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.28);
   }
-  .avatar {
-    width: 78px; height: 78px; border-radius: 50%; background: rgba(255,255,255,0.16);
-    border: 2px solid rgba(255,255,255,0.55); display: flex; align-items: center;
-    justify-content: center; font-size: 30px; font-weight: 700; letter-spacing: 1px; flex: 0 0 auto;
+  .gov-banner .avatar {
+    width: 64px; height: 64px; border-radius: 50%; background: rgba(255, 255, 255, 0.14);
+    border: 2px solid rgba(255, 255, 255, 0.65); color: #ffffff;
+    display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
+    letter-spacing: 1px; flex: 0 0 auto;
   }
-  .header h1 { font-size: 30px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.1; }
-  .header .role { font-size: 14.5px; font-weight: 500; color: #cfe6f3; margin-top: 4px; }
+  .gov-banner .candidate h1 {
+    font-size: 26px; font-weight: 700; letter-spacing: 0.35px; line-height: 1.15; color: #ffffff;
+  }
+  .gov-banner .candidate .role {
+    font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.88); margin-top: 4px;
+  }
   .body { display: flex; }
   .sidebar { width: 34%; background: #f3f6f9; padding: 24px 22px; }
   .main { width: 66%; padding: 24px 28px; }
   .side-section { margin-bottom: 20px; }
   .side-section h3, .main h2 {
     font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
-    color: #0b5394; margin-bottom: 10px;
+    color: ${RESUME_PDF_HEADER_BACKGROUND}; margin-bottom: 10px;
   }
   .main h2 { border-bottom: 2px solid #e2e8ee; padding-bottom: 5px; margin-bottom: 12px; }
   .main section { margin-bottom: 20px; }
@@ -242,12 +247,12 @@ export function buildResumeHtml(resume: StructuredResume): string {
   .contact-item .ci { width: 16px; text-align: center; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
-    background: #e3eef6; color: #0b3d5c; border-radius: 20px; padding: 4px 11px;
+    background: #eef2fa; color: ${RESUME_PDF_HEADER_BACKGROUND}; border-radius: 20px; padding: 4px 11px;
     font-size: 11.5px; font-weight: 500;
   }
   .side-list { list-style: none; }
   .side-list li { font-size: 12.5px; margin-bottom: 6px; padding-left: 14px; position: relative; color: #33475b; }
-  .side-list li::before { content: '•'; position: absolute; left: 0; color: #14618a; }
+  .side-list li::before { content: '•'; position: absolute; left: 0; color: ${RESUME_PDF_HEADER_BACKGROUND}; }
   .about { font-size: 13px; line-height: 1.6; color: #33475b; }
   .job { margin-bottom: 14px; }
   .job-head { font-size: 13.5px; font-weight: 700; color: #22303c; }
@@ -260,12 +265,12 @@ export function buildResumeHtml(resume: StructuredResume): string {
   <div class="page">
     <div class="gov-banner">
       <img src="${RESUME_PDF_LOGO_DATA_URI}" alt="Skill Development, Employment, Entrepreneurship and Innovation, Government of Maharashtra" />
-    </div>
-    <div class="header">
-      <div class="avatar">${esc(initials(resume.fullName))}</div>
-      <div>
-        <h1>${esc(resume.fullName)}</h1>
-        ${resume.title ? `<div class="role">${esc(resume.title)}</div>` : ''}
+      <div class="candidate">
+        <div class="avatar">${esc(initials(resume.fullName))}</div>
+        <div>
+          <h1>${esc(resume.fullName)}</h1>
+          ${resume.title ? `<div class="role">${esc(resume.title)}</div>` : ''}
+        </div>
       </div>
     </div>
     <div class="body">
