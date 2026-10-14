@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { MsAssistantChat } from '../infrastructure/llm/shared';
 import type { ResumeState, ResumeFieldKey } from './resume-builder';
 import { logger } from '../../../utils/logger';
-import { RESUME_PDF_LOGO_DATA_URI } from './resume-pdf-branding';
+import { RESUME_PDF_HEADER_BACKGROUND, RESUME_PDF_LOGO_DATA_URI } from './resume-pdf-branding';
 
 const WorkItemSchema = z.object({
   role: z.string().optional(),
@@ -211,7 +211,8 @@ export function buildResumeHtml(resume: StructuredResume): string {
   html, body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #22303c; }
   .page { width: 210mm; min-height: 297mm; background: #ffffff; }
   .gov-banner {
-    padding: 10px 24px 12px; background: #ffffff; border-bottom: 3px solid #0b3d5c;
+    padding: 12px 24px 14px; background: ${RESUME_PDF_HEADER_BACKGROUND};
+    border-bottom: 3px solid #1a3578;
   }
   .gov-banner img {
     display: block; width: 100%; max-height: 72px; object-fit: contain; object-position: left center;

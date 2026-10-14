@@ -10,6 +10,7 @@ describe('resume PDF template', () => {
       certifications: [],
     });
     expect(html).toContain('class="gov-banner"');
+    expect(html).toContain('#24469C');
     expect(html).toMatch(/<img src="data:image\/png;base64,/);
     expect(html).not.toContain('class="org"');
     expect(html).not.toMatch(/JEEVIKA/i);
