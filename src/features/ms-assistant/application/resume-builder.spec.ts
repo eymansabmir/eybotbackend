@@ -8,8 +8,10 @@ import {
   beginProfessionChoice,
   buildProfessionList,
   buildResumeQuestion,
+  buildResumeIntentPrompt,
   buildResumeReview,
   buildResumeWelcome,
+  isResumeBuildIntent,
   currentResumeGroup,
   detectLanguageSwitch,
   generateReferenceId,
@@ -202,9 +204,23 @@ describe('resume-builder (agentic slot flow)', () => {
     expect(isResumeSkip('रमेश')).toBe(false);
     expect(isResumeRestart('फिर से')).toBe(true);
     expect(isResumeGenerateText('रिज़्यूमे बनाओ')).toBe(true);
+    expect(isResumeBuildIntent('Resume Build')).toBe(true);
+    expect(isResumeBuildIntent('resume builder')).toBe(true);
+    expect(isResumeBuildIntent('build my resume')).toBe(true);
+    expect(isResumeBuildIntent('रिज़्यूमे बनाओ')).toBe(true);
+    expect(isResumeBuildIntent('Hi')).toBe(false);
+    expect(isResumeBuildIntent('')).toBe(false);
     expect(detectLanguageSwitch('English')).toBe('en');
     expect(detectLanguageSwitch('हिंदी')).toBe('hi');
     expect(detectLanguageSwitch('रमेश')).toBeNull();
+  });
+
+  it('intent prompt tells user to send Resume Build', () => {
+    const res = buildResumeIntentPrompt();
+    expect(res.mode).toBe('text');
+    if (res.mode === 'text') {
+      expect(res.text).toMatch(/Resume Build/i);
+    }
   });
 
   it('hasMinimumForResume requires name or trade', () => {
