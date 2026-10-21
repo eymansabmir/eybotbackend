@@ -365,31 +365,16 @@ export function isResumeGenerateText(text: string): boolean {
   return /(बनाओ|बनाएं|बनाएँ|बना दो|generate|resume banao|तैयार|ready|हाँ बनाओ)/i.test(text.trim());
 }
 
-/** User must express resume intent before the interview starts (idle / after completion). */
+/** Explicit WhatsApp trigger — must contain this phrase (not broad "build resume" wording). */
 export function isResumeBuildIntent(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  return (
-    /resume\s*build(er)?/i.test(t) ||
-    /build\s+(my\s+)?resume/i.test(t) ||
-    /(start|create|make|open)\s+(my\s+)?resume/i.test(t) ||
-    /(रिज़्यूमे|रिज्यूमे|बायोडाटा|biodata)\s*(बन|bana|build|start|create)/i.test(t) ||
-    /(banao|bana do|bana)\s*(mera\s+)?(resume|रिज़्यूमे|रिज्यूमे|biodata|बायोडाटा)/i.test(t)
-  );
+  return /\bresume\s*build(er)?\b/i.test(t);
 }
 
-/** Shown when the user has not yet asked to build a resume. */
-export function buildResumeIntentPrompt(): BotResponse {
-  return {
-    mode: 'text',
-    text: formatWhatsAppText(
-      `👋 *Skill Development & Employment — Maharashtra*\n\n` +
-        `To start your *resume / biodata*, send:\n` +
-        `*Resume Build*\n\n` +
-        `रिज़्यूमे शुरू करने के लिए लिखें:\n` +
-        `*Resume Build*`,
-    ),
-  };
+export function isResumeInteractiveId(interactiveId: string): boolean {
+  const id = interactiveId.trim();
+  return id.startsWith('resume_') || id.startsWith(RESUME_PROFESSION_PREFIX);
 }
 
 export function detectLanguageSwitch(text: string): ResumeLanguage | null {

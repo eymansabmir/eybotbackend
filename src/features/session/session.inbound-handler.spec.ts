@@ -129,6 +129,7 @@ function createHandler(opts: {
   if (opts.msAssistant !== null && opts.msAssistant !== undefined) {
     msAssistant = {
       enabled: true,
+      shouldHandleInbound: vi.fn().mockResolvedValue(true),
       handleInbound: vi.fn().mockResolvedValue([
         {
           waId: '15550001111',
@@ -176,6 +177,25 @@ describe('SessionInboundHandler routing', () => {
     expect(enginePlugin.startFlow).not.toHaveBeenCalled();
     expect(result).toHaveLength(1);
     expect(result[0]?.payload).toEqual({ message: 'genai reply' });
+  });
+
+  it('does not call GenAI when assistant declines handling (e.g. resume gate)', async () => {
+    const handleInbound = vi.fn();
+    const { handler, msAssistant, enginePlugin } = createHandler({
+      flows: [makeFlow('flow-a', 'book order')],
+      msAssistant: {
+        enabled: true,
+        shouldHandleInbound: vi.fn().mockResolvedValue(false),
+        handleInbound,
+      },
+    });
+
+    const result = await handler.process(makeJob({ text: 'Mark my attendance at NSK001' }));
+
+    expect(msAssistant!.shouldHandleInbound).toHaveBeenCalledTimes(1);
+    expect(handleInbound).not.toHaveBeenCalled();
+    expect(enginePlugin.startFlow).not.toHaveBeenCalled();
+    expect(result).toHaveLength(0);
   });
 
   it('returns empty when no intent matches and assistant is disabled', async () => {

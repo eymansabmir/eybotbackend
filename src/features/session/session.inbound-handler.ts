@@ -276,7 +276,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
           if (!matchedConfig) {
             logger.info({ waId, sessionId: activeSession.id, type: message.type, retries }, 'SessionInboundHandler: media_conditional rejected unexpected type');
-            if (this.canFallbackToGenAi()) {
+            if (await this.canRouteToMsAssistant(job)) {
               return this.routeToGenAiFromSession(job, activeSession, 'media_type_mismatch');
             }
             return handleInvalidAttempt(currentInvalidMessage);
@@ -300,7 +300,7 @@ export class SessionInboundHandler implements IInboundHandler {
 
               if (!isAllowed) {
                 logger.info({ waId, sessionId: activeSession.id, ext, mime, retries }, 'SessionInboundHandler: media_conditional rejected unsupported subtype');
-                if (this.canFallbackToGenAi()) {
+                if (await this.canRouteToMsAssistant(job)) {
                   return this.routeToGenAiFromSession(job, activeSession, 'media_subtype_mismatch');
                 }
                 return handleInvalidAttempt(currentInvalidMessage);
@@ -363,7 +363,7 @@ export class SessionInboundHandler implements IInboundHandler {
         } catch (err) {
           logger.error({ err, sessionId: activeSession.id, flowId: activeSession.flowId }, 'SessionInboundHandler: resume failed');
 
-          if (this.canFallbackToGenAi()) {
+          if (await this.canRouteToMsAssistant(job)) {
             return this.routeToGenAiFromSession(job, activeSession, 'resume_failed');
           }
 
@@ -400,13 +400,13 @@ export class SessionInboundHandler implements IInboundHandler {
           );
           outboundMessages.push(...started.outboundMessages);
           sessionId = started.sessionId;
-        } else if (this.msAssistant?.enabled) {
-          logger.info(
-            { waId, orgId, waBusinessNumber, contextMessageId: message.contextMessageId },
-            'SessionInboundHandler: no intent match, routing to GenAI',
-          );
-          return await this.msAssistant.handleInbound(job);
-        } else if (message.contextMessageId) {
+        } else {
+          const genAiJobs = await this.routeToMsAssistantIfEligible(job);
+          if (genAiJobs !== null) {
+            return genAiJobs;
+          }
+        }
+        if (!activeSession && message.contextMessageId) {
           // Strict zombie check when GenAI fallback is unavailable: block stale replies
           // to completed journeys from accidentally starting new flows.
           logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
@@ -455,8 +455,24 @@ export class SessionInboundHandler implements IInboundHandler {
     }
   }
 
-  private canFallbackToGenAi(): boolean {
-    return Boolean(this.msAssistant?.enabled);
+  private async canRouteToMsAssistant(job: InboundJob): Promise<boolean> {
+    if (!this.msAssistant?.enabled) return false;
+    return this.msAssistant.shouldHandleInbound(job);
+  }
+
+  /** GenAI path when no flow trigger matched (respects resume-builder intent gate). */
+  private async routeToMsAssistantIfEligible(job: InboundJob): Promise<OutboundJob[] | null> {
+    if (!(await this.canRouteToMsAssistant(job))) return null;
+    logger.info(
+      {
+        waId: job.message.waId,
+        orgId: job.orgId,
+        waBusinessNumber: job.message.waBusinessNumber,
+        contextMessageId: job.message.contextMessageId,
+      },
+      'SessionInboundHandler: routing to GenAI assistant',
+    );
+    return this.msAssistant!.handleInbound(job);
   }
 
   /**
@@ -467,6 +483,10 @@ export class SessionInboundHandler implements IInboundHandler {
     activeSession: { id?: string },
     reason: string,
   ): Promise<OutboundJob[]> {
+    if (!(await this.canRouteToMsAssistant(job))) {
+      return [];
+    }
+
     const sessionId = activeSession.id;
     logger.info(
       { sessionId, reason, waId: job.message.waId, orgId: job.orgId },
@@ -489,7 +509,7 @@ export class SessionInboundHandler implements IInboundHandler {
     invalidMessage: string,
     reason: string,
   ): Promise<OutboundJob[]> {
-    if (this.canFallbackToGenAi()) {
+    if (await this.canRouteToMsAssistant(job)) {
       return this.routeToGenAiFromSession(job, activeSession, reason);
     }
 
