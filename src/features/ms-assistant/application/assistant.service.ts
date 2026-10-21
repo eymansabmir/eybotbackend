@@ -14,10 +14,10 @@ import {
   buildResumeAudioFallback,
   buildResumeGeneratingResponse,
   buildResumeQuestion,
-  buildResumeIntentPrompt,
   buildResumeReview,
   buildResumeWelcome,
   isResumeBuildIntent,
+  isResumeInteractiveId,
   currentResumeGroup,
   detectLanguageSwitch,
   generateReferenceId,
@@ -257,6 +257,32 @@ export class MsAssistantService {
 
   get enabled(): boolean {
     return this.config.enabled;
+  }
+
+  /**
+   * When the org uses the resume-builder profile, do not hijack unrelated WhatsApp
+   * traffic (attendance, other flow keywords). Only handle explicit resume intent,
+   * in-progress resume sessions, or resume UI button/list taps.
+   */
+  async shouldHandleInbound(job: InboundJob): Promise<boolean> {
+    if (!this.isResumeBuilder) return true;
+
+    const { message } = job;
+    const interactiveId = message.interactiveOptionId?.trim();
+    if (interactiveId && isResumeInteractiveId(interactiveId)) return true;
+
+    const { waId, waBusinessNumber } = message;
+    const memory = await this.memory.get(waBusinessNumber, waId);
+    const state = memory.resumeState ?? EMPTY_RESUME_STATE;
+    if (state.status !== 'idle' && state.status !== 'done') return true;
+
+    const text = (message.text ?? '').trim();
+    if (isResumeBuildIntent(text)) return true;
+
+    const isAudio = message.type === 'audio' || message.type === 'voice';
+    if (isAudio && message.mediaId) return true;
+
+    return false;
   }
 
   private get isHonda(): boolean {
@@ -1977,17 +2003,18 @@ export class MsAssistantService {
       // 2) Resolve inbound text (transcribe voice notes when possible)
       const resolved = await this.resolveResumeInboundText(job);
       if (resolved.wasAudioUnresolved) {
+        if (state.status === 'idle' || state.status === 'done') return [];
         return this.toJobs(buildResumeAudioFallback(state.language), job);
       }
       const trimmed = resolved.text.trim();
 
-      // 3) Idle / finished → start only on explicit resume intent (e.g. "Resume Build")
+      // 3) Idle / finished → respond only on explicit "Resume Build" (otherwise stay silent)
       if (state.status === 'idle' || state.status === 'done') {
-        if (isResumeBuildIntent(trimmed) || isResumeRestart(trimmed)) {
+        if (isResumeBuildIntent(trimmed)) {
           await this.memory.patchResumeState(waBusinessNumber, waId, EMPTY_RESUME_STATE);
           return this.toJobs(buildResumeWelcome(), job);
         }
-        return this.toJobs(buildResumeIntentPrompt(), job);
+        return [];
       }
 
       // 4) Restart, or greeting outside an active interview → welcome
