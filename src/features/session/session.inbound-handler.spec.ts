@@ -74,6 +74,7 @@ function createHandler(opts: {
 
   const flowRepo = {
     findByOrgId: vi.fn().mockResolvedValue(opts.flows ?? []),
+    findAllPublished: vi.fn().mockResolvedValue(opts.flows ?? []),
     findByIdOrFail: vi.fn(),
     findById: vi.fn(),
     getTranslation: vi.fn().mockResolvedValue(null),
@@ -235,6 +236,25 @@ describe('SessionInboundHandler routing', () => {
     expect(enginePlugin.startFlow).toHaveBeenCalledTimes(1);
     expect(sessionRepo.create).toHaveBeenCalled();
     expect(result).toHaveLength(1);
+    expect(result[0]?.payload).toEqual({ message: 'started' });
+  });
+
+  it('starts matched flow even when message is a reply (contextMessageId)', async () => {
+    const matched = makeFlow('flow-attendance', 'Mark my attendance at NSK001');
+    const { handler, msAssistant, enginePlugin } = createHandler({
+      flows: [matched],
+      msAssistant: { enabled: true, shouldHandleInbound: vi.fn().mockResolvedValue(false) },
+    });
+
+    const result = await handler.process(
+      makeJob({
+        text: 'Mark my attendance at NSK001',
+        contextMessageId: 'wamid.campaign-broadcast',
+      }),
+    );
+
+    expect(enginePlugin.startFlow).toHaveBeenCalledTimes(1);
+    expect(msAssistant!.handleInbound).not.toHaveBeenCalled();
     expect(result[0]?.payload).toEqual({ message: 'started' });
   });
 

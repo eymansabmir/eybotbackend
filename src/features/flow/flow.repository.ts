@@ -9,6 +9,8 @@ export interface IFlowRepository {
     findById(id: string): Promise<FlowEntity | null>;
     findByIdOrFail(id: string): Promise<FlowEntity>;
     findByOrgId(orgId: string, status?: string): Promise<FlowEntity[]>;
+    /** All published flows (used when inbound org env does not match flow builder org). */
+    findAllPublished(): Promise<FlowEntity[]>;
     findPublishedByKeyword(keyword: string): Promise<FlowEntity | null>;
     findPublishedByOrgAndKeyword(orgId: string, keyword: string): Promise<FlowEntity | null>;
     update(id: string, updates: Partial<FlowProperties>): Promise<FlowEntity>;
@@ -75,6 +77,16 @@ export class PrismaFlowRepository implements IFlowRepository {
         }
         const flows = await this.prisma.flow.findMany({
             where,
+            include: FLOW_INCLUDE,
+            orderBy: { updatedAt: 'desc' },
+        });
+        const enriched = await this.enrichFlowsWithMetrics(flows);
+        return enriched.map(FlowMapper.toEntity);
+    }
+
+    async findAllPublished(): Promise<FlowEntity[]> {
+        const flows = await this.prisma.flow.findMany({
+            where: { status: PrismaFlowStatus.published },
             include: FLOW_INCLUDE,
             orderBy: { updatedAt: 'desc' },
         });
