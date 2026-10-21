@@ -61,20 +61,28 @@ export class SessionInboundHandler implements IInboundHandler {
         customFields: {},
       };
 
-      const publishedFlows = await this.flowRepo.findByOrgId(orgId, 'published');
       let scopedFlows: FlowEntity[];
       let unboundFlows: FlowEntity[];
+      /** Outbound + session org: use matched flow's org when env orgId is a placeholder. */
+      let replyOrgId = orgId;
 
       if (skipCredentialLookup) {
         // BSP / Interakt env-scoped inbound: no WHATSAPP_CLOUD credential row required.
-        // Path credential ids are often placeholders — match all published flows for the org.
+        // Match triggers across all published flows — INTERAKT_ORG_ID often ≠ flow builder org.
+        const publishedFlows = await this.flowRepo.findAllPublished();
         logger.info(
-          { orgId, credentialId, waBusinessNumber, publishedCount: publishedFlows.length },
-          'SessionInboundHandler: skipping credential lookup (BSP/env-scoped)',
+          {
+            inboundOrgId: orgId,
+            credentialId,
+            waBusinessNumber,
+            publishedCount: publishedFlows.length,
+          },
+          'SessionInboundHandler: BSP/env-scoped — matching triggers across all published flows',
         );
         scopedFlows = [];
         unboundFlows = publishedFlows;
       } else {
+        const publishedFlows = await this.flowRepo.findByOrgId(orgId, 'published');
         const matchingCredential = await this.resolveMatchingCredential(orgId, waBusinessNumber, credentialId);
         if (!matchingCredential || !matchingCredential.isActive || matchingCredential.revokedAt) {
           logger.warn({ waId, waBusinessNumber }, 'SessionInboundHandler: no credential found matching this business number');
@@ -386,13 +394,34 @@ export class SessionInboundHandler implements IInboundHandler {
         logger.debug({ waId, waBusinessNumber }, 'SessionInboundHandler: matching flow for new session');
 
         const inboundText = text ?? '';
+        const triggerPool = [...scopedFlows, ...unboundFlows];
+        if (triggerPool.length === 0) {
+          logger.warn(
+            { orgId, waId, waBusinessNumber, inboundPreview: inboundText.slice(0, 80) },
+            'SessionInboundHandler: no published flows for org — static triggers cannot match',
+          );
+        }
+
         const matchedFlow =
           selectFlowByTrigger(scopedFlows, inboundText) ??
           selectFlowByTrigger(unboundFlows, inboundText);
 
+        if (!matchedFlow && triggerPool.length > 0) {
+          logger.info(
+            {
+              orgId,
+              waId,
+              publishedFlowCount: triggerPool.length,
+              inboundPreview: inboundText.slice(0, 80),
+            },
+            'SessionInboundHandler: no flow trigger matched inbound text',
+          );
+        }
+
         if (matchedFlow) {
+          replyOrgId = matchedFlow.orgId;
           const started = await this.startNewSession(
-            orgId,
+            matchedFlow.orgId,
             waId,
             waBusinessNumber,
             matchedFlow,
@@ -405,33 +434,34 @@ export class SessionInboundHandler implements IInboundHandler {
           if (genAiJobs !== null) {
             return genAiJobs;
           }
-        }
-        if (!activeSession && message.contextMessageId) {
-          // Strict zombie check when GenAI fallback is unavailable: block stale replies
-          // to completed journeys from accidentally starting new flows.
-          logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
 
-          const lastSession = await this.sessionRepo.findLastSession(waBusinessNumber, waId);
-          let finishedJourneyMessage = 'You already finished this flow. To start the flow again, please type the trigger keyword.';
+          if (message.contextMessageId) {
+            // Strict zombie check when GenAI fallback is unavailable: block stale replies
+            // to completed journeys from accidentally starting new flows.
+            logger.info({ waId, contextMessageId: message.contextMessageId }, 'SessionInboundHandler: blocking interaction with old message');
 
-          if (lastSession) {
-            try {
-              const flow = await this.flowRepo.findById(lastSession.flowId);
-              if (flow?.settings?.finishedJourneyMessage) {
-                finishedJourneyMessage = flow.settings.finishedJourneyMessage;
+            const lastSession = await this.sessionRepo.findLastSession(waBusinessNumber, waId);
+            let finishedJourneyMessage = 'You already finished this flow. To start the flow again, please type the trigger keyword.';
+
+            if (lastSession) {
+              try {
+                const flow = await this.flowRepo.findById(lastSession.flowId);
+                if (flow?.settings?.finishedJourneyMessage) {
+                  finishedJourneyMessage = flow.settings.finishedJourneyMessage;
+                }
+              } catch (err) {
+                logger.warn({ err, flowId: lastSession.flowId }, 'SessionInboundHandler: failed to fetch flow for finished journey message');
               }
-            } catch (err) {
-              logger.warn({ err, flowId: lastSession.flowId }, 'SessionInboundHandler: failed to fetch flow for finished journey message');
             }
-          }
 
-          return [{
-            waId,
-            waBusinessNumber,
-            messageType: NodeType.SEND_TEXT,
-            payload: { message: finishedJourneyMessage },
-            orgId,
-          }];
+            return [{
+              waId,
+              waBusinessNumber,
+              messageType: NodeType.SEND_TEXT,
+              payload: { message: finishedJourneyMessage },
+              orgId,
+            }];
+          }
         }
       }
 
@@ -440,7 +470,7 @@ export class SessionInboundHandler implements IInboundHandler {
         waBusinessNumber,
         messageType: msg.type,
         payload: msg.payload,
-        orgId,
+        orgId: replyOrgId,
         sessionId,
       }));
     } finally {
