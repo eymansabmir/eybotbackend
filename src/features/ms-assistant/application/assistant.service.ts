@@ -14,8 +14,10 @@ import {
   buildResumeAudioFallback,
   buildResumeGeneratingResponse,
   buildResumeQuestion,
+  buildResumeIntentPrompt,
   buildResumeReview,
   buildResumeWelcome,
+  isResumeBuildIntent,
   currentResumeGroup,
   detectLanguageSwitch,
   generateReferenceId,
@@ -1972,20 +1974,21 @@ export class MsAssistantService {
         return await this.handleResumeButton(job, interactiveId, state);
       }
 
-      // 2) Brand-new conversation → always greet + language choice first.
-      //    (Avoids a wasted transcription call and a confusing "please type" reply
-      //    when the very first message is a voice note.)
-      if (state.status === 'idle') {
-        await this.memory.patchResumeState(waBusinessNumber, waId, EMPTY_RESUME_STATE);
-        return this.toJobs(buildResumeWelcome(), job);
-      }
-
-      // 3) Resolve inbound text (transcribe voice notes when possible)
+      // 2) Resolve inbound text (transcribe voice notes when possible)
       const resolved = await this.resolveResumeInboundText(job);
       if (resolved.wasAudioUnresolved) {
         return this.toJobs(buildResumeAudioFallback(state.language), job);
       }
       const trimmed = resolved.text.trim();
+
+      // 3) Idle / finished → start only on explicit resume intent (e.g. "Resume Build")
+      if (state.status === 'idle' || state.status === 'done') {
+        if (isResumeBuildIntent(trimmed) || isResumeRestart(trimmed)) {
+          await this.memory.patchResumeState(waBusinessNumber, waId, EMPTY_RESUME_STATE);
+          return this.toJobs(buildResumeWelcome(), job);
+        }
+        return this.toJobs(buildResumeIntentPrompt(), job);
+      }
 
       // 4) Restart, or greeting outside an active interview → welcome
       if (
@@ -2017,12 +2020,7 @@ export class MsAssistantService {
         return this.toJobs(buildResumeReview(state), job);
       }
 
-      // 8) Already finished → show welcome (restart path)
-      if (state.status === 'done') {
-        return this.toJobs(buildResumeWelcome(), job);
-      }
-
-      // 9) Collecting → extract EVERY slot from the message, store, ask what's missing
+      // 8) Collecting → extract EVERY slot from the message, store, ask what's missing
       const group = currentResumeGroup(state);
       if (!group) {
         return this.toJobs(buildResumeReview({ ...state, status: 'review' }), job);
